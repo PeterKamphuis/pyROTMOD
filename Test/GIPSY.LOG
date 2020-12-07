@@ -1,0 +1,195 @@
+<USER> $gip_exe/news mode=new
+                                                                                            (start news)       07/12/20 07:08:52
+Traceback (most recent call last):
+  File "/home/peter/Applications/gipsy/exe/linux64/pycheck", line 15, in <module>
+    from gipsy import *
+ImportError: /home/peter/Applications/gipsy/exe/linux64/gipsy.so: undefined symbol: _Py_ZeroStruct
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/peter/Applications/gipsy/exe/linux64/pycheck", line 17, in <module>
+    anyout('GIPSY has no Python module')
+NameError: name 'anyout' is not defined
+                                                                                            (end   pycheck)    07/12/20 07:08:53
+<STATUS>  NEWS  Cannot run Python module/package check:WARNING
+                                                                                            (end   news)       07/12/20 07:08:53
+<STATUS>  NEWS   +++ FINISHED +++
+<USER> rotmas
+                                                                                            (start rotmas)     07/12/20 07:08:56
+Warning: Cannot convert string "*helvetica*bold-r*20*75*" to type FontStruct
+Warning: Cannot convert string "*courier*bold-r*12*" to type FontStruct
+Warning: Cannot convert string "*courier*bold-r*12*75*" to type FontStruct
+Warning: Cannot convert string "*helvetica*bold-r*14*" to type FontStruct
+                                                                                            (end   rotmas)     07/12/20 07:16:53
+<STATUS>  ROTMAS   +++ FINISHED +++
+<USER> $gip_exe/news mode=new
+                                                                                            (start news)       07/12/20 07:17:41
+                                                                                            (start pycheck)    07/12/20 07:17:43
+
+==============================================================
+         ***** Python package/module warning(s) *****
+--------------------------------------------------------------
+Package/module vtk is not available.
+ 
+Using QT4 for graphical interfaces
+Package/module kapteyn is not available.
+ 
+--------------------------------------------------------------
+For more information please refer to the Requirements
+section in the Download and Installation Guide:
+http://www.astro.rug.nl/~gipsy/installation/installation.html
+--------------------------------------------------------------
+                                                                                            (end   pycheck)    07/12/20 07:17:44
+                                                                                            (end   news)       07/12/20 07:17:44
+<STATUS>  NEWS   +++ FINISHED +++
+<USER> rotmas
+                                                                                            (start rotmas)     07/12/20 07:17:47
+Warning: Cannot convert string "*helvetica*bold-r*20*75*" to type FontStruct
+Warning: Cannot convert string "*courier*bold-r*12*" to type FontStruct
+Warning: Cannot convert string "*courier*bold-r*12*75*" to type FontStruct
+Warning: Cannot convert string "*helvetica*bold-r*14*" to type FontStruct
+                                                                                            (end   rotmas)     07/12/20 07:24:35
+<STATUS>  ROTMAS   +++ FINISHED +++
+<USER> $gip_exe/news mode=new
+                                                                                            (start news)       07/12/20 07:24:38
+                                                                                            (start pycheck)    07/12/20 07:24:38
+
+==============================================================
+         ***** Python package/module warning(s) *****
+--------------------------------------------------------------
+Package/module vtk is not available.
+ 
+Using QT4 for graphical interfaces
+Package/module kapteyn is not available.
+ 
+--------------------------------------------------------------
+For more information please refer to the Requirements
+section in the Download and Installation Guide:
+http://www.astro.rug.nl/~gipsy/installation/installation.html
+--------------------------------------------------------------
+                                                                                            (end   pycheck)    07/12/20 07:24:39
+                                                                                            (end   news)       07/12/20 07:24:39
+<STATUS>  NEWS   +++ FINISHED +++
+<USER> rotmas
+                                                                                            (start rotmas)     07/12/20 07:24:41
+Warning: Cannot convert string "*helvetica*bold-r*20*75*" to type FontStruct
+Warning: Cannot convert string "*courier*bold-r*12*" to type FontStruct
+Warning: Cannot convert string "*courier*bold-r*12*75*" to type FontStruct
+Warning: Cannot convert string "*helvetica*bold-r*14*" to type FontStruct
+                                                                                            (end   rotmas)     07/12/20 07:29:02
+<STATUS>  ROTMAS   +++ FINISHED +++
+<USER> $gip_exe/news mode=new
+                                                                                            (start news)       07/12/20 07:29:28
+                                                                                            (start pycheck)    07/12/20 07:29:28
+
+==============================================================
+         ***** Python package/module warning(s) *****
+--------------------------------------------------------------
+Package/module vtk is not available.
+ 
+Using QT4 for graphical interfaces
+Package/module kapteyn is not available.
+ 
+--------------------------------------------------------------
+For more information please refer to the Requirements
+section in the Download and Installation Guide:
+http://www.astro.rug.nl/~gipsy/installation/installation.html
+--------------------------------------------------------------
+                                                                                            (end   pycheck)    07/12/20 07:29:28
+                                                                                            (end   news)       07/12/20 07:29:28
+<STATUS>  NEWS   +++ FINISHED +++
+<USER> rotmod
+                                                                                            (start rotmod)     07/12/20 07:29:31
+<USER> ROTMOD TYPE=Bulge
+<USER> ROTMOD UNITS=
+<USER> ROTMOD RADDENS=
+<USER> ROTMOD RADDENS=0 0
+                                                                                            (end   rotmod)     07/12/20 07:30:01
+<STATUS>  ROTMOD   USER ABORT
+<USER> rotmas
+                                                                                            (start rotmas)     07/12/20 07:30:04
+Warning: Cannot convert string "*helvetica*bold-r*20*75*" to type FontStruct
+Warning: Cannot convert string "*courier*bold-r*12*" to type FontStruct
+Warning: Cannot convert string "*courier*bold-r*12*75*" to type FontStruct
+Warning: Cannot convert string "*helvetica*bold-r*14*" to type FontStruct
+                                                                                            (end   rotmas)     07/12/20 07:34:19
+<STATUS>  ROTMAS   USER ABORT
+<USER> rotmod
+                                                                                            (start rotmod)     07/12/20 07:34:45
+<USER> ROTMOD TYPE=
+<USER> ROTMOD ZLAW=
+<USER> ROTMOD USER=Y
+<USER> ROTMOD UNITS=
+<USER> ROTMOD RADDENS=0.43,44.18
+<USER> ROTMOD RADDENS=1.08,31.77
+<USER> ROTMOD RADDENS=1.95,20.47
+<USER> ROTMOD RADDENS=3.69,8.50
+<USER> ROTMOD RADDENS=4.99,4.40
+<USER> ROTMOD RADDENS=6.07,2.54
+<USER> ROTMOD RADDENS=7.16,1.46 
+<USER> ROTMOD RADDENS=7.59,1.18
+<USER> ROTMOD RADDENS=10.19,0.31
+<USER> ROTMOD RADDENS=12.80,0.08
+<USER> ROTMOD RADDENS=18.00,0.01
+<USER> ROTMOD RADDENS=
+<USER> ROTMOD MASS=
+<USER> ROTMOD RADII=0 , 0.7 , 4.16,7.62,11.08,14.55,18.01,21.47,24.94,28.40,31.
+       86
+<USER> ROTMOD FILE=Optical_Disk_Rotmod.txt
+Accuracy        :           10
+Mass of disk    :       1.3423 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   0.00000    52.38969       0.000000
+   0.70000    39.02508      15.969478
+   4.16000     6.53963      33.560951
+   7.62000     1.16191      29.868421
+  11.08000     0.15915      24.780160
+  14.55000     0.00000      20.839299
+  18.01000     0.00000      18.342862
+  21.47000     0.00000      16.534429
+  24.94000     0.00000      15.257199
+  28.40000     0.00000      14.249600
+  31.86000     0.00000      13.423456
+                                                                                            (end   rotmod)     07/12/20 07:39:19
+<STATUS>  ROTMOD   +++ FINISHED +++
+<USER> rotmod
+                                                                                            (start rotmod)     07/12/20 07:39:59
+<USER> ROTMOD TYPE=BULGE
+<USER> ROTMOD UNITS=1.08,11.63
+<STATUS>  ROTMOD  Wrong units! - FATAL
+                                                                                            (end   rotmod)     07/12/20 07:40:35
+<USER> rotmod
+                                                                                            (start rotmod)     07/12/20 07:40:42
+<USER> ROTMOD TYPE=BULGE
+<USER> ROTMOD UNITS=
+<USER> ROTMOD RADDENS=1.08,11.63
+<USER> ROTMOD RADDENS=1.52,4.78
+<USER> ROTMOD RADDENS=1.95,1.51
+<USER> ROTMOD RADDENS=2.39,0.37
+<USER> ROTMOD RADDENS=3.25,0.01
+<USER> ROTMOD RADDENS=
+<USER> ROTMOD MASS=
+<USER> ROTMOD RADII=0 , 0.7 , 4.16,7.62,11.08,14.55,18.01,21.47,24.94,28.40,31.
+<USER> ROTMOD FILE=Optical_Bulge_Rotmod.txt
+Mass of bulge   :       0.0922 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   0.00000    28.44364       0.000000
+   0.70000    12.74924       6.481720
+   4.16000     0.00000       9.772832
+   7.62000     0.00000       7.220871
+  11.08000     0.00000       5.988213
+  14.55000     0.00000       5.225593
+  18.01000     0.00000       4.696888
+  21.47000     0.00000       4.301808
+  24.94000     0.00000       3.991341
+  28.40000     0.00000       3.740313
+  31.00000     0.00000       3.580027
+                                                                                            (end   rotmod)     07/12/20 07:42:40
+<STATUS>  ROTMOD   +++ FINISHED +++

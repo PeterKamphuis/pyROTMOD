@@ -1,0 +1,127 @@
+# -*- coding: future_fstrings -*-
+
+
+import numpy as np
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    import matplotlib
+    matplotlib.use('pdf')
+    import matplotlib.pyplot as plt
+
+
+
+# function for converting kpc to arcsec and vice versa
+
+def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', physical=False,debug = False):
+    if debug:
+            print_log(f'''CONVERTSKYANGLE: Starting conversion from the following input.
+    {'':8s}Angle = {angle}
+    {'':8s}Distance = {distance}
+''',None,debug =True)
+    try:
+        _ = (e for e in angle)
+    except TypeError:
+        angle = [angle]
+
+        # if physical is true default unit is kpc
+    angle = np.array(angle)
+    if physical and unit == 'arcsec':
+        unit = 'kpc'
+    if distance_unit.lower() == 'mpc':
+        distance = distance * 10 ** 3
+    elif distance_unit.lower() == 'kpc':
+        distance = distance
+    elif distance_unit.lower() == 'pc':
+        distance = distance / (10 ** 3)
+    else:
+        print('CONVERTSKYANGLE: ' + distance_unit + ' is an unknown unit to convertskyangle.\n')
+        print('CONVERTSKYANGLE: please use Mpc, kpc or pc.\n')
+        raise SupportRunError('CONVERTSKYANGLE: ' + distance_unit + ' is an unknown unit to convertskyangle.')
+    if not physical:
+        if unit.lower() == 'arcsec':
+            radians = (angle / 3600.) * ((2. * np.pi) / 360.)
+        elif unit.lower() == 'arcmin':
+            radians = (angle / 60.) * ((2. * np.pi) / 360.)
+        elif unit.lower() == 'degree':
+            radians = angle * ((2. * np.pi) / 360.)
+        else:
+            print('CONVERTSKYANGLE: ' + unit + ' is an unknown unit to convertskyangle.\n')
+            print('CONVERTSKYANGLE: please use arcsec, arcmin or degree.\n')
+            raise SupportRunError('CONVERTSKYANGLE: ' + unit + ' is an unknown unit to convertskyangle.')
+
+
+        kpc = 2. * (distance * np.tan(radians / 2.))
+    else:
+        if unit.lower() == 'kpc':
+            kpc = angle
+        elif unit.lower() == 'mpc':
+            kpc = angle / (10 ** 3)
+        elif unit.lower() == 'pc':
+            kpc = angle * (10 ** 3)
+        else:
+            print('CONVERTSKYANGLE: ' + unit + ' is an unknown unit to convertskyangle.\n')
+            print('CONVERTSKYANGLE: please use kpc, Mpc or pc.\n')
+            raise SupportRunError('CONVERTSKYANGLE: ' + unit + ' is an unknown unit to convertskyangle.')
+
+        radians = 2. * np.arctan(kpc / (2. * distance))
+        kpc = (radians * (360. / (2. * np.pi))) * 3600.
+    if len(kpc) == 1:
+        kpc = float(kpc[0])
+    return kpc
+
+
+
+def plot_profiles(radii,gas_profile,optical_profiles,distance = 1., errors = [0.]):
+    plt.plot(convertskyangle(radii[2:],distance=distance),np.array(gas_profile[2:]),label = gas_profile[0])
+    max = np.nanmax(np.array(gas_profile[2:]))
+    lower_ind = np.where(np.array(optical_profiles[0][2:]) > float(radii[2])/2.)[0][0]
+    tot_opt = []
+    for x in range(1,len(optical_profiles)):
+        plt.plot(convertskyangle(optical_profiles[0][2:],distance=distance),np.array(optical_profiles[x][2:]), label = optical_profiles[x][0])
+        if np.nanmax(np.array(optical_profiles[x][2+lower_ind:])) > max:
+            max =  np.nanmax(np.array(optical_profiles[x][2+lower_ind:]))
+        if len(tot_opt) > 0:
+            tot_opt = [old+new for old,new in zip(tot_opt,optical_profiles[x][2:])]
+        else:
+            tot_opt =  optical_profiles[x][2:]
+    plt.plot(convertskyangle(optical_profiles[0][2:],distance=distance),np.array(tot_opt), label='Total Optical')
+    max = np.nanmax(tot_opt)
+    plt.ylim(0.1,max)
+    plt.xlim(0,6)
+    plt.ylabel('Density (M$_\odot$/pc$^2$)')
+    plt.xlabel('Radius (kpc)')
+    plt.yscale('log')
+    plt.legend()
+    plt.savefig('Mass_Profiles.png')
+    plt.close()
+
+def write_profiles(radii,gas_profile,total_rc,optical_profiles,distance = 1., errors = [0.]):
+    with open('Optical_Mass_Densities.txt','w') as opt_file:
+        for x in range(len(optical_profiles[0])):
+            line = [optical_profiles[i][x] for i in range(len(optical_profiles))]
+            if x == 1:
+                line[0] = 'KPC'
+            if x > 1:
+                line[0] = convertskyangle(float(line[0]), distance)
+            if x <= 1:
+                writel = ' '.join([f'{y:>15s}' for y in line])
+            else:
+                writel = ' '.join([f'{y:>15.2f}' for y in line])
+            writel = f'{writel} \n'
+            opt_file.write(writel)
+    with open('Gas_Mass_Density_And_RC.txt','w') as file:
+        for x in range(len(radii)):
+            line = [radii[x],gas_profile[x],total_rc[x]]
+            if errors[0] != 0.:
+                line.append(errors[x])
+            if x == 1:
+                line[0] = 'KPC'
+            if x > 1:
+                line[0] = convertskyangle(float(line[0]), distance)
+            if x <= 1:
+                writel = ' '.join([f'{y:>15s}' for y in line])
+            else:
+                writel = ' '.join([f'{y:>15.2f}' for y in line])
+            writel = f'{writel} \n'
+            file.write(writel)
