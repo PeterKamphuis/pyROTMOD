@@ -95,9 +95,9 @@ def get_gas_profiles(filename):
 
     if filename.split('.')[1].lower() == 'def':
         #we have a tirific file
-        inrad, sbr,sbr2, total_RC_1, total_RC_2,total_RC_err_1,total_RC_err_2, vsys = \
-            load_tirific(filename, Variables = ['RADI','SBR','SBR_2','VROT','VROT_2','VROT_ERR','VROT_2_ERR','VSYS'])
-
+        inrad, sbr,sbr2, total_RC_1, total_RC_2,total_RC_err_1,total_RC_err_2, vsys,scaleheight1,scaleheight2 = \
+            load_tirific(filename, Variables = ['RADI','SBR','SBR_2','VROT','VROT_2','VROT_ERR','VROT_2_ERR','VSYS','Z0','Z0_2'])
+        scaleheight=[scaleheight1,scaleheight2]
         radii = ['RADI','ARCSEC']
         for x in inrad:
             radii.append(x)
@@ -115,7 +115,7 @@ def get_gas_profiles(filename):
     else:
         print("This is not yet implemented")
 
-    return radii, gas_density, total_RC,total_RC_Err
+    return radii, gas_density, total_RC,total_RC_Err,scaleheight
 
 
 

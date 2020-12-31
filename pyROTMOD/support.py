@@ -88,13 +88,28 @@ def plot_profiles(radii,gas_profile,optical_profiles,distance = 1., errors = [0.
     plt.plot(convertskyangle(optical_profiles[0][2:],distance=distance),np.array(tot_opt), label='Total Optical')
     max = np.nanmax(tot_opt)
     plt.ylim(0.1,max)
-    plt.xlim(0,6)
+    #plt.xlim(0,6)
     plt.ylabel('Density (M$_\odot$/pc$^2$)')
     plt.xlabel('Radius (kpc)')
     plt.yscale('log')
     plt.legend()
-    plt.savefig('Mass_Profiles.png')
+    plt.savefig('pyROTMOD_Output/Mass_Profiles.png')
     plt.close()
+def write_RCs(RCs,total_rc,rc_err,distance = 1., errors = [0.],output_dir= 'pyROTMOD_Output'):
+    #print(RCs)
+    with open(f'{output_dir}/All_RCs.txt','w') as opt_file:
+        for x in range(len(RCs[0])):
+
+            line = [RCs[i][x] for i in range(len(RCs))]
+            line.append(total_rc[x])
+            line.append(rc_err[x])
+
+            if x <= 1:
+                writel = ' '.join([f'{y:>15s}' for y in line])
+            else:
+                writel = ' '.join([f'{y:>15.2f}' for y in line])
+            writel = f'{writel} \n'
+            opt_file.write(writel)
 
 def write_profiles(radii,gas_profile,total_rc,optical_profiles,distance = 1., errors = [0.]):
     with open('Optical_Mass_Densities.txt','w') as opt_file:

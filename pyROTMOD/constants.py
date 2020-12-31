@@ -16,3 +16,7 @@ def initialize():
     # 'BANDNAME: wavelength (m)'
     global bands #
     bands = {'WISE3.4': 3.385190356820235e-06, 'SPITZER3.6': 3.6e-6}
+    global G
+    G =  6.67430e-11     #m^3/kg*s^2
+    global Gsol
+    Gsol = G/(1000.**3)*solar_mass #km^3/M_sol*s^2

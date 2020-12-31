@@ -7,7 +7,7 @@ from pyROTMOD.optical.optical import get_optical_profiles
 from pyROTMOD.gas.gas import get_gas_profiles
 from pyROTMOD.rotmod.rotmod import convert_dens_rc
 from pyROTMOD.rotmass.rotmass import the_action_is_go
-from pyROTMOD.support import plot_profiles,write_profiles
+from pyROTMOD.support import plot_profiles,write_profiles,write_RCs
 import pyROTMOD.constants as c
 
 class InputError(Exception):
@@ -45,14 +45,14 @@ def main(argv):
     ######################################## Read the optical profiles ##########################################
 
 
-    optical_profiles,components = get_optical_profiles(input_parameters.optical_file,
+    optical_profiles,components,galfit_file = get_optical_profiles(input_parameters.optical_file,
                                                     distance= float(input_parameters.distance),
                                                     zero_point_flux = float(input_parameters.zero_point_flux),
                                                     MLRatio= float(input_parameters.MLRatio))
 
 
     ######################################### Read the gas profiles and RC ################################################
-    radii,gas_profile, total_rc,total_rc_err  = get_gas_profiles(input_parameters.gas_file)
+    radii,gas_profile, total_rc,total_rc_err,scaleheights  = get_gas_profiles(input_parameters.gas_file)
 
     ########################################## Make a plot with the extracted profiles ######################3
     plot_profiles(radii, gas_profile,optical_profiles,distance =float(input_parameters.distance))
@@ -60,9 +60,10 @@ def main(argv):
     ########################################## Make a nice file with all the different components as a column ######################3
     write_profiles(radii, gas_profile,total_rc,optical_profiles,distance =float(input_parameters.distance), errors = total_rc_err )
     ######################################### Convert to Rotation curves ################################################
-
-    optical_RCs , gas_RC = convert_dens_rc(radii, optical_profiles, gas_profile,components)
+    print(galfit_file)
+    derived_RCs = convert_dens_rc(radii, optical_profiles, gas_profile,components,distance =float(input_parameters.distance),galfit_file = galfit_file)
+    write_RCs(derived_RCs,total_rc,total_rc_err)
 
     ######################################### Run our Bayesian interactive fitter thingy ################################################
 
-    the_action_is_go(radii,optical_RCs,gas_RC, total_rc)
+    the_action_is_go(radii,derived_RCs, total_rc,total_rc_err)
