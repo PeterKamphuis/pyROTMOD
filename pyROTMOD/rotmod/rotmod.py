@@ -43,6 +43,7 @@ def convert_dens_rc(radii, optical_profiles, gas_profile,components,distance =1.
             RCs[x].append(vel)
 
     ########################### and last the gas which we do not interpolate  ###################
+    gas_scaleheight = 0.4
     found_RC = exponential_RC(kpc_radii,gas_profile[2:], gas_scaleheight)
     RCs.append(['DISK_G', 'KM/S'])
     for vel in found_RC:
@@ -56,8 +57,8 @@ def sersic_RC(radii,density,axis_ratio = 0., eff_radius = 0.):
     if eff_radius ==0.:
         eff_radius = radii[-1]/2.
 
-    scalelength,central,Mass = get_individual_parameters(radii,density,initial_estimates =[density[0],eff_radius])
-    
+    scalelength,central,Mass_ind,Mass = get_individual_parameters(radii,density,initial_estimates =[density[0],eff_radius])
+
     RC = []
     for i in range(len(radii)):
         if scalelength[i] ==0. and central[i] == 0.:
@@ -65,7 +66,7 @@ def sersic_RC(radii,density,axis_ratio = 0., eff_radius = 0.):
             #print(c.Gsol,radii[i],c.pc, Mass)
             RC.append(np.sqrt(c.Gsol*Mass/(radii[i]*1000.*c.pc/(100.*1000.))))
         else:
-            sersic_potential = MNP(amp=float(Mass)*units.Msun,a=float(scalelength[i])*units.kpc,b=float(scalelength[i]*axis_ratio)*units.kpc)
+            sersic_potential = MNP(amp=float(Mass_ind[i])*units.Msun,a=float(scalelength[i])*units.kpc,b=float(scalelength[i]*axis_ratio)*units.kpc)
             RC.append(sersic_potential.vcirc(radii[i]*units.kpc))
     #print(f'This is what we derive')
     #for i,rad in enumerate(radii):
@@ -82,37 +83,53 @@ def get_individual_parameters(radii,density,fit_bound=[[-np.inf,-np.inf],[np.inf
     extended_profile = CubicSpline(radii,density,extrapolate = True,bc_type ='natural')
     scalelength = []
     central = []
-    Mass = 0.
+    Mass_ind = []
+    Mass = get_mass(radii,density)
     for i in range(len(radii)):
         # The area in the ring
         if i == 0.:
-            inner = radii[i]/2.
-            outer = (radii[i]+radii[i+1])/2.
             if radii[i] == 0.:
+                pair0 = [-2*radii[i+1],extended_profile(-2*radii[i+1])]
                 pair1 = [-1*radii[i+1],extended_profile(-1*radii[i+1])]
 
             else:
+                pair0 = [-1*radii[i+1],extended_profile(-1*radii[i+1])]
                 pair1 = [0,extended_profile(0.)]
 
             pair3 = [radii[i+1],density[i+1]]
+            pair4 = [radii[i+2],density[i+2]]
+        if i == 1.:
+            if radii[i-1] == 0.:
 
-        elif i == len(radii)-1:
-            inner = (radii[i-1]+radii[i])/2.
-            outer = radii[i]+(radii[i-1]-radii[i])/2.
-            pair1= [radii[i-1],density[i-1]]
-            pair3 = [2.*radii[i]-radii[i-1],extended_profile(2.*radii[i]-radii[i-1])]
-        else:
-            inner = (radii[i-1]+radii[i])/2.
-            outer = (radii[i]+radii[i+1])/2.
+                pair0 = [-1*radii[i+1],extended_profile(-1*radii[i+1])]
+            else:
+                pair0 = [0,extended_profile(0.)]
+            pair1 = [radii[i-1],density[i-1]]
+            pair3 = [radii[i+1],density[i+1]]
+            pair4 = [radii[i+2],density[i+2]]
+        elif i == len(radii)-2:
+            pair0 =  [radii[i-2],density[i-2]]
             pair1= [radii[i-1],density[i-1]]
             pair3 = [radii[i+1],density[i+1]]
-
+            pair4 = [2.*radii[i+1]-radii[i],extended_profile(2.*radii[i+1]-radii[i])]
+        elif i == len(radii)-1:
+            pair0 =  [radii[i-2],density[i-2]]
+            pair1= [radii[i-1],density[i-1]]
+            outer_extra = 2.*radii[i]-radii[i-1]
+            outer_extra2 = outer_extra+(radii[i]-radii[i-1])
+            pair3 = [outer_extra,extended_profile(outer_extra)]
+            pair4 = [outer_extra2,extended_profile(outer_extra2)]
+        else:
+            pair0 =  [radii[i-2],density[i-2]]
+            pair1= [radii[i-1],density[i-1]]
+            pair3 = [radii[i+1],density[i+1]]
+            pair4 = [radii[i+2],density[i+2]]
         pair2 = [radii[i],density[i]]
-        area = (np.pi*outer**2-np.pi*inner**2)*1000**2.
-        #print(f'The mass in ring {i} = {area*density[i]}, the total = {Mass}')
-        Mass += area*density[i]
-        fit_radii = [pair1[0],pair2[0],pair3[0]]
-        fit_density = [pair1[1],pair2[1],pair3[1]]
+
+        fit_radii = [pair0[0],pair1[0],pair2[0],pair3[0],pair4[0]]
+        fit_density = [pair0[1],pair1[1],pair2[1],pair3[1],pair4[1]]
+        #fit_radii = [pair1[0],pair2[0],pair3[0]]
+        #fit_density = [pair1[1],pair2[1],pair3[1]]
         for i,par in enumerate(fit_density):
             if par < 1e-8:
                 fit_density[i] = 0.
@@ -128,8 +145,27 @@ def get_individual_parameters(radii,density,fit_bound=[[-np.inf,-np.inf],[np.inf
                 exp_parameters =[0.,0.]
         scalelength.append(exp_parameters[1])
         central.append(exp_parameters[0])
-    return scalelength,central,Mass
+        exp_profile =exponential(radii,*exp_parameters)
+        print(exp_profile)
+        Mass_ind.append(get_mass(radii,exp_profile))
+    print(f'This is the total mass in the exponential disk {Mass:.2e}')
+    return scalelength,central,Mass_ind,Mass
 
+def get_mass(radii,profile):
+    Mass= 0.
+    for i,rad in enumerate(radii):
+        if i == 0.:
+            inner = radii[i]/2.
+            outer = (radii[i]+radii[i+1])/2.
+        elif i == len(radii)-1:
+            inner = (radii[i-1]+radii[i])/2.
+            outer = radii[i]+(radii[i-1]-radii[i])/2.
+        else:
+            inner = (radii[i-1]+radii[i])/2.
+            outer = (radii[i]+radii[i+1])/2.
+        area = (np.pi*outer**2-np.pi*inner**2)*1000**2.
+        Mass += area*profile[i]
+    return Mass
 # Obtain the velocities of a density profile where the vertical distribution is a exponential disk.
 def exponential_RC(radii,density,vertical_distribution):
     # First we need to get the total mass in the disk
@@ -137,23 +173,26 @@ def exponential_RC(radii,density,vertical_distribution):
     #print(radii,density)
     tot_parameters, tot_covariance = curve_fit(exponential, radii, density,p0=[3.,5])
 
-    fit_bound = [[tot_parameters[0]-2,-np.inf],[tot_parameters[0],np.inf]]
+    fit_bound = [[0.,-np.inf],[tot_parameters[0]+1.,np.inf]]
+    #fit_bound = [[-np.inf,-np.inf],[np.inf,np.inf]]
     #print(f'for the total profile we find h = {tot_parameters[1]} and cent = {tot_parameters[0]}')
 
-    scalelength,central,Mass = get_individual_parameters(radii,density,fit_bound=fit_bound,initial_estimates = tot_parameters)
+    scalelength,central,Mass,Mass_tot = get_individual_parameters(radii,density,fit_bound=fit_bound,initial_estimates = tot_parameters)
 
-    print(f'This is the total mass in the exponential disk {Mass:.2e}')
-    #print('These are the scalelengths and and central densities')
-    #print(scalelength,central)
+
+    print('These are the scalelengths and and central densities')
+    print(scalelength,central)
+    print('These are the individual masses')
+    print([f'{x:.2e}' for x in Mass])
 
     # Now to caluclate the vcirc for each of these parameters
     RC = []
 
     for i in range(len(radii)):
         if scalelength[i] ==0. and central[i] == 0.:
-            RC.append(np.sqrt(c.Gsol*Mass/(radii[i]*1000.*c.pc/(100.*1000.))))
+            RC.append(np.sqrt(c.Gsol*Mass_tot/(radii[i]*1000.*c.pc/(100.*1000.))))
         else:
-            exp_disk_potential = MNP(amp=float(Mass)*units.Msun,a=float(scalelength[i])*units.kpc,b=float(0.)*units.kpc)
+            exp_disk_potential = MNP(amp=float(Mass_tot)*units.Msun,a=float(scalelength[i])*units.kpc,b=float(vertical_distribution)*units.kpc)
             RC.append(exp_disk_potential.vcirc(radii[i]*units.kpc))
     #print(f'This is what we derive')
     #for i,rad in enumerate(radii):
