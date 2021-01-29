@@ -16,6 +16,7 @@ class InputError(Exception):
 
 def main(argv):
     c.initialize()
+    #Random
     ############################# Handle the arguments that are entered to the program ########################
     parser  = OptionParser()
     parser.add_option('-c','--cf','--configuration_file', action ="store" ,dest = "configfile", default = 'FAT_INPUT.config', help = 'Define the input configuration file.',metavar='CONFIGURATION_FILE')
