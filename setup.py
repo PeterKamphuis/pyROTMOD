@@ -10,6 +10,7 @@ except ImportError as e:
 requirements = [
     'numpy>=1.14',
     'scipy',
+    'galpy',
     'astropy',
     'matplotlib',
     'future-fstrings',

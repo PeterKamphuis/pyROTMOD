@@ -1,15 +1,15 @@
 # -*- coding: future_fstrings -*-
 import numpy as np
-
+from pyROTMOD.support import print_log
 #Function to convert column densities
 # levels should be n mJy/beam when flux is given
-def columndensity(levels,systemic = 100.,beam=[1.,1.],channel_width=1.,column= False,arcsquare=False,solar_mass_input =False,solar_mass_output=False, debug = False):
+def columndensity(levels,systemic = 100.,beam=[1.,1.],channel_width=1.,column= False,arcsquare=False,solar_mass_input =False,solar_mass_output=False, debug = False,log=None):
     if debug:
         print_log(f'''COLUMNDENSITY: Starting conversion from the following input.
 {'':8s}Levels = {levels}
 {'':8s}Beam = {beam}
 {'':8s}channel_width = {channel_width}
-''',None,debug =True)
+''',log,debug =True)
     beam=np.array(beam)
     f0 = 1.420405751786E9 #Hz rest freq
     c = 299792.458 # light speed in km / s
@@ -19,7 +19,7 @@ def columndensity(levels,systemic = 100.,beam=[1.,1.],channel_width=1.,column= F
     if debug:
                 print_log(f'''COLUMNDENSITY: We have the following input for calculating the columns.
 {'':8s}COLUMNDENSITY: level = {levels}, channel_width = {channel_width}, beam = {beam}, systemic = {systemic})
-''',None,debug=debug)
+''',log,debug=debug)
     if systemic > 10000:
         systemic = systemic/1000.
     f = f0 * (1 - (systemic / c)) #Systemic frequency
@@ -91,8 +91,8 @@ columndensity.__doc__ = '''
 
 
 
-def get_gas_profiles(filename):
-
+def get_gas_profiles(filename,log=None):
+    print_log(f"Reading the gas density profile from {filename}. \n",log,screen =True )
     if filename.split('.')[1].lower() == 'def':
         #we have a tirific file
         inrad, sbr,sbr2, total_RC_1, total_RC_2,total_RC_err_1,total_RC_err_2, vsys,scaleheight1,scaleheight2 = \
