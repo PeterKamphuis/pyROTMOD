@@ -1,0 +1,26 @@
+This file is a log of the modelling process run at 2021-03-17 18:57:11.669580.
+This is version 0.0.0-458f5c1 of the program.
+ We are reading the optical parameters from galfit.93. 
+pyROTMOD does not know how to process sky not reading it
+pyROTMOD does not know how to process psf not reading it
+pyROTMOD does not know how to process psf not reading it
+pyROTMOD does not know how to process psf not reading it
+We found the following optical componentsWe have found an exponential disk with the following values.
+The total mass of the disk is 1.23e+09 M_sol  a central mass density 47.45 M_sol/pc^2 with a M/L 0.45.
+The scale length is 2.03 kpc and the scale height 0.00 kpc.
+The axis ratio is 0.43.
+We have found an exponential disk with the following values.
+The total mass of the disk is 4.42e+09 M_sol  a central mass density 85.51 M_sol/pc^2 with a M/L 0.45.
+The scale length is 2.03 kpc and the scale height 0.46 kpc.
+The axis ratio is 0.23.
+We have found a sersic component with the following values.
+The total mass is 2.80e+08 a central mass density 7.57 M_sol/pc^2 with a M/L 0.45.
+The effective radius 1.70 kpc and sersic index = 1.16.
+The axis ratio is 0.51.
+We have found a sersic component with the following values.
+The total mass is 2.69e+08 a central mass density 4.10 M_sol/pc^2 with a M/L 0.45.
+The effective radius 1.70 kpc and sersic index = 4.00.
+The axis ratio is 1.00.
+Reading the gas density profile from Finalmodel.def. 
+We have found a gas disk with a total mass of  8.07e+09
+and a central mass density 6.35 M_sol/pc^2.

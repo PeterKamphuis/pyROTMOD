@@ -1,0 +1,350 @@
+<USER> $gip_exe/news mode=new
+                                                                                            (start news)       11/03/21 11:19:48
+                                                                                            (start pycheck)    11/03/21 11:19:51
+
+==============================================================
+         ***** Python package/module warning(s) *****
+--------------------------------------------------------------
+Package/module vtk is not available.
+ 
+Using QT4 for graphical interfaces
+Package/module kapteyn is not available.
+ 
+--------------------------------------------------------------
+For more information please refer to the Requirements
+section in the Download and Installation Guide:
+http://www.astro.rug.nl/~gipsy/installation/installation.html
+--------------------------------------------------------------
+                                                                                            (end   pycheck)    11/03/21 11:19:52
+                                                                                            (end   news)       11/03/21 11:19:52
+<STATUS>  NEWS   +++ FINISHED +++
+<USER> rotmod
+                                                                                            (start rotmod)     11/03/21 11:19:55
+<USER> ROTMOD TYPE=
+<USER> ROTMOD ZLAW=
+<USER> ROTMOD USER=N
+<USER> ROTMOD DENS0=105
+<USER> ROTMOD H=2.03
+<USER> ROTMOD RCUT=
+<USER> ROTMOD DELTA=
+<USER> ROTMOD MASS=
+<USER> ROTMOD RADII=1 5 10 15 20 25 30 35 40
+<USER> ROTMOD FILE=tes.dat
+Scalelength     :       2.0300 KPC
+Central Density :     105.0000 MSUN/PC**2
+Cutoff Radius   :      20.3000 KPC
+Softening       :       0.0000 KPC
+Accuracy        :           10
+Mass of disk    :       2.7173 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   1.00000    64.15805      27.776813
+   5.00000     8.94331      46.977673
+  10.00000     0.76174      37.476992
+  15.00000     0.06488      29.550788
+  20.00000     0.00553      24.957885
+  25.00000     0.00000      22.013338
+  30.00000     0.00000      19.982042
+  35.00000     0.00000      18.441871
+  40.00000     0.00000      17.217192
+                                                                                            (end   rotmod)     11/03/21 11:20:56
+<STATUS>  ROTMOD   +++ FINISHED +++
+<USER> rotmod
+                                                                                            (start rotmod)     11/03/21 12:05:53
+                                                                                            (end   rotmod)     11/03/21 12:05:57
+<STATUS>  ROTMOD   USER ABORT
+<USER> rotmod
+                                                                                            (start rotmod)     11/03/21 12:06:33
+<USER> ROTMOD TYPE=
+<USER> ROTMOD ZLAW=
+<USER> ROTMOD USER=N
+<USER> ROTMOD DENS0=47.45
+<USER> ROTMOD H=2.03
+<USER> ROTMOD RCUT=
+<USER> ROTMOD DELTA=
+<USER> ROTMOD MASS=
+<USER> ROTMOD RADII=0 0.69 4.16 7.62 11.08 14.55 18.01 21.47 24.94 28.4 31.86 3
+       5.33 38.79 42.25
+<USER> ROTMOD FILE=Optical_Disk_Rotmod.txt
+Scalelength     :       2.0300 KPC
+Central Density :      47.4500 MSUN/PC**2
+Cutoff Radius   :      20.3000 KPC
+Softening       :       0.0000 KPC
+Accuracy        :           10
+Mass of disk    :       1.2280 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   0.00000    47.45000       0.000000
+   0.69000    33.77683      14.663948
+   4.16000     6.11299      31.748468
+   7.62000     1.11180      28.570840
+  11.08000     0.20221      23.804626
+  14.55000     0.03660      20.235390
+  18.01000     0.00666      17.811676
+  21.47000     0.00000      16.094934
+  24.94000     0.00000      14.817413
+  28.40000     0.00000      13.825613
+  31.86000     0.00000      13.016979
+  35.33000     0.00000      12.337367
+  38.79000     0.00000      11.757879
+  42.25000     0.00000      11.254379
+                                                                                            (end   rotmod)     11/03/21 12:09:14
+<STATUS>  ROTMOD   +++ FINISHED +++
+<USER> rotmod
+                                                                                            (start rotmod)     11/03/21 12:20:03
+<USER> ROTMOD TYPE=BULGE
+<USER> ROTMOD UNITS=
+<USER> ROTMOD RADDENS=0. 113.57
+<USER> ROTMOD RADDENS=0.22 51.88
+<USER> ROTMOD RADDENS=0.44 33.82
+<USER> ROTMOD RADDENS=0.65 23.80
+<USER> ROTMOD RADDENS=0.87 17.46
+<USER> ROTMOD RADDENS=1.09 13.17
+<USER> ROTMOD RADDENS=1.31 10.14
+<USER> ROTMOD RADDENS=1.53 7.93
+<USER> ROTMOD RADDENS=2.18 4.06
+<USER> ROTMOD RADDENS=3.06 1.86
+<USER> ROTMOD RADDENS=4.15 0.78
+<USER> ROTMOD RADDENS=5.02 0.41
+<USER> ROTMOD RADDENS=6.11 0.2
+<USER> ROTMOD RADDENS=7.20 0.1
+<USER> ROTMOD RADDENS=10.04 0.02
+<USER> ROTMOD RADDENS=10.69 0.01
+<USER> ROTMOD RADDENS=12.66 0.
+<USER> ROTMOD RADDENS=
+<USER> ROTMOD MASS=
+<USER> ROTMOD RADII=0 0.69 4.16 7.62 11.08 14.55 18.01 21.47 24.94 28.4 31.86 3
+       5.33 38.79 42.25
+<USER> ROTMOD FILE=Optical_Bulge_Rotmod.txt
+Mass of bulge   :       0.2758 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   0.00000   113.57000       0.000000
+   0.69000    22.37743      13.207418
+   4.16000     0.77383      14.924797
+   7.62000     0.07672      12.210133
+  11.08000     0.00000      10.360291
+  14.55000     0.00000       9.040872
+  18.01000     0.00000       8.126153
+  21.47000     0.00000       7.442619
+  24.94000     0.00000       6.905476
+  28.40000     0.00000       6.471168
+  31.86000     0.00000       6.109687
+  35.33000     0.00000       5.801897
+  38.79000     0.00000       5.537095
+  42.25000     0.00000       5.305526
+                                                                                            (end   rotmod)     11/03/21 12:30:45
+<STATUS>  ROTMOD   +++ FINISHED +++
+<USER> !rotmod
+ 
+Current parameters of ROTMOD:
+FILE= Optical_Bulge_Rotmod.txt MASS=  RADDENS= 0. 8758.34 ; 0.22 89.16 
+; 0.44 37.43 ; 0.65 20.91 ; 0.87 13.33 ; 1.09 9.19 ;    1.31 6.67 ; 1.53 
+5.03 ; 2.18 2.51 ; 3.06 1.23 ; 4.15 0.61 ; 5.02 0.38 ; 6.11 0.23 ; 7.20 
+0.15 ; 10.04 0.06 ;    10.69 0.05 ; 12.66 0.03 ; 13.09 0.02 ; 15.49 0.01 
+; 20.30 0.01 RADII=    0 0.69 4.16 7.62 11.08 14.55 18.01 21.47 24.94 28.4 
+31.86 35.33 38.79 42.25 TYPE= BULGE UNITS=  
+ 
+                                                                                            (start rotmod)     12/03/21 16:09:01
+<USER> ROTMOD RADDENS=
+Mass of bulge   :       0.2630 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   0.00000  8758.34000       0.000000
+   0.69000    19.11843      18.579264
+   4.16000     0.60644      13.692942
+   7.62000     0.12899      11.185104
+  11.08000     0.04495       9.676066
+  14.55000     0.01298       8.640384
+  18.01000     0.01000       7.824423
+  21.47000     0.00000       7.268068
+  24.94000     0.00000       6.743522
+  28.40000     0.00000       6.319400
+  31.86000     0.00000       5.966397
+  35.33000     0.00000       5.665825
+  38.79000     0.00000       5.407233
+  42.25000     0.00000       5.181096
+                                                                                            (end   rotmod)     12/03/21 16:09:12
+<STATUS>  ROTMOD   +++ FINISHED +++
+<USER> rotmod
+                                                                                            (start rotmod)     12/03/21 17:31:33
+<USER> ROTMOD TYPE=
+<USER> ROTMOD ZLAW=sech
+<USER> ROTMOD Z0=0.4
+<USER> ROTMOD USER=y
+<USER> ROTMOD UNITS=
+<USER> ROTMOD RADDENS=0.00000     6.35000 ;          0.69000     6.21000 ;     
+         4.16000     5.29000 ;       7.62000     4.44000 ;      11.08000     3.
+       63000 ;      14.55000     3.00000 ;      18.01000     2.49000 ;      21.
+       47000     1.96000 ;      24.94000     1.63000 ;      2
+<USER> ROTMOD RADDENS=  28.40000     1.35000 ;      31.86000     0.94000 ;     
+        35.33000     0.58000 ;      38.79000     0.22000 ;      42.25000     0.
+       02000
+<USER> ROTMOD RADDENS=
+<USER> ROTMOD MASS=
+<USER> ROTMOD RADII=0.00000 ;    0.69000   ; 4.16000   ;    7.62000   ;   11.08
+       000   ;   14.55000   ;   18.01000   ;   21.47000   ;   24.94000   ;   28
+       .40000   ;   31.86000   ;   35.33000   ;   38.79000   ;   42.25000
+<USER> ROTMOD FILE=gas_rotmod_sech_0.4.txt
+Z-Density law   : SECH-SQUARED
+Z Scaleheight   :       0.4000 KPC
+Accuracy        :            1
+Mass of disk    :       8.0083 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   0.00000     6.35000       0.000000
+                                                                                            (end   rotmod)     12/03/21 17:36:09
+<STATUS>  ROTMOD   +++ FINISHED +++
+<USER> !rotmod
+ 
+Current parameters of ROTMOD:
+FILE= gas_rotmod_sech_0.4.txt MASS=  RADDENS= 0.00000     6.35000 ; 0.69000 
+6.21000 ; 4.16000     5.29000 ;    7.62000     4.44000 ; 11.08000     3.63000 
+; 14.55000     3.00000 ; 18.01000     2.49000 ;    21.47000     1.96000 
+; 24.94000     1.63000 ; 28.40000     1.35000 ; 31.86000     0.94000 ; 
+35.33000     0.58000 ; 38.79000     0.22000 ; 42.25000     0.02000 ;  RADII= 
+0.00000 0.69000  4.16000  7.62000  11.08000  14.55000  18.01000  21.47000 
+24.94000  28.40000  31.86000  35.33000  38.79000  42.25000 TYPE=  UNITS= 
+USER= y Z0= 0.4 ZLAW= sech 
+ 
+                                                                                            (start rotmod)     12/03/21 17:37:21
+Z-Density law   : SECH-SQUARED
+Z Scaleheight   :       0.4000 KPC
+Accuracy        :            1
+Mass of disk    :       8.0083 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   0.00000     6.35000       0.000000
+   0.69000     6.21000       2.344779
+   4.16000     5.29000      12.008143
+   7.62000     4.44000      18.806409
+  11.08000     3.63000      23.978436
+  14.55000     3.00000      27.680597
+  18.01000     2.49000      30.843842
+  21.47000     1.96000      33.270133
+  24.94000     1.63000      34.641703
+  28.40000     1.35000      36.703841
+  31.86000     0.94000      38.602419
+  35.33000     0.58000      38.893697
+  38.79000     0.22000      37.873489
+  42.25000     0.02000      34.737144
+                                                                                            (end   rotmod)     12/03/21 17:37:21
+<STATUS>  ROTMOD   +++ FINISHED +++
+<USER> !rotmod
+ 
+Current parameters of ROTMOD:
+FILE= disk_rotmod_sech_0.46.txt MASS=  RADDENS=  RADII=    0.00000 0.69000 
+4.16000  7.62000  11.08000  14.55000  18.01000  21.47000  24.94000  28.40000 
+31.86000  35.33000  38.79000  42.25000 TYPE=  UNITS=  USER= n Z0= 0.46 
+ZLAW= sech 
+ 
+                                                                                            (start rotmod)     12/03/21 18:01:20
+<USER> ROTMOD DENS0=85.51
+<USER> ROTMOD H=2.03
+<USER> ROTMOD RCUT=
+<USER> ROTMOD DELTA=
+Scalelength     :       2.0300 KPC
+Central Density :      85.5100 MSUN/PC**2
+Cutoff Radius   :      20.3000 KPC
+Softening       :       0.0000 KPC
+Z-Density law   : SECH-SQUARED
+Z Scaleheight   :       0.4600 KPC
+Accuracy        :            1
+Mass of disk    :       2.2130 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   0.00000    85.51000       0.000000
+   0.69000    60.86948      16.464203
+   4.16000    11.01626      40.443923
+   7.62000     2.00359      37.486663
+  11.08000     0.36440      31.657365
+  14.55000     0.06595      27.069512
+  18.01000     0.01199      23.880097
+  21.47000     0.00000      21.598056
+  24.94000     0.00000      19.886790
+  28.40000     0.00000      18.556987
+  31.86000     0.00000      17.472376
+  35.33000     0.00000      16.560631
+  38.79000     0.00000      15.783102
+  42.25000     0.00000      15.107467
+                                                                                            (end   rotmod)     12/03/21 18:02:01
+<STATUS>  ROTMOD   +++ FINISHED +++
+<USER> !rotmod
+ 
+Current parameters of ROTMOD:
+DELTA=  DENS0= 85.51 FILE= disk_rotmod_sech_0.46.txt H= 2.03 MASS=  RADDENS= 
+RADII=    0.00000 0.69000  4.16000  7.62000  11.08000  14.55000  18.01000 
+21.47000  24.94000  28.40000  31.86000  35.33000  38.79000  42.25000 RCUT= 
+TYPE=  UNITS=  USER= n Z0= 0.46 ZLAW= sech 
+ 
+                                                                                            (start rotmod)     14/03/21 11:02:22
+Scalelength     :       2.0300 KPC
+Central Density :      85.5100 MSUN/PC**2
+Cutoff Radius   :      20.3000 KPC
+Softening       :       0.0000 KPC
+Z-Density law   : SECH-SQUARED
+Z Scaleheight   :       0.4600 KPC
+Accuracy        :            1
+Mass of disk    :       2.2130 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   0.00000    85.51000       0.000000
+   0.69000    60.86948      16.464203
+   4.16000    11.01626      40.443923
+   7.62000     2.00359      37.486663
+  11.08000     0.36440      31.657365
+  14.55000     0.06595      27.069512
+  18.01000     0.01199      23.880097
+  21.47000     0.00000      21.598056
+  24.94000     0.00000      19.886790
+  28.40000     0.00000      18.556987
+  31.86000     0.00000      17.472376
+  35.33000     0.00000      16.560631
+  38.79000     0.00000      15.783102
+  42.25000     0.00000      15.107467
+                                                                                            (end   rotmod)     14/03/21 11:02:22
+<STATUS>  ROTMOD   +++ FINISHED +++
+<USER> !rotmod
+ 
+Current parameters of ROTMOD:
+DELTA=  DENS0=  FILE= OS_rotmod.txt H=  MASS=  RADDENS= 0.00  3.76 ; 0.57 
+4.07 ; 3.42 5.27 ; 6.27 5.77 ; 9.12 5.17 ; 11.97  3.79 ;    14.82 2.26 
+; 17.67 1.08 ; 20.53 0.37 ; 23.38  0.05 ;  RADII= 0.00     0.57   3.42 
+6.27 9.12   11.97  14.82  17.67  20.53  23.38 RCUT=  TYPE=  UNITS=  USER= 
+y Z0=  ZLAW=  
+ 
+                                                                                            (start rotmod)     14/03/21 11:06:33
+Accuracy        :           10
+Mass of disk    :       3.7515 10**9 MSUN
+ 
+   Radius      Density      Velocity   
+    KPC       MSUN/PC**2     KM/SEC    
+---------------------------------------
+   0.00000     3.76000       0.000000
+   0.57000     4.07000      -2.071292
+   3.42000     5.27000       3.540444
+   6.27000     5.77000      15.197309
+   9.12000     5.17000      25.938667
+  11.97000     3.79000      33.644598
+  14.82000     2.26000      37.322117
+  17.67000     1.08000      37.296064
+  20.53000     0.37000      34.826351
+  23.38000     0.05000      31.869932
+                                                                                            (end   rotmod)     14/03/21 11:06:33
+<STATUS>  ROTMOD   +++ FINISHED +++
