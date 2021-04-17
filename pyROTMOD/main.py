@@ -102,6 +102,9 @@ The axis ratio is {x[5]:.2f}.
     print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(convertskyangle(np.array(radii[2:],dtype=float),float(input_parameters.distance)),np.array(gas_profile[2:],dtype=float)):.2e}
 and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
 ''' ,log,screen= True)
+
+
+
     ########################################## Make a plot with the extracted profiles ######################3
     plot_profiles(radii, gas_profile,optical_profiles,distance =float(input_parameters.distance),output_dir = output_dir )
 
@@ -112,5 +115,7 @@ and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
     write_RCs(derived_RCs,total_rc,total_rc_err,output_dir = output_dir)
 
     ######################################### Run our Bayesian interactive fitter thingy ################################################
-
+    if radii[1] == 'ARCSEC':
+        radii[2:] = convertskyangle(np.array(radii[2:],dtype=float),float(input_parameters.distance))
+        radii[1]  = 'KPC'
     the_action_is_go(radii,derived_RCs, total_rc,total_rc_err)

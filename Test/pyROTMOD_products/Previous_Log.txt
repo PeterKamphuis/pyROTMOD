@@ -1,5 +1,5 @@
-This file is a log of the modelling process run at 2021-03-17 18:55:01.526940.
-This is version 0.0.0-458f5c1 of the program.
+This file is a log of the modelling process run at 2021-03-19 10:17:34.768460.
+This is version 0.0.0-41b2069 of the program.
  We are reading the optical parameters from galfit.93. 
 pyROTMOD does not know how to process sky not reading it
 pyROTMOD does not know how to process psf not reading it

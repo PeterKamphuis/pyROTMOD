@@ -50,7 +50,7 @@ def convert_dens_rc(radii, optical_profiles, gas_profile,components,distance =1.
     #gas_scaleheight = 0.46
     #mode = 'sech-sq'
     #mode = None
-    found_RC = random_density_disk(kpc_radii,gas_profile[2:],h_z = gas_scaleheight,mode = mode)
+    found_RC = random_density_disk(kpc_radii,gas_profile[2:],h_z = gas_scaleheight,mode = vert_mode)
     #found_RC = exponential_RC(kpc_radii,gas_profile[2:], gas_scaleheight)
     RCs.append(['DISK_G', 'KM/S'])
     for vel in found_RC:

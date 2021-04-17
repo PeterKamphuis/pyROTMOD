@@ -17,8 +17,10 @@ def initialize():
     global bands #
     bands = {'WISE3.4': 3.385190356820235e-06, 'SPITZER3.6': 3.6e-6}
     global G
-    G =  6.67430e-11     #m^3/kg*s^2
+    G =  6.67430e-11     #m^3/(kg*s^2)
     global Gsol
-    Gsol = G/(1000.**3)*solar_mass #km^3/M_sol*s^2
+    Gsol = G/(1000.**3)*solar_mass #km^3/(M_sol*s^2)
     global Grotmod
-    Grotmod =0.00000431158 #km^2/s^2*kpc*M_sol
+    Grotmod =0.00000431158 #km^2/s^2*kpc*/M_sol
+    global Gpot
+    Gpot = G*solar_mass/(pc/100.)/1000. #m^2/s^2*kpc*/M_sol
