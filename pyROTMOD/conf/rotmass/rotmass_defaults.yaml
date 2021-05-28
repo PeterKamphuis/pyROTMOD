@@ -1,0 +1,5 @@
+# @package _group_
+MG: [1.4, True,True]
+MD: [1., True,True]
+MB: [1., False,False]
+HALO: 'NFW'

@@ -3,7 +3,13 @@
 # This is an attempt at a holistic python version of ROTMOD and ROTMAS using bayesian fitting and such
 
 from optparse import OptionParser
+import hydra
+from hydra.core.config_store import ConfigStore
+#import logging
+from omegaconf import OmegaConf,MissingMandatoryValue
+
 import pyROTMOD
+from pyROTMOD.conf.config_defaults import RotModConfig
 from pyROTMOD.optical.optical import get_optical_profiles
 from pyROTMOD.gas.gas import get_gas_profiles
 from pyROTMOD.rotmod.rotmod import convert_dens_rc
@@ -19,39 +25,74 @@ class InputError(Exception):
     pass
 
 
-def main(argv):
+
+#@hydra.main(config_path="conf", config_name="config")
+cs = ConfigStore.instance()
+cs.store(name = "config", node = RotModConfig)
+@hydra.main(config_path="conf", config_name="config")
+
+def main(cfg: RotModConfig) -> None:
     c.initialize()
+
     #Random
     ############################# Handle the arguments that are entered to the program ########################
+    '''
     parser  = OptionParser()
-    parser.add_option('-c','--cf','--configuration_file', action ="store" ,dest = "configfile", default = 'FAT_INPUT.config', help = 'Define the input configuration file.',metavar='CONFIGURATION_FILE')
+    parser.add_option('-c','--cf','--configuration_file', action ="store" ,dest = "configfile", default = 'config.yml', help = 'Define the input configuration file.',metavar='CONFIGURATION_FILE')
     parser.add_option('-o','--of','--optical_file', action ="store" ,dest = "optical_file", default = None, help = 'Provide a file with the optical distributions. Either a file with columns named RADI DISK BULGE or a galfit file.',metavar='OPTICAL_FILE')
     parser.add_option('-d','--distance', action ="store" ,dest = "distance", default = 0., help = 'A Distance to galaxy, this does not work without it.',metavar='DISTANCE')
-    parser.add_option('-f','--zero_point_flux', action ="store" ,dest = "zero_point_flux", default = 0., help = 'Zero point flux (Jy) for convurting magnitude to flux. Default is the WISE zero point fluz',metavar='DISTANCE')
-    parser.add_option('-g','--gf','--gas_file', action ="store" ,dest = "gas_file", default = None, help = 'Provide a file with the gas distributions. Ether a file with the columns RADI SBR VROT (with SBR in Jy/beam*km.s) or a tirific.def file.',metavar='GAS_FILE')
+    parser.add_option('-f','--zero_point_flux', action ="store" ,dest = "zero_point_flux", default = 0., help = 'Zero point flux (Jy) for convurting magnitude to flux. Default is the WISE zero point fluz',metavar='ZERO_POINT_FLUX')
+    parser.add_option('-g','--gf','--gas_file', action ="store" ,dest = "gas_file", default = None, help = 'Provide a file with the gas distributions. Either a file with the columns RADI SBR VROT (with SBR in Jy/beam*km.s) or a tirific.def file.',metavar='GAS_FILE')
     parser.add_option('-m','--ml','--mass_to_light', action ="store" ,dest = "MLRatio", default = 0.45, help = 'Mass to Light Ratio to use for optical conversion to profile',metavar='MASS_TO_LIGHT')
     parser.add_option('-n','--ncpu', action ="store" ,dest = "ncpu", default = 6, help = 'Number of CPUs to use.')
     parser.add_option('-l','--log', action ="store" ,dest = "log", default ='Log.txt', help = 'Log file to write information to.')
     parser.add_option('-p','--output_dir', action ="store" ,dest = "output", default ='pyROTMOD_products', help = 'Directory to write our output to')
-    input_parameters,args = parser.parse_args()
-    output_dir =  input_parameters.output
-    if output_dir[-1] != '/':
-        output_dir = f"{output_dir}/"
-    output_dir = f"{os.getcwd()}/{output_dir}"
+    '''
 
-    log = f"{output_dir}{input_parameters.log}"
+
+    if cfg.general.output_dir[-1] != '/':
+        cfg.general.output_dir = f"{cfg.general.output_dir}/"
+    print(cfg.general.output_dir)
+    log = f"{cfg.general.output_dir}{cfg.general.log}"
     print(log)
-    if not os.path.isdir(output_dir):
-            os.mkdir(output_dir)
+    exit()
+    if not os.path.isdir(cfg.general.output_dir):
+            os.mkdir(cfg.general.output_dir)
 
         #If it exists move the previous Log
     if os.path.exists(log):
-        os.rename(log,f"{output_dir}/Previous_Log.txt")
+        os.rename(log,f"{cfg.general.output_dir}/Previous_Log.txt")
 
     with open(log,'w') as write_log:
         write_log.write(f'''This file is a log of the modelling process run at {datetime.now()}.
 This is version {pyROTMOD.__version__} of the program.
 ''')
+        try:
+            write_log.write(f'''We are using the input from {cfg.galaxy.gas_file} for the gaseous component.
+''')
+        except MissingMandatoryValue:
+            print(f'''You did not set the gas file input''')
+            cfg.galaxy.gas_file = input(''' Please add the gas file or tirific output to be evaluated: ''')
+            print(cfg.galaxy.gas_file)
+            write_log.write(f'''We are using the input from {cfg.galaxy.gas_file} for the gaseous component.
+''')
+        try:
+            write_log.write(f'''We are using the input from {cfg.galaxy.optical_file} for the optical component.
+''')
+        except MissingMandatoryValue:
+            cfg.galaxy.optical_file = input(''' Please add the optical or galfit file to be evaluated: ''')
+            write_log.write(f'''We are using the input from {cfg.galaxy.optical_file} for the optical component.
+''')
+        try:
+            write_log.write(f'''We are using the following distance = {cfg.galaxy.distance}.
+''')
+        except MissingMandatoryValue:
+            cfg.galaxy.distance= input(f'''Please provide the distance: ''')
+            write_log.write(f'''We are using the following distance = {cfg.galaxy.distance}.
+''')
+
+    exit()
+
 
     if input_parameters.distance == 0.:
         try:
@@ -119,3 +160,6 @@ and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
         radii[2:] = convertskyangle(np.array(radii[2:],dtype=float),float(input_parameters.distance))
         radii[1]  = 'KPC'
     the_action_is_go(radii,derived_RCs, total_rc,total_rc_err)
+
+if __name__ =="__main__":
+    main()
