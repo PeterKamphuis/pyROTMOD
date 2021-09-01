@@ -2,10 +2,7 @@
 
 # This is an attempt at a holistic python version of ROTMOD and ROTMAS using bayesian fitting and such
 
-from optparse import OptionParser
-import hydra
-from hydra.core.config_store import ConfigStore
-#import logging
+#from optparse import OptionParser
 from omegaconf import OmegaConf,MissingMandatoryValue
 
 import pyROTMOD
@@ -19,49 +16,87 @@ import pyROTMOD.constants as c
 import traceback
 import warnings
 import os
+import sys
 import numpy as np
 from datetime import datetime
 class InputError(Exception):
     pass
 
+def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
+    log = file if hasattr(file,'write') else sys.stderr
+    traceback.print_stack(file=log)
+    log.write(warnings.formatwarning(message, category, filename, lineno, line))
 
 
-#@hydra.main(config_path="conf", config_name="config")
-cs = ConfigStore.instance()
-cs.store(name = "config", node = RotModConfig)
-@hydra.main(config_path="conf", config_name="config")
+def main(argv):
+    if '-h' in argv or '--help' in argv:
+        print(''' Use pyROTMOD in this way:
+pyROTMOD -c inputfile.yml   where inputfile is a yaml config file with the desired input settings.
+pyROTMOD -h print this message
+pyROTMOD -e prints a yaml file (defaults.yml) with the default setting in the current working directory.
+in this file values designated ??? indicated values without defaults.
 
-def main(cfg: RotModConfig) -> None:
+All config parametere can be set directly from the command line by setting the correct parameters, e.g:
+pyROTMOD rotmass.HALO=ISO to set the pseudothermal halo.
+note that list inout should be set in apostrophes in command line input. e.g.:
+pyROTMOD 'rotmass.MD=[1.4,True,True]'
+''')
+        sys.exit()
+
+
+    #initialize constants
     c.initialize()
-
-    #Random
-    ############################# Handle the arguments that are entered to the program ########################
-    '''
-    parser  = OptionParser()
-    parser.add_option('-c','--cf','--configuration_file', action ="store" ,dest = "configfile", default = 'config.yml', help = 'Define the input configuration file.',metavar='CONFIGURATION_FILE')
-    parser.add_option('-o','--of','--optical_file', action ="store" ,dest = "optical_file", default = None, help = 'Provide a file with the optical distributions. Either a file with columns named RADI DISK BULGE or a galfit file.',metavar='OPTICAL_FILE')
-    parser.add_option('-d','--distance', action ="store" ,dest = "distance", default = 0., help = 'A Distance to galaxy, this does not work without it.',metavar='DISTANCE')
-    parser.add_option('-f','--zero_point_flux', action ="store" ,dest = "zero_point_flux", default = 0., help = 'Zero point flux (Jy) for convurting magnitude to flux. Default is the WISE zero point fluz',metavar='ZERO_POINT_FLUX')
-    parser.add_option('-g','--gf','--gas_file', action ="store" ,dest = "gas_file", default = None, help = 'Provide a file with the gas distributions. Either a file with the columns RADI SBR VROT (with SBR in Jy/beam*km.s) or a tirific.def file.',metavar='GAS_FILE')
-    parser.add_option('-m','--ml','--mass_to_light', action ="store" ,dest = "MLRatio", default = 0.45, help = 'Mass to Light Ratio to use for optical conversion to profile',metavar='MASS_TO_LIGHT')
-    parser.add_option('-n','--ncpu', action ="store" ,dest = "ncpu", default = 6, help = 'Number of CPUs to use.')
-    parser.add_option('-l','--log', action ="store" ,dest = "log", default ='Log.txt', help = 'Log file to write information to.')
-    parser.add_option('-p','--output_dir', action ="store" ,dest = "output", default ='pyROTMOD_products', help = 'Directory to write our output to')
-    '''
-
-
+    #initialize default settings
+    cfg = OmegaConf.structured(RotModConfig)
+    # print the default file
+    if '-e' in argv:
+        with open('default.yml','w') as default_write:
+            default_write.write(OmegaConf.to_yaml(cfg))
+        print(f'''We have printed the file default.yml in {os.getcwd()}.
+Exiting pyROTMOD.''')
+        sys.exit()
+    default_output=cfg.general.output_dir
+    default_log_directory = cfg.general.log_directory
+    #Check for yml file
+    if '-c' in argv:
+        configfile = argv[argv.index('-c')+1]
+        inputconf = OmegaConf.load(configfile)
+        #merge yml file with defaults
+        cfg = OmegaConf.merge(cfg,inputconf)
+        argv.remove('-c')
+        argv.remove(configfile)
+    # read command line arguments anything list input should be set in '' e.g. pyROTMOD 'rotmass.MD=[1.4,True,True]'
+    inputconf = OmegaConf.from_cli(argv)
+    cfg = OmegaConf.merge(cfg,inputconf)
+    if cfg.general.debug:
+        warnings.showwarning = warn_with_traceback
+    if cfg.general.output_dir == f'{os.getcwd()}/pyROTMOD_products/':
+        cfg.general.output_dir = f'{os.getcwd()}/pyROTMOD_products_{cfg.rotmass.HALO}/'
     if cfg.general.output_dir[-1] != '/':
         cfg.general.output_dir = f"{cfg.general.output_dir}/"
-    print(cfg.general.output_dir)
-    log = f"{cfg.general.output_dir}{cfg.general.log}"
-    print(log)
-    exit()
-    if not os.path.isdir(cfg.general.output_dir):
-            os.mkdir(cfg.general.output_dir)
 
-        #If it exists move the previous Log
+    if default_output != cfg.general.output_dir:
+        if default_log_directory == cfg.general.log_directory:
+            cfg.general.log_directory=f'{cfg.general.output_dir}Logs/{datetime.now().strftime("%H:%M:%S-%d-%m-%Y")}/'
+
+    if not os.path.isdir(cfg.general.output_dir):
+        os.mkdir(cfg.general.output_dir)
+
+    if not os.path.isdir(f"{cfg.general.output_dir}/Logs"):
+        os.mkdir(f"{cfg.general.output_dir}/Logs")
+
+    if not os.path.isdir(f"{cfg.general.log_directory}"):
+        os.mkdir(f"{cfg.general.log_directory}")
+
+    #write the input to the log dir.
+    with open(f"{cfg.general.log_directory}run_input.yml",'w') as input_write:
+        input_write.write(OmegaConf.to_yaml(cfg))
+
+
+    log = f"{cfg.general.log_directory}{cfg.general.log}"
+    #If it exists move the previous Log
     if os.path.exists(log):
-        os.rename(log,f"{cfg.general.output_dir}/Previous_Log.txt")
+        os.rename(log,f"{cfg.general.log_directory}/Previous_Log.txt")
 
     with open(log,'w') as write_log:
         write_log.write(f'''This file is a log of the modelling process run at {datetime.now()}.
@@ -72,7 +107,7 @@ This is version {pyROTMOD.__version__} of the program.
 ''')
         except MissingMandatoryValue:
             print(f'''You did not set the gas file input''')
-            cfg.galaxy.gas_file = input(''' Please add the gas file or tirific output to be evaluated: ''')
+            cfg.galaxy.gas_file = input('''Please add the gas file or tirific output to be evaluated: ''')
             print(cfg.galaxy.gas_file)
             write_log.write(f'''We are using the input from {cfg.galaxy.gas_file} for the gaseous component.
 ''')
@@ -80,86 +115,78 @@ This is version {pyROTMOD.__version__} of the program.
             write_log.write(f'''We are using the input from {cfg.galaxy.optical_file} for the optical component.
 ''')
         except MissingMandatoryValue:
-            cfg.galaxy.optical_file = input(''' Please add the optical or galfit file to be evaluated: ''')
+            cfg.galaxy.optical_file = input('''Please add the optical or galfit file to be evaluated: ''')
             write_log.write(f'''We are using the input from {cfg.galaxy.optical_file} for the optical component.
 ''')
         try:
             write_log.write(f'''We are using the following distance = {cfg.galaxy.distance}.
 ''')
         except MissingMandatoryValue:
-            cfg.galaxy.distance= input(f'''Please provide the distance: ''')
+            cfg.galaxy.distance= input(f'''Please provide the distance (0 will use vsys and the hubble flow): ''')
             write_log.write(f'''We are using the following distance = {cfg.galaxy.distance}.
 ''')
 
-    exit()
 
-
-    if input_parameters.distance == 0.:
+    if cfg.galaxy.distance == 0.:
         try:
-            vsys = gas_profiles.load_tirific(input_parameters.gas_file, Variables = ['VSYS'])
+            vsys = gas_profiles.load_tirific(cfg.galaxy.gas_file, Variables = ['VSYS'])
             if vsys[0] == 0.:
                 raise InputError(f'We cannot model profiles adequately without a distance')
             else:
-                input_parameters.distance = vsys[0]/c.H_0
+                cfg.galaxy.distance = vsys[0]/c.H_0
         except:
             raise InputError(f'We cannot model profiles adequately without a distance')
-    # if the user does not provide a zero point flux we assume a WISE 3.4 image
-    if input_parameters.zero_point_flux == 0:
-        # This is actually the spitzer zero point flux from https://irsa.ipac.caltech.edu/data/SPITZER/docs/irac/iracinstrumenthandbook/17/
-        input_parameters.zero_point_flux = 280.9 # jy
-        # For WISE
-        # input_parameters.zero_point_flux =309.504                       #Jy From the WISE photometry website http://wise2.ipac.caltech.edu/docs/release/prelim/expsup/sec4_3g.html
-    ######################################## Read the optical profiles ##########################################
+        ######################################## Read the optical profiles ##########################################
 
     try:
 
-        optical_profiles,components,galfit_file = get_optical_profiles(input_parameters.optical_file,
-                                                    distance= float(input_parameters.distance),exp_time =1.,
-                                                    zero_point_flux = float(input_parameters.zero_point_flux),
-                                                    MLRatio= float(input_parameters.MLRatio), log= log)
+        optical_profiles,components,galfit_file = get_optical_profiles(cfg.galaxy.optical_file,
+                                                    distance= float(cfg.galaxy.distance),exp_time =1.,
+                                                    zero_point_flux = float(cfg.galaxy.zero_point_flux),
+                                                    MLRatio= float(cfg.galaxy.mass_to_light_ratio), log= log)
     except Exception as e:
         print_log(f" We could not obtain the optical components and profiles because of {e}",log)
         traceback.print_exc()
 
-    print_log(f"We found the following optical components",log)
+    print_log(f"We found the following optical components:\n",log)
     for x in components:
             # Components are returned as [type,integrated magnitude,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]
         if x[0] in ['expdisk','edgedisk']:
             print_log(f'''We have found an exponential disk with the following values.
-The total mass of the disk is {x[1]:.2e} M_sol  a central mass density {x[2]:.2f} M_sol/pc^2 with a M/L {float(input_parameters.MLRatio)}.
+The total mass of the disk is {x[1]:.2e} M_sol  a central mass density {x[2]:.2f} M_sol/pc^2 with a M/L {float(cfg.galaxy.mass_to_light_ratio)}.
 The scale length is {x[3]:.2f} kpc and the scale height {x[4]:.2f} kpc.
 The axis ratio is {x[5]:.2f}.
 ''' ,log,screen= True)
         if x[0] in ['sersic']:
             print_log(f'''We have found a sersic component with the following values.
-The total mass is {x[1]:.2e} a central mass density {x[2]:.2f} M_sol/pc^2 with a M/L {float(input_parameters.MLRatio)}.
+The total mass is {x[1]:.2e} a central mass density {x[2]:.2f} M_sol/pc^2 with a M/L {float(cfg.galaxy.mass_to_light_ratio)}.
 The effective radius {x[3]:.2f} kpc and sersic index = {x[4]:.2f}.
 The axis ratio is {x[5]:.2f}.
 ''' ,log,screen= True)
 
 
     ######################################### Read the gas profiles and RC ################################################
-    radii,gas_profile, total_rc,total_rc_err,scaleheights  = get_gas_profiles(input_parameters.gas_file,log=log)
-    print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(convertskyangle(np.array(radii[2:],dtype=float),float(input_parameters.distance)),np.array(gas_profile[2:],dtype=float)):.2e}
+    radii,gas_profile, total_rc,total_rc_err,scaleheights  = get_gas_profiles(cfg.galaxy.gas_file,log=log)
+    print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(convertskyangle(np.array(radii[2:],dtype=float),float(cfg.galaxy.distance)),np.array(gas_profile[2:],dtype=float)):.2e}
 and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
 ''' ,log,screen= True)
 
 
 
     ########################################## Make a plot with the extracted profiles ######################3
-    plot_profiles(radii, gas_profile,optical_profiles,distance =float(input_parameters.distance),output_dir = output_dir )
+    plot_profiles(radii, gas_profile,optical_profiles,distance =float(cfg.galaxy.distance),output_dir = cfg.general.output_dir)
 
     ########################################## Make a nice file with all the different components as a column ######################3
-    write_profiles(radii, gas_profile,total_rc,optical_profiles,distance =float(input_parameters.distance), errors = total_rc_err ,output_dir = output_dir )
+    write_profiles(radii, gas_profile,total_rc,optical_profiles,distance =float(cfg.galaxy.distance), errors = total_rc_err ,output_dir = cfg.general.output_dir )
     ######################################### Convert to Rotation curves ################################################
-    derived_RCs = convert_dens_rc(radii, optical_profiles, gas_profile,components,distance =float(input_parameters.distance),galfit_file = galfit_file)
-    write_RCs(derived_RCs,total_rc,total_rc_err,output_dir = output_dir)
+    derived_RCs = convert_dens_rc(radii, optical_profiles, gas_profile,components,distance =float(cfg.galaxy.distance),galfit_file = galfit_file)
+    write_RCs(derived_RCs,total_rc,total_rc_err,output_dir = cfg.general.output_dir)
 
     ######################################### Run our Bayesian interactive fitter thingy ################################################
     if radii[1] == 'ARCSEC':
-        radii[2:] = convertskyangle(np.array(radii[2:],dtype=float),float(input_parameters.distance))
+        radii[2:] = convertskyangle(np.array(radii[2:],dtype=float),float(cfg.galaxy.distance))
         radii[1]  = 'KPC'
-    the_action_is_go(radii,derived_RCs, total_rc,total_rc_err)
+    the_action_is_go(radii,derived_RCs, total_rc,total_rc_err,rotmass_settings=cfg.rotmass,log_directory=cfg.general.log_directory,log=log,debug=cfg.general.debug)
 
 if __name__ =="__main__":
     main()

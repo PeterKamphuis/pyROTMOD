@@ -4,10 +4,10 @@ import numpy as np
 import pyROTMOD.constants as cons
 from sympy import symbols, sqrt,atan,pi,log
 # Written by Aditya K.
-def PIS():
+def ISO():
     r,RHO_0,R_C = symbols('r RHO_0 R_C')
-    pis = sqrt((4.*pi*cons.Gpot*RHO_0*R_C**2)* (1- (R_C/r)*atan(r/R_C)))
-    return pis
+    iso = sqrt((4.*pi*cons.Gpot*RHO_0*R_C**2)* (1- (R_C/r)*atan(r/R_C)))
+    return iso
 # Written by Aditya K.
 def NFW():
     r,C,R200= symbols('r C R200')
