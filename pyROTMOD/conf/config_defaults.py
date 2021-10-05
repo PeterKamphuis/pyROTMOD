@@ -3,7 +3,7 @@
 from dataclasses import dataclass,field
 import omegaconf
 from omegaconf import MISSING
-from typing import List
+from typing import List,Optional
 from datetime import datetime
 import os
 
@@ -18,24 +18,29 @@ class General:
 
 @dataclass
 class Galaxy_Settings:
-    optical_file: str = MISSING
-    gas_file: str = MISSING
-    distance: float = 0.   #This uses the vsys from the gas input file
-    zero_point_flux: float = 280.9 # This is actually the spitzer zero point flux from https://irsa.ipac.caltech.edu/data/SPITZER/docs/irac/iracinstrumenthandbook/17/
+    optical_file: Optional[str] = None
+    gas_file: Optional[str] = None
+    distance: Optional[float] = None  #This uses the vsys from the gas input file
     mass_to_light_ratio: float = 0.6
-# For WISE
-        # input_parameters.zero_point_flux =309.504                       #Jy From the WISE photometry website http://wise2.ipac.caltech.edu/docs/release/prelim/expsup/sec4_3g.html
+    band: str='SPITZER3.6'
 
 @dataclass
 class Rotmass:
-    MG: List = field(default_factory=lambda: [1.4, True,True])
-    MD: List = field(default_factory=lambda: [1., True,True])
-    MB: List = field(default_factory=lambda: [1., True,True])
+    MG: List = field(default_factory=lambda: [1.4, None, None,True,True]) #Initial guess, minimum (-1 unset), maximum (-1 unset), fit, included
+    MD: List = field(default_factory=lambda: [1., None, None, True,True])
+    MB: List = field(default_factory=lambda: [1., None, None, True,True])
+    RHO_0: List = field(default_factory=lambda: [None, None, None, True,True])
+    R_C: List = field(default_factory=lambda: [None, None, None, True,True])
+    C: List = field(default_factory=lambda: [None, None, None, True,True])
+    R200: List = field(default_factory=lambda: [None, None, None, True,True])
     negative_ML: bool = False
     HALO: str = 'NFW'
+    minimizer: str ='NELDER'
 
 @dataclass
 class RotModConfig:
+    print_examples: bool=False
+    configuration_file: Optional[str] = None
     general: General = General()
     galaxy: Galaxy_Settings = Galaxy_Settings()
     rotmass: Rotmass= Rotmass()

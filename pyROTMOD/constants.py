@@ -16,6 +16,10 @@ def initialize():
     # 'BANDNAME: wavelength (m)'
     global bands #
     bands = {'WISE3.4': 3.385190356820235e-06, 'SPITZER3.6': 3.6e-6}
+    global zero_point_fluxes
+    zero_point_fluxes = {'WISE3.4': 280.9, 'SPITZER3.6': 309.504}
+    #spitzer from https://irsa.ipac.caltech.edu/data/SPITZER/docs/irac/iracinstrumenthandbook/17/
+    #WISE from http://wise2.ipac.caltech.edu/docs/release/prelim/expsup/sec4_3g.html
     global G
     G =  6.67430e-11     #m^3/(kg*s^2)
     global Gsol

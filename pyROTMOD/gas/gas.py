@@ -1,8 +1,10 @@
 # -*- coding: future_fstrings -*-
 import numpy as np
-from pyROTMOD.support import print_log
+from pyROTMOD.support import print_log,read_columns
 #Function to convert column densities
 # levels should be n mJy/beam when flux is given
+class InputError(Exception):
+    pass
 def columndensity(levels,systemic = 100.,beam=[1.,1.],channel_width=1.,column= False,arcsquare=False,solar_mass_input =False,solar_mass_output=False, debug = False,log=None):
     if debug:
         print_log(f'''COLUMNDENSITY: Starting conversion from the following input.
@@ -91,16 +93,15 @@ columndensity.__doc__ = '''
 
 
 
-def get_gas_profiles(filename,log=None):
+def get_gas_profiles(filename,log=None, debug =False):
     print_log(f"Reading the gas density profile from {filename}. \n",log,screen =True )
     if filename.split('.')[1].lower() == 'def':
         #we have a tirific file
         inrad, sbr,sbr2, total_RC_1, total_RC_2,total_RC_err_1,total_RC_err_2, vsys,scaleheight1,scaleheight2 = \
             load_tirific(filename, Variables = ['RADI','SBR','SBR_2','VROT','VROT_2','VROT_ERR','VROT_2_ERR','VSYS','Z0','Z0_2'])
         scaleheight=[scaleheight1,scaleheight2]
-        radii = ['RADI','ARCSEC']
-        for x in inrad:
-            radii.append(x)
+        radii = ['RADI','ARCSEC']+list(inrad)
+
         gas_density = ['DISK_G','M_SOLAR/PC^2']
         av = np.array([(x1+x2)/2.*1000. for x1,x2 in zip(sbr,sbr2)],dtype=float)
         tmp = columndensity(av,arcsquare = True , solar_mass_output = True, systemic= vsys[0])
@@ -113,7 +114,39 @@ def get_gas_profiles(filename,log=None):
         for x1,x2 in zip(total_RC_err_1,total_RC_err_2):
             total_RC_Err.append((x1+x2)/2.)
     else:
-        print("This is not yet implemented")
+        all_profiles = read_columns(filename,debug=debug)
+        found = False
+        gas_density =[]
+        total_RC = []
+        total_RC_Err = []
+        for type in all_profiles:
+            if all_profiles[type][0] == 'RADI':
+                radii = all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]
+            elif all_profiles[type][0].split('_')[0] == 'DISK':
+                if len(gas_density) < 1:
+                    gas_density = all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]
+                else:
+                    if all_profiles[type][1] == gas_density[1]:
+                        gas_density[2:] = [float((x+y)/2.) for x,y in (all_profiles[type][2:],gas_density[2:])]
+                    else:
+                        raise InputError(f'We do not know how to mix units for the gas disk')
+            elif all_profiles[type][0] == 'V_OBS':
+                if len(total_RC) < 1:
+                    total_RC = all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]
+                else:
+                    if all_profiles[type][1] == gas_density[1]:
+                        total_RC[2:] = [float((x+y)/2.) for x,y in (all_profiles[type][2:],total_RC[2:])]
+                    else:
+                        raise InputError(f'We do not know how to mix units for the gas disk')
+            elif all_profiles[type][0] == 'V_OBS_ERR':
+                if len(total_RC_Err) < 1:
+                    total_RC_Err = all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]
+                else:
+                    if all_profiles[type][1] == gas_density[1]:
+                        total_RC_Err[2:] = [float((x+y)/2.) for x,y in (all_profiles[type][2:],total_RC_Err[2:])]
+                    else:
+                        raise InputError(f'We do not know how to mix units for the gas disk')
+        scaleheight = [0.,0.]
 
     return radii, gas_density, total_RC,total_RC_Err,scaleheight
 

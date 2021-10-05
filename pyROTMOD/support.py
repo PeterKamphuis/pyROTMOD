@@ -9,7 +9,8 @@ with warnings.catch_warnings():
     matplotlib.use('pdf')
     import matplotlib.pyplot as plt
 
-
+class InputError(Exception):
+    pass
 
 # function for converting kpc to arcsec and vice versa
 
@@ -82,20 +83,65 @@ def integrate_surface_density(radii,density, log=None):
     mass = np.sum([x*y for x,y in zip(ringarea,density)])
     return mass
 
+def read_columns(filename,optical=True,gas=False,debug=False):
+    with open(filename, 'r') as input_text:
+        lines= input_text.readlines()
+
+    input_columns =[x.strip().upper() for x in lines[0].split()]
+    units = [x.strip().upper() for x in lines[1].split()]
+
+    possible_radius_units = ['KPC','PC','ARCSEC','ARCMIN','DEGREE',]
+    allowed_types = ['EXPONENTIAL','SERSIC','DISK','BULGE']
+    possible_units = ['L_SOLAR/PC^2','M_SOLAR/PC^2','MAG/ARCSEC^2','KM/S','M/S']
+    allowed_velocities = ['V_OBS','V_OBS_ERR']
+    for i,types in enumerate(input_columns):
+        if i == 0:
+            if types != 'RADI':
+                raise InputError(f'Your first column in the input file {filename} is not the RADI')
+            if units[i] not in possible_radius_units:
+                raise InputError(f'''Your RADI column in the input file {filename} does not have the right units.
+Possible units are: {', '.join(possible_radius_units)}. Yours is {units[i]}.''')
+        else:
+            if types.split('_')[0] not in allowed_types and types not in allowed_velocities:
+                raise InputError(f'''Column {types} is not a recognized input.
+Allowed columns are {', '.join(allowed_types)} or for the total RC {','.join(allowed_velocities)}''')
+            else:
+                if types in allowed_velocities and units[i] not in ['KM/S','M/S']:
+                    raise InputError(f'''Column {types} has to have units of velocity so either KM/S or M/S''')
+                elif units[i] not in possible_units:
+                    raise InputError(f'''Column {types} has to have units of {', '.join(possible_units)}
+the unit {units[i]} can not be processed.''')
+
+    found_input = {}
+    for type in input_columns:
+        found_input[type] = []
+
+    for line in lines:
+        input = line.split()
+        for i,type in enumerate(input_columns):
+            found_input[type].append(input[i])
+
+    if found_input['RADI'][1] in ['ARCMIN','DEGREE']:
+        increase = 60 if found_input['RADI'][1] == 'ARCMIN' else 3600.
+        found_input['RADI'][2:] = [x*increase for x in optical_profiles[0][2:]]
+        found_input['RADI'][1] = 'ARCSEC'
+    return found_input
+
 def plot_profiles(radii,gas_profile,optical_profiles,distance = 1., errors = [0.],output_dir = './'):
     plt.plot(convertskyangle(radii[2:],distance=distance),np.array(gas_profile[2:]),label = gas_profile[0])
     max = np.nanmax(np.array(gas_profile[2:]))
-    lower_ind = np.where(np.array(optical_profiles[0][2:]) > float(radii[2])/2.)[0][0]
+    lower_ind = np.where(np.array(optical_profiles['RADI'][2:],dtype=float) > float(radii[2])/2.)[0][0]
     tot_opt = []
-    for x in range(1,len(optical_profiles)):
-        plt.plot(convertskyangle(optical_profiles[0][2:],distance=distance),np.array(optical_profiles[x][2:]), label = optical_profiles[x][0])
-        if np.nanmax(np.array(optical_profiles[x][2+lower_ind:])) > max:
-            max =  np.nanmax(np.array(optical_profiles[x][2+lower_ind:]))
-        if len(tot_opt) > 0:
-            tot_opt = [old+new for old,new in zip(tot_opt,optical_profiles[x][2:])]
-        else:
-            tot_opt =  optical_profiles[x][2:]
-    plt.plot(convertskyangle(optical_profiles[0][2:],distance=distance),np.array(tot_opt), label='Total Optical')
+    for x in optical_profiles:
+        if x != 'RADI':
+            plt.plot(convertskyangle(optical_profiles['RADI'][2:],distance=distance),np.array(optical_profiles[x][2:]), label = optical_profiles[x][0])
+            if np.nanmax(np.array(optical_profiles[x][2+lower_ind:])) > max:
+                max =  np.nanmax(np.array(optical_profiles[x][2+lower_ind:]))
+            if len(tot_opt) > 0:
+                tot_opt = [old+new for old,new in zip(tot_opt,optical_profiles[x][2:])]
+            else:
+                tot_opt =  optical_profiles[x][2:]
+    plt.plot(convertskyangle(optical_profiles['RADI'][2:],distance=distance),np.array(tot_opt), label='Total Optical')
     max = np.nanmax(tot_opt)
     plt.ylim(0.1,max)
     #plt.xlim(0,6)
@@ -163,8 +209,8 @@ def write_RCs(RCs,total_rc,rc_err,distance = 1., errors = [0.],output_dir= './')
 
 def write_profiles(radii,gas_profile,total_rc,optical_profiles,distance = 1., errors = [0.],output_dir= './'):
     with open(f'{output_dir}Optical_Mass_Densities.txt','w') as opt_file:
-        for x in range(len(optical_profiles[0])):
-            line = [optical_profiles[i][x] for i in range(len(optical_profiles))]
+        for x in range(len(optical_profiles['RADI'])):
+            line = [optical_profiles[i][x] for i in optical_profiles]
             if x == 1:
                 line[0] = 'KPC'
             if x > 1:

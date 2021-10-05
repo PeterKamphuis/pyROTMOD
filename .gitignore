@@ -111,6 +111,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# MAC trash
+.DS_store
+Test/.DS_store
+
 # Spyder project settings
 .spyderproject
 .spyproject

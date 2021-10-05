@@ -12,7 +12,9 @@ class BadFileError(Exception):
 class InputError(Exception):
     pass
 
-def get_optical_profiles(filename,zero_point_flux = 0.,distance = 0.,band = 'SPITZER3.6',exp_time = -1.,luminosity = False, MLRatio = 0.6, log =None ):
+def get_optical_profiles(filename,distance = 0.,\
+                            band = 'SPITZER3.6',exp_time = -1.,luminosity = False,
+                            MLRatio = 0.6, log =None,debug=False ):
     sup.print_log(f" We are reading the optical parameters from {filename}. \n",log, screen =True)
     if distance == 0.:
         raise InputError(f'We cannot convert profiles adequately without a distance')
@@ -28,12 +30,14 @@ def get_optical_profiles(filename,zero_point_flux = 0.,distance = 0.,band = 'SPI
     except:
         pass
     galfit_file = False
+    vel_found = False
     # If the first line and first column is not correct we assume a Galfit file
     if not correctfile:
-        components = read_galfit(input,log=log)
+        components = read_galfit(input,log=log,debug=debug)
         components['wavelength'] = c.bands[band]
         components['exp_time'] = exp_time
-        optical_profiles,lum_components = convert_parameters_to_luminosity(components,zero_point_flux=zero_point_flux,distance= distance)
+        optical_profiles,lum_components = convert_parameters_to_luminosity(\
+            components,zero_point_flux=c.zero_point_fluxes[band],distance= distance,debug=debug)
         galfit_file = True
         # Clean components to only contain the profiles in a list not a dictionary
         cleaned_components = []
@@ -42,25 +46,72 @@ def get_optical_profiles(filename,zero_point_flux = 0.,distance = 0.,band = 'SPI
                 cleaned_components.append(lum_components[key])
 
     else:
-        # otherwise we extract the columns and such from the file
-        sup.print_log("Not operational yet",log)
+        optical_profiles = sup.read_columns(filename,debug=debug)
+        found = False
+        cleaned_components = []
+        for types in optical_profiles:
+            optical_profiles[types] = optical_profiles[types][:2]+[float(x) for x in optical_profiles[types][2:]]
+            if types != 'RADI':
+                if optical_profiles[types][1] in ['L_SOLAR/PC^2','M_SOLAR/PC^2']:
+                    if not found:
+                        found = True
+                    if vel_found:
+                        raise InputError('Your optical file mixes velocities with densities. We can not deal with this')
+                elif optical_profiles[types][1] in ['MAG/ARCSEC^2','MAG/ARCSEC^2']:
+                    if not found:
+                        found = True
+                    if vel_found:
+                        raise InputError('Your optical file mixes velocities with densities. We can not deal with this')
+                    wavelength = c.bands[band]
+                    pc_conv = sup.convertskyangle(1,distance)*1000.
+                    optical_profiles[types] = [types,'L_SOLAR/PC^2']+\
+                                              [float(mag_to_lum(x,\
+                                                     zero_point_flux=c.zero_point_fluxes[band]\
+                                                     ,wavelength = c.bands[band],distance= distance))\
+                                                     /pc_conv**2 for x in optical_profiles[types][2:]]
+                elif  optical_profiles[types][1] in ['KM/S','M/S']:
+                    if not vel_found:
+                        vel_found = True
+                    if found:
+                        raise InputError('Your optical file mixes velocities with densities. We can not deal with this')
+                    if optical_profiles[types][1] == 'M/S':
+                        optical_profiles[types][2:]=[float(y)/1000. for y in optical_profiles[types][2:]]
+                        optical_profiles[types][1] = 'KM/S'
+                else:
+                    raise InputError(f'We do not know how to deal with the unit {optical_profiles[types][1]}. Acceptable input is M_SOLAR/PC^2, KM/S, M/S')
+            # otherwise we extract the columns and such from the file
+                if types[:3] == 'EXP':
+                    cleaned_components.append(['expdisk',0])
+                elif types[:3] == 'SER':
+                    cleaned_components.append(['sersic',0])
+                elif types[:3] == 'BUL':
+                    cleaned_components.append(['bulge',0])
+                else:
+                    raise InputError(f'We do not know how to deal with the column {types}. Acceptable input SERSIC, EXPONENTIAL, BULGE')
 
 
+
+
+
+
+    for types in optical_profiles:
+        optical_profiles[types]=optical_profiles[types][:2]+[float(x) for x in optical_profiles[types][2:]]
+        if types != 'RADI':
+            if optical_profiles[types][1] == 'L_SOLAR/PC^2':
+                optical_profiles[types][1] = 'M_SOLAR/PC^2'
+                optical_profiles[types][2:] = [float(y)*MLRatio for y in optical_profiles[types][2:]]
     if galfit_file:
-        for x in range(1,len(optical_profiles)):
-            optical_profiles[x][1] = 'M_SOLAR/PC^2'
-            optical_profiles[x][2:] = [float(y)*MLRatio for y in optical_profiles[x][2:]]
         for i in range(len(cleaned_components)):
             cleaned_components[i][1] = cleaned_components[i][1]*MLRatio
             cleaned_components[i][2] = cleaned_components[i][2]*MLRatio
     #if len(firstline) = 0 :
     #    if firstline[0].lower() !=
 
-    return optical_profiles,cleaned_components,galfit_file
+    return optical_profiles,cleaned_components,galfit_file,vel_found
 
 
 
-def read_galfit(lines,log=None):
+def read_galfit(lines,log=None,debug=False):
     recognized_components = ['expdisk','sersic','edgedisk']
     counter = [0 for x in recognized_components]
     mag_zero = []
@@ -124,7 +175,7 @@ def read_galfit(lines,log=None):
 
 
 
-def convert_parameters_to_luminosity(components,zero_point_flux=0.,distance= 0.):
+def convert_parameters_to_luminosity(components,zero_point_flux=0.,distance= 0.,debug=False):
     lum_components =copy.deepcopy(components)
     # We plot a value every 2 pixels out to 7 x the scale length and finish with a 0.
     disk = []
@@ -153,24 +204,14 @@ def convert_parameters_to_luminosity(components,zero_point_flux=0.,distance= 0.)
                                         wavelength= components['wavelength'])
                 lum_components[key] = tmp_components
                 bulge.append(tmp)
-    organized = [['RADI','ARCSEC']]
-    counter = 1
-    for x in range(len(disk)):
-        organized.append([])
-        organized[counter].append(f'EXPONENTIAL_{x+1}')
-        organized[counter].append(f'L_SOLAR/PC^2')
-        for i in range(len(components['radii'])):
-            if x == 0:
-                organized[0].append(components['radii'][i])
-            organized[counter].append(disk[x][i])
-        counter += 1
-    for x in range(len(bulge)):
-        organized.append([])
-        organized[counter].append(f'SERSIC_{x+1}')
-        organized[counter].append(f'L_SOLAR/PC^2')
-        for i in range(len(components['radii'])):
-            organized[counter].append(bulge[x][i])
-        counter += 1
+
+    organized = {}
+    organized['RADI'] = ['RADI','ARCSEC']+[x for x in components['radii']]
+    for i,disks in enumerate(disk):
+        organized[f'EXPONENTIAL_{i+1}'] = [f'EXPONENTIAL_{i+1}',f'L_SOLAR/PC^2']+[x for x in disks]
+    for i,bulges in enumerate(bulge):
+        organized[f'SERSIC_{i+1}'] = [f'SERSIC_{i+1}',f'L_SOLAR/PC^2']+[x for x in bulges]
+
     return organized,lum_components
 
 
@@ -191,6 +232,7 @@ def mag_to_lum(mag, zero_point_flux=0.,wavelength =0.,distance= 0.):
 
 def exponential_luminosity(components,radii = [],zero_point_flux=0.,distance= 0.,wavelength =0.):
     lum_components = copy.deepcopy(components)
+    #Ftot = 2πrs2Σ0q
     IntLum = mag_to_lum(components[1],zero_point_flux=zero_point_flux,
                         wavelength=wavelength, distance=distance)
     lum_components[1] = IntLum/components[5]
@@ -208,8 +250,14 @@ def edge_luminosity(components,radii = [],zero_point_flux=0.,
                     values= {'magnitude_zero': 0,'wavelength':0.,'plate_scale':[0.,0.], 'exp_time':1.}
                     ,distance=0 ):
     lum_components = copy.deepcopy(components)
-    central_luminosity = mag_to_lum(components[2],zero_point_flux=zero_point_flux,\
-                        wavelength=float(values['wavelength']), distance=distance)*float(values['plate_scale'][0])*float(values['plate_scale'][1])
+
+    #mu_0 (mag/arcsec) = -2.5*log(sig_0/(t_exp*dx*dy))+mag_zpt
+    #this has to be in L_solar/pc^2 but our value comes in mag/arcsec^2
+
+    central_luminosity = float(mag_to_lum(components[2],zero_point_flux=zero_point_flux,\
+                        wavelength=float(values['wavelength']), distance=distance))/\
+                        (float(sup.convertskyangle(1.,distance))*1000.)**2.
+    
     #Need to integrate the luminosity of the model and put it in component[1] still
     lum_components[2] = central_luminosity
     lum_components[3] = sup.convertskyangle(components[3],distance)
