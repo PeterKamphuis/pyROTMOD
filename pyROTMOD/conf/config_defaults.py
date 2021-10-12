@@ -33,9 +33,9 @@ class Rotmass:
     R_C: List = field(default_factory=lambda: [None, None, None, True,True])
     C: List = field(default_factory=lambda: [None, None, None, True,True])
     R200: List = field(default_factory=lambda: [None, None, None, True,True])
-    negative_ML: bool = False
+    negative_values: bool = False
     HALO: str = 'NFW'
-    minimizer: str ='NELDER'
+    mcmc_steps: int= 2000 #Amount of steps per parameter, burn is a quarter
 
 @dataclass
 class RotModConfig:
