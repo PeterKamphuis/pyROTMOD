@@ -1,0 +1,26 @@
+general:
+  ncpu: 6
+  log: log.txt
+  debug: true
+galaxy:
+  optical_file: galfit.93
+  gas_file: One_Step_Convergence.def
+  distance: 28.9
+  band: 'SPITZER3.6'
+  mass_to_light_ratio: 0.6
+rotmass:
+  MG:
+  - 1.4
+  - null
+  - null
+  - true
+  - true
+  MD:
+  - 20.0
+  - null
+  - null
+  - true
+  - true
+  MB: [1.0, null, null, true,False]
+  HALO: NFW
+  mcmc_steps: 100

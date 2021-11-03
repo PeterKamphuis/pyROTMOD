@@ -1,0 +1,109 @@
+This file is a log of the modelling process run at 2021-10-08 14:13:05.328953.
+This is version 0.0.0-20e0d9e of the program.
+We are using the input from One_Step_Convergence.def for the gaseous component.
+We are using the input from galfit.93 for the optical component.
+We are using the following distance = 28.9.
+ We are reading the optical parameters from galfit.93. 
+pyROTMOD does not know how to process sky not reading it
+pyROTMOD does not know how to process psf not reading it
+pyROTMOD does not know how to process psf not reading it
+pyROTMOD does not know how to process psf not reading it
+We found the following optical components:
+We have found an exponential disk with the following values.
+        The total mass of the disk is 1.74e+09 M_sol  a central mass density 69.71 M_sol/pc^2 with a M/L 0.6.
+        The scale length is 2.00 kpc and the scale height 0.00 kpc.
+        The axis ratio is 0.43.
+        Reading the gas density profile from One_Step_Convergence.def. 
+We have found a gas disk with a total mass of  3.65e+09
+and a central mass density 3.76 M_sol/pc^2.
+We will use the following initial RCs for the mass decompositionRadi = [ 0.28022231  0.56044462  3.3626677   6.16489079  8.96711392 11.76933709
+ 14.57156031 17.3737836  20.17600697 22.97823044]
+total RC = [ 19.04085  38.0817  228.49    279.38    279.03    266.72    258.76
+ 258.76    258.76    258.76   ], error = [ 4.     4.    20.     4.     4.     4.     4.     4.     4.    13.485]MD = [array([ 7.73979611, 15.47959222, 37.43889582, 36.47210426, 31.68832001,
+       27.30604789, 24.00705661, 21.60565972, 19.81747535, 18.43247279]), array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])]MG = [array([-1.00081561, -2.00163122,  3.49714963, 15.10372522, 25.20294311,
+       32.71094389, 36.45198167, 36.77285154, 34.55514324, 31.84060235]), array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])]We will use the following initial fitting settingsR_C = [None, None, None, True, True]RHO_0 = [None, None, None, True, True]MD = [1.0, 0.5, 3.0, False, True]MG = [1.4, None, None, False, True]BUILD_CURVE: We are fitting this DM halo :
+        Created with lambdify. Signature:
+
+func(r, R_C, RHO_0)
+
+Expression:
+
+5.24642109584913*sqrt(RHO_0*R_C**3*(0.5*log(1 + r**2/R_C**2) + log(1 +...
+
+Source code:
+
+def _lambdifygenerated(r, R_C, RHO_0):
+    return (5.24642109584913*sqrt(RHO_0*R_C**3*(0.5*log(1 + r**2/R_C**2) + log(1 + r/R_C) - arctan(r/R_C))/r))
+
+
+Imported modules:
+
+
+BUILD_CURVE:: We are fitting this complete formula:
+        Created with lambdify. Signature:
+
+func(V_disk, V_gas, r, MG, MD, R_C, RHO_0)
+
+Expression:
+
+5.24642109584913*sqrt(0.0363306952364315*MD*V_disk*Abs(V_disk) +...
+
+Source code:
+
+def _lambdifygenerated(V_disk, V_gas, r, MG, MD, R_C, RHO_0):
+    return (5.24642109584913*sqrt(0.0363306952364315*MD*V_disk*abs(V_disk) + 0.0363306952364315*MG*V_gas*abs(V_gas) + RHO_0*R_C**3*(0.5*log(1 + r**2/R_C**2) + log(1 + r/R_C) - arctan(r/R_C))/r))
+
+
+Imported modules:
+
+
+ This the code for the formula that is finally fitted.
+def curve_np(  r, MG, MD, R_C, RHO_0):
+    return (5.24642109584913*np.sqrt(0.0363306952364315*MD*np.array([7.739796107883291, 15.479592215766582, 37.43889581968843, 36.47210426004159, 31.688320008792918, 27.30604789165135, 24.007056611064677, 21.60565971573138, 19.8174753514428, 18.432472791202102],dtype=float)*np.abs(np.array([7.739796107883291, 15.479592215766582, 37.43889581968843, 36.47210426004159, 31.688320008792918, 27.30604789165135, 24.007056611064677, 21.60565971573138, 19.8174753514428, 18.432472791202102],dtype=float)) + 0.0363306952364315*MG*np.array([-1.0008156102843762, -2.0016312205687523, 3.4971496291596242, 15.10372522154804, 25.202943110161097, 32.71094389096123, 36.451981666984175, 36.772851537949606, 34.55514323911483, 31.840602347795887],dtype=float)*np.abs(np.array([-1.0008156102843762, -2.0016312205687523, 3.4971496291596242, 15.10372522154804, 25.202943110161097, 32.71094389096123, 36.451981666984175, 36.772851537949606, 34.55514323911483, 31.840602347795887],dtype=float)) + RHO_0*R_C**3*(0.5*np.log(1 + r**2/R_C**2) + np.log(1 + r/R_C) - np.arctan(r/R_C))/r))
+
+
+Setting R_C with value 865.4280006433878 and fitting = True.
+limits are between 0.1 - 1000.0
+Setting RHO_0 with value 139.85519674018227 and fitting = True.
+limits are between 0.1 - 1000.0
+The initial guess is a succesINITIAL_GUESS: These are the statistics and values found through differential evolution fitting of the residual.
+[[Model]]
+    Model(<lambda>)
+[[Fit Statistics]]
+    # fitting method   = differential_evolution
+    # function evals   = 1131
+    # data points      = 10
+    # variables        = 2
+    chi-square         = 88459.6089
+    reduced chi-square = 11057.4511
+    Akaike info crit   = 94.8771624
+    Bayesian info crit = 95.4823326
+[[Variables]]
+    MG:     1.4 (fixed)
+    MD:     1 (fixed)
+    R_C:    3.31927923 +/- 0.02996223 (0.90%) (init = 865.428)
+    RHO_0:  473.779908 +/- 8.45043296 (1.78%) (init = 139.8552)
+[[Correlations]] (unreported correlations are < 0.100)
+    C(R_C, RHO_0) = -1.000
+Setting R_C with value 3.319279234187934.
+With the boundaries between 3.01965691553076 - 3.6189015528451076
+Setting RHO_0 with value 473.7799077378505.
+With the boundaries between 389.27557816299344 - 558.2842373127075
+Keeping MD fixed at 1.0.
+Keeping MG fixed at 1.4.
+[[Model]]
+    Model(curve_np)
+[[Fit Statistics]]
+    # fitting method   = emcee
+    # function evals   = 300000
+    # data points      = 10
+    # variables        = 2
+    chi-square         = 0.33480334
+    reduced chi-square = 0.04185042
+    Akaike info crit   = -29.9679705
+    Bayesian info crit = -29.3628003
+[[Variables]]
+    MG:     1.4 (fixed)
+    MD:     1 (fixed)
+    R_C:    3.32633740 +/- 0.20283601 (6.10%) (init = 3.319279)
+    RHO_0:  471.866372 +/- 57.2940089 (12.14%) (init = 473.7799) MCMC_RUN: We find the following parameters for this fit.R_C = 3.3263373994340615 +/- 0.20283600690747394 within the boundary 3.01965691553076-3.6189015528451076RHO_0 = 471.86637200098653 +/- 57.29400889319527 within the boundary 389.27557816299344-558.2842373127075

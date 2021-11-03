@@ -1,0 +1,60 @@
+print_examples: false
+configuration_file: Test_input.yml
+general:
+  ncpu: 6
+  log: log.txt
+  output_dir: /Users/peter/Github/pyROTMOD/Test/pyROTMOD_products_BURKERT/
+  log_directory: /Users/peter/Github/pyROTMOD/Test/pyROTMOD_products_BURKERT/Logs/14:11:29-08-10-2021/
+  debug: true
+galaxy:
+  optical_file: galfit.93
+  gas_file: One_Step_Convergence.def
+  distance: 28.9
+  mass_to_light_ratio: 0.6
+  band: SPITZER3.6
+rotmass:
+  MG:
+  - 1.4
+  - null
+  - null
+  - false
+  - true
+  MD:
+  - 1.0
+  - 0.5
+  - 3.0
+  - true
+  - true
+  MB:
+  - 1.0
+  - null
+  - null
+  - true
+  - false
+  RHO_0:
+  - null
+  - null
+  - null
+  - true
+  - true
+  R_C:
+  - null
+  - null
+  - null
+  - true
+  - true
+  C:
+  - null
+  - null
+  - null
+  - true
+  - true
+  R200:
+  - null
+  - null
+  - null
+  - true
+  - true
+  negative_ML: false
+  HALO: BURKERT
+  minimizer: NELDER
