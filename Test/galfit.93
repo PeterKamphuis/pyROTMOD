@@ -56,45 +56,6 @@ P) 0                   # Choose: 0=optimize, 1=model, 2=imgblock, 3=subcomps
 10) 80.2404     1          #  Position angle (PA) [deg: Up=0, Left=90]
  Z) 0                      #  Skip this model in output image?  (yes=1, no=0)
 
-# Component number: 3
- 0) edgedisk               #  Component type
- 1) 203.1028 139.9129 1 1  #  Position x, y
- 3) 19.68     1          #     Mu(0)   [mag/arcsec^2]
- 4) 4.34        1          #  h_s (disk scale-height)   [pix]
- 5) 18.985      1          #  R_s (disk scale-length)   [pix]
- 6) 0.0000      0          #     -----
- 7) 0.0000      0          #     -----
- 8) 0.0000      0          #     -----
- 9) 1.0000      -1         #     -----
-10) -32.9960    1          #  Position angle (PA) [deg: Up=0, Left=90]
- Z) 0                      #  Skip this model in output image?  (yes=1, no=0)
-
-# Component number: 4
- 0) sersic                 #  Component type
- 1) 197.1704 139.0966 1 1  #  Position x, y
- 3) 10.7407     1          #  Integrated magnitude
- 4) 15.9263     1          #  R_e (effective radius)   [pix]
- 5) 1.15913      1          #  Sersic index n (de Vaucouleurs n=4)
- 6) 0.0000      0          #     -----
- 7) 0.0000      0          #     -----
- 8) 0.0000      0          #     -----
- 9) 0.5134      1          #  Axis ratio (b/a)
-10) -71.3638    1          #  Position angle (PA) [deg: Up=0, Left=90]
- Z) 0                      #  Skip this model in output image?  (yes=1, no=0)
-
-# Component number: 5
- 0) sersic                 #  Component type
- 1) 197.1704 139.0966 1 1  #  Position x, y
- 3) 10.0587   1          #  Integrated magnitude
- 4) 15.9263     1          #  R_e (effective radius)   [pix]
- 5) 4. 		1          #  Sersic index n (de Vaucouleurs n=4)
- 6) 0.0000      0          #     -----
- 7) 0.0000      0          #     -----
- 8) 0.0000      0          #     -----
- 9) 1           1          #  Axis ratio (b/a)
-10) -71.3638    1          #  Position angle (PA) [deg: Up=0, Left=90]
- Z) 0                      #  Skip this model in output image?  (yes=1, no=0)
-
 # Component number: 6
  0) psf                    #  Component type
  1) 191.0000 136.0000 0 0  #  Position x, y

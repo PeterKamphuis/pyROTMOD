@@ -37,9 +37,9 @@ pyROTMOD print_examples=True prints a yaml file (defaults.yml) with the default 
 in this file values designated ??? indicated values without defaults.
 
 All config parametere can be set directly from the command line by setting the correct parameters, e.g:
-pyROTMOD rotmass.HALO=ISO to set the pseudothermal halo.
+pyROTMOD fitting.HALO=ISO to set the pseudothermal halo.
 note that list inout should be set in apostrophes in command line input. e.g.:
-pyROTMOD 'rotmass.MD=[1.4,True,True]'
+pyROTMOD 'fitting.MD=[1.4,True,True]'
 ''')
         sys.exit()
 
@@ -52,7 +52,7 @@ pyROTMOD 'rotmass.MD=[1.4,True,True]'
     inputconf = OmegaConf.from_cli(argv)
     cfg_input = OmegaConf.merge(cfg,inputconf)
     if cfg_input.print_examples:
-        no_example = OmegaConf.masked_copy(cfg, ['general','galaxy','rotmass'])
+        no_example = OmegaConf.masked_copy(cfg, ['general','galaxy','fitting'])
         with open('ROTMOD-default.yml','w') as default_write:
             default_write.write(OmegaConf.to_yaml(cfg))
         print(f'''We have printed the file ROTMOD-default.yml in {os.getcwd()}.
@@ -82,7 +82,7 @@ configuration_file = ''')
     if cfg.general.debug:
         warnings.showwarning = warn_with_traceback
     if cfg.general.output_dir == f'{os.getcwd()}/pyROTMOD_products/':
-        cfg.general.output_dir = f'{os.getcwd()}/pyROTMOD_products_{cfg.rotmass.HALO}/'
+        cfg.general.output_dir = f'{os.getcwd()}/pyROTMOD_products_{cfg.fitting.HALO}/'
     if cfg.general.output_dir[-1] != '/':
         cfg.general.output_dir = f"{cfg.general.output_dir}/"
 
@@ -193,7 +193,7 @@ and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
     if radii[1] == 'ARCSEC':
         radii[2:] = convertskyangle(np.array(radii[2:],dtype=float),float(cfg.galaxy.distance))
         radii[1]  = 'KPC'
-    rotmass_main(radii,derived_RCs, total_rc,total_rc_err,out_dir = cfg.general.output_dir,rotmass_settings=cfg.rotmass,log_directory=cfg.general.log_directory,log=log,debug=cfg.general.debug)
+    rotmass_main(radii,derived_RCs, total_rc,total_rc_err,out_dir = cfg.general.output_dir,rotmass_settings=cfg.fitting,log_directory=cfg.general.log_directory,log=log,debug=cfg.general.debug)
 
 if __name__ =="__main__":
     main()

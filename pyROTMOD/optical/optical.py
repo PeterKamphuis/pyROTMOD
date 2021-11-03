@@ -108,6 +108,36 @@ def get_optical_profiles(filename,distance = 0.,\
     #    if firstline[0].lower() !=
 
     return optical_profiles,cleaned_components,galfit_file,vel_found
+filename,distance = 0.,\
+                            band = 'SPITZER3.6',exp_time = -1.,luminosity = False,
+                            MLRatio = 0.6, log =None,debug=False
+get_optical_profiles.__doc__ =f'''
+ NAME:
+    get_optical_profiles
+
+ PURPOSE:
+    Read in the optical file provided and convert the input to homogenuous profiles to be used by rotmod.
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    filename = name of the file to be read.
+
+ OPTIONAL INPUTS:
+    distance = 0. Distance to the galaxy for converting flux parameters required for a galfit file or when input is in magnitude/arcsec^2
+    band = 'SPITZER3.6' band used for the observation
+    exp_time =
+ OUTPUTS:
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
 
 
 
@@ -257,7 +287,7 @@ def edge_luminosity(components,radii = [],zero_point_flux=0.,
     central_luminosity = float(mag_to_lum(components[2],zero_point_flux=zero_point_flux,\
                         wavelength=float(values['wavelength']), distance=distance))/\
                         (float(sup.convertskyangle(1.,distance))*1000.)**2.
-    
+
     #Need to integrate the luminosity of the model and put it in component[1] still
     lum_components[2] = central_luminosity
     lum_components[3] = sup.convertskyangle(components[3],distance)

@@ -43,4 +43,4 @@ class RotModConfig:
     configuration_file: Optional[str] = None
     general: General = General()
     galaxy: Galaxy_Settings = Galaxy_Settings()
-    rotmass: Rotmass= Rotmass()
+    fitting: Rotmass= Rotmass()
