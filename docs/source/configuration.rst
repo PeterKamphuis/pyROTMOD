@@ -88,6 +88,12 @@ Galaxy Keywords
 
   Distance to the galaxy. In case the gas_file is a tirific file the default is vsys from that file. In case of a table no default exists.
 
+**exposure_time**:
+
+  *float, optional, default = 1.*
+
+  Exposure time of the optical image. Certain galfit components (edge,sersic) take this into account. For the fit with galfit this should be set in the header of the image.
+
 **mass_to_light_ratio**:
 
   *float, optional, default = 0.6*

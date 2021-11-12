@@ -12,8 +12,80 @@ class BadFileError(Exception):
 class InputError(Exception):
     pass
 
-def get_optical_profiles(filename,distance = 0.,\
-                            band = 'SPITZER3.6',exp_time = -1.,luminosity = False,
+
+
+def convert_parameters_to_luminosity(components, band='SPITZER3.6',distance= 0.,debug=False):
+    lum_components =copy.deepcopy(components)
+    # We plot a value every 2 pixels out to 7 x the scale length and finish with a 0.
+    disk = []
+    bulge = []
+    for key in components:
+        if key[0:4].lower() in ['expd','sers']:
+            if components[key][0] in ['expdisk']:
+                tmp,tmp_components = exponential_luminosity(components[key],radii = components['radii'],
+                                            band = band,zero_point_magnitude = components['magnitude_zero'],distance= distance,
+                                            wavelength= components['wavelength'])
+                lum_components[key] = tmp_components
+                disk.append(tmp)
+            elif components[key][0] in ['edgedisk']:
+                if components['exp_time'] == -1:
+                    raise InputError('For the edgedisk parameter in GalFit you need to provide an exposure time with --et')
+                tmp,tmp_components = edge_luminosity(components[key],radii = components['radii'],
+                                            values = components,zero_point_flux=zero_point_flux, distance= distance)
+                lum_components[key] = tmp_components
+                lum_components[key][1] = sup.integrate_surface_density(sup.convertskyangle(components['radii'],distance),tmp)
+                lum_components[key][5] = lum_components[key][4]/lum_components[key][3]
+                disk.append(tmp)
+
+            elif components[key][0] in ['sersic']:
+                tmp,tmp_components = sersic_luminosity(components[key],radii = components['radii'],
+                                        zero_point_flux=zero_point_flux,distance= distance,
+                                        wavelength= components['wavelength'])
+                lum_components[key] = tmp_components
+                bulge.append(tmp)
+
+    organized = {}
+    organized['RADI'] = ['RADI','ARCSEC']+[x for x in components['radii']]
+    for i,disks in enumerate(disk):
+        organized[f'EXPONENTIAL_{i+1}'] = [f'EXPONENTIAL_{i+1}',f'L_SOLAR/PC^2']+[x for x in disks]
+    for i,bulges in enumerate(bulge):
+        organized[f'SERSIC_{i+1}'] = [f'SERSIC_{i+1}',f'L_SOLAR/PC^2']+[x for x in bulges]
+
+    return organized,lum_components
+convert_parameters_to_luminosity.__doc__ =f'''
+ NAME:
+    convert_parameters_to_luminosity(components,zero_point_flux=0.,distance= 0.,debug=False):
+
+ PURPOSE:
+    Convert the components from the galfit file into luminosity profiles
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    components = the components read from the galfit file.
+
+ OPTIONAL INPUTS:
+    zero_point_flux =0.
+        The magnitude zero point flux value. Set by selecting the correct band.
+    distance  = 0.
+        Distance to the galaxy
+    log = None
+    debug = False
+
+ OUTPUTS:
+   organized = the luminosity profile for each component
+   lum_components = a set of homogenized luminosity components for the components in galfit file.
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
+def get_optical_profiles(filename,distance = 0.,band = 'SPITZER3.6',exposure_time=1.,\
                             MLRatio = 0.6, log =None,debug=False ):
     sup.print_log(f" We are reading the optical parameters from {filename}. \n",log, screen =True)
     if distance == 0.:
@@ -35,9 +107,9 @@ def get_optical_profiles(filename,distance = 0.,\
     if not correctfile:
         components = read_galfit(input,log=log,debug=debug)
         components['wavelength'] = c.bands[band]
-        components['exp_time'] = exp_time
+        components['exp_time'] = exposure_time
         optical_profiles,lum_components = convert_parameters_to_luminosity(\
-            components,zero_point_flux=c.zero_point_fluxes[band],distance= distance,debug=debug)
+            components,band = band,distance= distance,debug=debug)
         galfit_file = True
         # Clean components to only contain the profiles in a list not a dictionary
         cleaned_components = []
@@ -108,9 +180,7 @@ def get_optical_profiles(filename,distance = 0.,\
     #    if firstline[0].lower() !=
 
     return optical_profiles,cleaned_components,galfit_file,vel_found
-filename,distance = 0.,\
-                            band = 'SPITZER3.6',exp_time = -1.,luminosity = False,
-                            MLRatio = 0.6, log =None,debug=False
+
 get_optical_profiles.__doc__ =f'''
  NAME:
     get_optical_profiles
@@ -125,9 +195,20 @@ get_optical_profiles.__doc__ =f'''
     filename = name of the file to be read.
 
  OPTIONAL INPUTS:
-    distance = 0. Distance to the galaxy for converting flux parameters required for a galfit file or when input is in magnitude/arcsec^2
-    band = 'SPITZER3.6' band used for the observation
-    exp_time =
+    distance = 0.
+        Distance to the galaxy for converting flux parameters required for a galfit file or when input is in magnitude/arcsec^2
+
+    exposure_time = 1.
+        certain galfit components require a exposure time from the header of the image.
+
+    band = 'SPITZER3.6'
+        band used for the observation
+    MLRatio = 0.6
+        mass to light ratio used for light profile. Note that this is used to multiply the luminosity profile.
+        Hence when doing the mass decomposition this factor is incorporated. Set to 1. if you want to get  the MD and MB from the decomposition.
+
+    log = None
+    debug = False
  OUTPUTS:
 
  OPTIONAL OUTPUTS:
@@ -137,9 +218,6 @@ get_optical_profiles.__doc__ =f'''
 
  NOTE:
 '''
-
-
-
 
 def read_galfit(lines,log=None,debug=False):
     recognized_components = ['expdisk','sersic','edgedisk']
@@ -203,68 +281,165 @@ def read_galfit(lines,log=None,debug=False):
     # Components are returned as [type,integrated magnitude, central magnitude/arcsec^2 ,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]
     return components
 
+read_galfit.__doc__ =f'''
+ NAME:
+    read_galfit
+
+ PURPOSE:
+    Read in the galfit file and extract the parameters for each component in there
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    lines = the string instance of the opened file
+
+ OPTIONAL INPUTS:
+    log = None
+    debug = False
+
+ OUTPUTS:
+   components = set of parameters for each component as well as some global components
 
 
-def convert_parameters_to_luminosity(components,zero_point_flux=0.,distance= 0.,debug=False):
-    lum_components =copy.deepcopy(components)
-    # We plot a value every 2 pixels out to 7 x the scale length and finish with a 0.
-    disk = []
-    bulge = []
-    for key in components:
-        if key[0:4].lower() in ['expd','sers','edge']:
-            if components[key][0] in ['expdisk']:
-                tmp,tmp_components = exponential_luminosity(components[key],radii = components['radii'],
-                                            zero_point_flux=zero_point_flux,distance= distance,
-                                            wavelength= components['wavelength'])
-                lum_components[key] = tmp_components
-                disk.append(tmp)
-            elif components[key][0] in ['edgedisk']:
-                if components['exp_time'] == -1:
-                    raise InputError('For the edgedisk parameter in GalFit you need to provide an exposure time with --et')
-                tmp,tmp_components = edge_luminosity(components[key],radii = components['radii'],
-                                            values = components,zero_point_flux=zero_point_flux, distance= distance)
-                lum_components[key] = tmp_components
-                lum_components[key][1] = sup.integrate_surface_density(sup.convertskyangle(components['radii'],distance),tmp)
-                lum_components[key][5] = lum_components[key][4]/lum_components[key][3]
-                disk.append(tmp)
 
-            elif components[key][0] in ['sersic']:
-                tmp,tmp_components = sersic_luminosity(components[key],radii = components['radii'],
-                                        zero_point_flux=zero_point_flux,distance= distance,
-                                        wavelength= components['wavelength'])
-                lum_components[key] = tmp_components
-                bulge.append(tmp)
+ OPTIONAL OUTPUTS:
 
-    organized = {}
-    organized['RADI'] = ['RADI','ARCSEC']+[x for x in components['radii']]
-    for i,disks in enumerate(disk):
-        organized[f'EXPONENTIAL_{i+1}'] = [f'EXPONENTIAL_{i+1}',f'L_SOLAR/PC^2']+[x for x in disks]
-    for i,bulges in enumerate(bulge):
-        organized[f'SERSIC_{i+1}'] = [f'SERSIC_{i+1}',f'L_SOLAR/PC^2']+[x for x in bulges]
+ PROCEDURES CALLED:
+    Unspecified
 
-    return organized,lum_components
+ NOTE:
+'''
+
+def mag_to_lum_galfit(mag,band = 'SPITZER3.6', magnitude_zeropoint=-1,texp=1.,distance= 0.):
+    # images provided to galfit should be in ADU and then the EXPTIME should be set in the header of the image.
+    # The mag zero should correspond to 1 ADU/s
+    if magnitude_zeropoint == -1:
+        magnitude_zeropoint = c.zero_point_magnitudes[band]
+    Ftot=10**((mag-magnitude_zeropoint)/-2.5)
+    #Ftot=10**(0.4*(mag-magnitude_zeropoint))
+    print(Ftot)
+    # in units of the galfit image. Assuming ADU
+    Ftot = Ftot/texp #ADU/s
+    print(Ftot)
+    Ftot = Ftot*c.zero_point_fluxes[band] #Jy
+    print(Ftot)
+    lumin= Ftot*np.pi*4.*distance**2*3.085677581**2*1e18 #W/hz
+
+    lumin = lumin/c.zero_point_fluxes[band]
+
+    lumin = lumin*texp
+    print(lumin)
+    Mout = magnitude_zeropoint-2.5*np.log10(lumin)
+    print(Mout)
+    M= mag-2.5*np.log10((distance*1e6/10.)**2)
+    print(M)
+    inL=10**(-0.4*(M-3.24))
+    print(f'{inL:.2e}')
+    #The distance is in Mpc and the parsec in m hence here a factor 1e12*1e32 = 1e44 is missing.
+    # However converting from Jy to Watt takes out a factor of 1e-26 so we multiply by a factor of 1e18
+    # assuming in band luminosities
+    frequency = c.c/c.bands[band]
+    Intlum  =  (Ftot*np.pi*4.*distance**2*3.085677581**2*1e18)/c.solar_luminosity
+    #*frequency
+
+    return Intlum
 
 
-def mag_to_lum(mag, zero_point_flux=0.,wavelength =0.,distance= 0.):
+mag_to_lum_galfit.__doc__ =f'''
+ NAME:
+    convert absolute magnitudes to intrinsic luminosities in L_solar
+
+ PURPOSE:
+    Convert the components from the galfit file into luminosity profiles
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    components = the components read from the galfit file.
+
+ OPTIONAL INPUTS:
+    zero_point_flux =0.
+        The magnitude zero point flux value. Set by selecting the correct band.
+    distance  = 0.
+        Distance to the galaxy
+    log = None
+    debug = False
+
+ OUTPUTS:
+   organized = the luminosity profile for each component
+   lum_components = a set of homogenized luminosity components for the components in galfit file.
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
+def mag_to_lum(mag,band = 'WISE3.4',distance= 0.):
     # Integrated flux is
-    IntFlux = zero_point_flux*10**(-1*mag/2.5)
+    print(zero_point_flux)
+    IntFlux = zero_point_flux*10**(-1.*(mag-20.752)/2.5) #Jy
+    print(IntFlux)
     # Convert it to a luminosity
     #The distance is in Mpc and the parsec in m hence here a factor 1e12*1e32 = 1e44 is missing.
     # However converting from Jy to Watt takes out a factor of 1e-26 so we multiply by a factor of 1e18
-    IntLum  =  IntFlux*np.pi*4.*distance**2*3.085677581**2*1e18 #
+    IntLum  =  IntFlux*np.pi*4.*distance**2*3.085677581**2*1e18 #W/m**2/hz
+    print(f'{IntLum/c.solar_luminosity:.2e}' )
+    print(f'From magnitude')
+
+    M= mag-2.5*np.log10((distance*1e6/10.)**2)
+    print(M)
+    inL=10**(-0.4*(M-3.24))
+    print(f'{inL:.2e}')
     # We need to multiply this with the band frequency
     # 3.6 micron for Spitzer 3.4 for WISE
-
     frequency = c.c/wavelength
-
     # and convert to L_solar
     return IntLum*frequency/c.solar_luminosity      # L_solar
+mag_to_lum.__doc__ =f'''
+ NAME:
+    convert absolute magnitudes to intrinsic luminosities in L_solar
 
-def exponential_luminosity(components,radii = [],zero_point_flux=0.,distance= 0.,wavelength =0.):
+ PURPOSE:
+    Convert the components from the galfit file into luminosity profiles
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    components = the components read from the galfit file.
+
+ OPTIONAL INPUTS:
+    zero_point_flux =0.
+        The magnitude zero point flux value. Set by selecting the correct band.
+    distance  = 0.
+        Distance to the galaxy
+    log = None
+    debug = False
+
+ OUTPUTS:
+   organized = the luminosity profile for each component
+   lum_components = a set of homogenized luminosity components for the components in galfit file.
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
+
+def exponential_luminosity(components,radii = [],band = 'SPITZER3.6',zero_point_magnitude= -1,distance= 0.,texp=1.):
     lum_components = copy.deepcopy(components)
     #Ftot = 2πrs2Σ0q
-    IntLum = mag_to_lum(components[1],zero_point_flux=zero_point_flux,
-                        wavelength=wavelength, distance=distance)
+
+    IntLum = mag_to_lum_galfit(components[1],band = band, zero_point_magnitude=zero_point_magnitude,
+                        texp = texp, distance=distance)
     lum_components[1] = IntLum/components[5]
     # convert the scale length to kpc
     h_kpc = sup.convertskyangle(components[3],distance)

@@ -21,6 +21,7 @@ class Galaxy_Settings:
     optical_file: Optional[str] = None
     gas_file: Optional[str] = None
     distance: Optional[float] = None  #This uses the vsys from the gas input file
+    exposure_time: float = 1.
     mass_to_light_ratio: float = 0.6
     band: str='SPITZER3.6'
 
