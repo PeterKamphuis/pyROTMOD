@@ -27,6 +27,7 @@ class Galaxy_Settings:
 
 @dataclass
 class Rotmass:
+    enable: bool = True
     MG: List = field(default_factory=lambda: [1.4, None, None,True,True]) #Initial guess, minimum (-1 unset), maximum (-1 unset), fit, included
     MD: List = field(default_factory=lambda: [1., None, None, True,True])
     MB: List = field(default_factory=lambda: [1., None, None, True,True])
