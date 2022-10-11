@@ -45,7 +45,7 @@ pyROTMOD 'fitting.MD=[1.4,True,True]'
 
 
     #initialize constants
-    c.initialize()
+    #c.initialize()
     #initialize default settings
     cfg = OmegaConf.structured(RotModConfig)
     # print the default file

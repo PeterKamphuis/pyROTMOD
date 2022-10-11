@@ -2,9 +2,10 @@
 
 import numpy as np
 import warnings
-import pyROTMOD.constants as c
+import pyROTMOD.constants as co
 import pyROTMOD.support as sup
 from scipy.special import k1,gamma
+from astropy import units as unit
 import copy
 
 class BadFileError(Exception):
@@ -21,23 +22,19 @@ def convert_parameters_to_luminosity(components, band='SPITZER3.6',distance= 0.,
     bulge = []
     for key in components:
         if key[0:4].lower() in ['expd','sers']:
-            if components[key][0] in ['expdisk']:
+            if components[key]['Type'] in ['expdisk']:
                 tmp,tmp_components = exponential_luminosity(components[key],radii = components['radii'],
-                                            band = band,zero_point_magnitude = components['magnitude_zero'],distance= distance,
-                                            wavelength= components['wavelength'])
+                                            band = band,distance= distance)
                 lum_components[key] = tmp_components
                 disk.append(tmp)
-            elif components[key][0] in ['edgedisk']:
-                if components['exp_time'] == -1:
-                    raise InputError('For the edgedisk parameter in GalFit you need to provide an exposure time with --et')
-                tmp,tmp_components = edge_luminosity(components[key],radii = components['radii'],
-                                            values = components,zero_point_flux=zero_point_flux, distance= distance)
+            elif components[key]['Type'] in ['edgedisk']:
+                tmp,tmp_components = edge_luminosity(components[key],radii = components['radii'],band=band, t_exp = components['exposure_time'], distance= distance)
                 lum_components[key] = tmp_components
                 lum_components[key][1] = sup.integrate_surface_density(sup.convertskyangle(components['radii'],distance),tmp)
                 lum_components[key][5] = lum_components[key][4]/lum_components[key][3]
                 disk.append(tmp)
 
-            elif components[key][0] in ['sersic']:
+            elif components[key]['Type'] in ['sersic']:
                 tmp,tmp_components = sersic_luminosity(components[key],radii = components['radii'],
                                         zero_point_flux=zero_point_flux,distance= distance,
                                         wavelength= components['wavelength'])
@@ -85,6 +82,57 @@ convert_parameters_to_luminosity.__doc__ =f'''
  NOTE:
 '''
 
+
+def exponential_luminosity(components,radii = [],band = 'WISE3.4',distance= 0.,texp=1.):
+    lum_components = copy.deepcopy(components)
+    #Ftot = 2πrs2Σ0q
+
+    IntLum = mag_to_lum(components['Total Magnitude'],band = band, distance=distance)
+    # and transform to a face on total magnitude (where does this come from?)
+    lum_components['Total Magnitude'] = IntLum/components['axis ratio']
+    # convert the scale length to kpc
+    lum_components['scale length'] = sup.convertskyangle(components['scale length'].value,distance)*unit.kpc
+    # this assumes perfect ellipses for now and no deviations are allowed
+    central_luminosity = IntLum/(2.*np.pi*lum_components['scale length'].to(unit.pc)**2*components['axis ratio']) #L_solar/pc^2
+
+    lum_components['Central Magnitude'] = central_luminosity
+    if radii.unit != unit.kpc:
+        radii = sup.convertskyangle(radii.value,distance)*unit.kpc
+    return central_luminosity*np.exp(-1.*(radii.value/float(components['scale length'].value))),lum_components
+exponential_luminosity.__doc__ = f'''
+ NAME:
+    exponential_luminosity
+
+ PURPOSE:
+    Convert the components from the galfit file into luminosity profiles
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    components = the components read from the galfit file.
+
+ OPTIONAL INPUTS:
+    zero_point_flux =0.
+        The magnitude zero point flux value. Set by selecting the correct band.
+    distance  = 0.
+        Distance to the galaxy
+    log = None
+    debug = False
+
+ OUTPUTS:
+   profile  = the luminosity profile
+   lum_components = a set of homogenized luminosity components for the components in galfit file.
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
+
 def get_optical_profiles(filename,distance = 0.,band = 'SPITZER3.6',exposure_time=1.,\
                             MLRatio = 0.6, log =None,debug=False ):
     sup.print_log(f" We are reading the optical parameters from {filename}. \n",log, screen =True)
@@ -106,8 +154,8 @@ def get_optical_profiles(filename,distance = 0.,band = 'SPITZER3.6',exposure_tim
     # If the first line and first column is not correct we assume a Galfit file
     if not correctfile:
         components = read_galfit(input,log=log,debug=debug)
-        components['wavelength'] = c.bands[band]
-        components['exp_time'] = exposure_time
+        components['exposure_time'] = exposure_time*unit.second
+        print(components)
         optical_profiles,lum_components = convert_parameters_to_luminosity(\
             components,band = band,distance= distance,debug=debug)
         galfit_file = True
@@ -134,12 +182,17 @@ def get_optical_profiles(filename,distance = 0.,band = 'SPITZER3.6',exposure_tim
                         found = True
                     if vel_found:
                         raise InputError('Your optical file mixes velocities with densities. We can not deal with this')
-                    wavelength = c.bands[band]
+                    wavelength = co.bands[band]
                     pc_conv = sup.convertskyangle(1,distance)*1000.
+                    #optical_profiles[types] = [types,'L_SOLAR/PC^2']+\
+                    #                          [float(mag_to_lum(x,\
+                    #                                 zero_point_flux=co.zero_point_fluxes[band]\
+                    #                                 ,wavelength = co.bands[band],distance= distance))\
+                    #                                 /pc_conv**2 for x in optical_profiles[types][2:]]
+
                     optical_profiles[types] = [types,'L_SOLAR/PC^2']+\
-                                              [float(mag_to_lum(x,\
-                                                     zero_point_flux=c.zero_point_fluxes[band]\
-                                                     ,wavelength = c.bands[band],distance= distance))\
+                                              [float(mag_to_lum(x*unit.mag/unit.arcsec**2,\
+                                                     band = band,distance= distance))\
                                                      /pc_conv**2 for x in optical_profiles[types][2:]]
                 elif  optical_profiles[types][1] in ['KM/S','M/S']:
                     if not vel_found:
@@ -219,6 +272,147 @@ get_optical_profiles.__doc__ =f'''
  NOTE:
 '''
 
+
+def mag_to_lum_investigation(mag,band = 'SPITZER3.6', magnitude_zeropoint=-1,texp=1.,distance= 0.):
+    # Taking the magnitude through zero point flux does not work correctly, most likely because the band width is very unclear due to the filter response function.
+    # This leads to an in-band solar flux level which transforms to something no where near the bolometric solar luminosity
+    # We there for have implemented the Oh et al 2008 conversion to luminosity.
+    # This assumes that galfit produces correct in band fluxes.
+
+    # images provided to galfit should be in ADU and then the EXPTIME should be set in the header of the image.
+    # The mag zero should correspond to 1 ADU/s
+
+    #I can not figure out why converting to a flux and then getting the luminosity does not work
+    # in principle we should have.
+    # Ftot= co.zero_point_fluxes[band]*10**(-0.4*(mag)) # in Jansky
+    # For WISE We have checked that this gives the same as
+    # Ftotin = texp*10**((mag-magnitude_zeropoint)/-2.5) #ADU/s #Galfit definition
+    # Ftotin = Ftotin*1.9350E-06 were the factor is DN to JY for wise https://wise2.ipac.caltech.edu/docs/release/allsky/expsup/sec2_3f.html
+    # WISE calculates everything in vega magnitude system but that has an offset of 2.699 with an AB system
+    # Galfit calculatus from the electron  see how things work out with spitzer
+    # Apparent magnitudes should be converted to Absolute
+    # Surface brightness magintudes (mag/arcsec^2) are the same at all distances.
+    if magnitude_zeropoint == -1:
+        magnitude_zeropoint = co.zero_point_magnitudes[band]
+    #Ftotin=texp*10**(((mag-2.699)-(magnitude_zeropoint))/-2.5) #ADU/s
+    print(f'!!!!!!From zero point magnitude!!!!')
+    Ftotin=texp*10**((mag-magnitude_zeropoint)/-2.5) #ADU/s
+    Ftotin = Ftotin*co.DNtoJy[band]
+    print(f'Flux in Jy = {Ftotin:.3e}')
+    lumin= (Ftotin*1e-26)*np.pi*4.*(distance*1e6)**2*(3.085677581e16)**2
+    lumin = lumin/co.solar_luminosity
+    print(f'Lum in L_sol= {lumin:.3e}, times bandwidth = {lumin*co.bandwidth[band]:.3e} ')
+
+
+    print(f'!!!!!!From zero point flux!!!!')
+    Ftot= co.zero_point_fluxes[band]*10**(-0.4*(mag))
+    print(f'Flux from point flux in Jy = {Ftot:.3e}')
+    lumin= Ftot*1e-26*np.pi*4.*(distance*1e6)**2*(3.085677581e16)**2
+    lumin = lumin/co.solar_luminosity
+    print(f'Lum in W= {lumin*co.solar_luminosity:.3e}, solar luminosity = {co.solar_luminosity*co.bandwidth[band]**2:.3e}, band width = {co.bandwidth[band]:.3e} ')
+
+    print(f'Lum in L_sol= {lumin:.3e}, times bandwidth = {co.solar_luminosity*co.bandwidth[band]:.3e} ')
+
+
+
+    #c.zero_point_fluxes[band] #Jy
+
+    print(f'!!!!!!From solar magnitude !!!!')
+    M= mag-2.5*np.log10((distance*1e6/10.)**2)
+    print(f'Abslotue Mag from mag = {M}')
+    inL=10**(-0.4*(M-3.24))
+    print(f'Lum in L_sol= {inL:.3e}, divided bandwidth = {inL/co.bandwidth[band]:.3e} ')
+    Flux = inL*co.solar_luminosity/(np.pi*4.*(distance*1e6)**2*(3.085677581e16)**2)
+    print(f'FLux in  W/m^2 = {Flux:.2e}')
+    print(f'FLux in Jy*hz = {Flux*1e26:.2e} take out bandwidth Jy = {Flux/co.bandwidth[band]*1e26:.2e} ')
+
+
+    #The distance is in Mpc and the parsec in m hence here a factor 1e12*1e32 = 1e44 is missing.
+    # However converting from Jy to Watt takes out a factor of 1e-26 so we multiply by a factor of 1e18
+    # assuming in band luminosities
+
+
+    return inL
+
+
+mag_to_lum_investigation.__doc__ =f'''
+ NAME:
+    convert absolute magnitudes to intrinsic luminosities in L_solar
+
+ PURPOSE:
+    Convert the components from the galfit file into luminosity profiles
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    components = the components read from the galfit file.
+
+ OPTIONAL INPUTS:
+    zero_point_flux =0.
+        The magnitude zero point flux value. Set by selecting the correct band.
+    distance  = 0.
+        Distance to the galaxy
+    log = None
+    debug = False
+
+ OUTPUTS:
+   organized = the luminosity profile for each component
+   lum_components = a set of homogenized luminosity components for the components in galfit file.
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
+def mag_to_lum(mag,band = 'WISE3.4',distance= 0.,debug = False):
+    if mag.unit == unit.mag/unit.arcsec**2:
+        # Surface brightness is constant with distance and hence works differently
+        #from Oh 2008.
+        factor = (21.56+co.solar_magnitudes[band])*unit.mag
+        inL= (10**(-0.4*(mag-factor)))*unit.Lsun/unit.parsec**2  #L_solar/pc^2
+    elif mag.unit == unit.mag:
+        M= mag.value-2.5*np.log10((distance*1e6/10.)**2) # Absolute magnitude
+        inL= (10**(-0.4*(M-co.solar_magnitudes[band])))*unit.Lsun # in band Luminosity in L_solar
+    else:
+        raise InputError('MAG_to_LUM: this unit is not recognized for the magnitude')
+    # Integrated flux is
+    # and convert to L_solar
+    return inL   # L_solar
+mag_to_lum.__doc__ =f'''
+ NAME:
+    mag_to_lum
+
+ PURPOSE:
+    convert apparent magnitudes to intrinsic luminosities in L_solar
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    mag = the magnitude dictionary
+
+ OPTIONAL INPUTS:
+    band = 'WISE3.4'
+        The observational band
+    distance  = 0.
+        Distance to the galaxy
+    debug = False
+
+ OUTPUTS:
+    inL = Luminosity dictionary
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
 def read_galfit(lines,log=None,debug=False):
     recognized_components = ['expdisk','sersic','edgedisk']
     counter = [0 for x in recognized_components]
@@ -248,36 +442,51 @@ def read_galfit(lines,log=None,debug=False):
                     read_component = False
                 else:
                     counter[recognized_components.index(current_component)] += 1
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}'] = [current_component,0.,0.,0.,0.,0.]
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}'] = {'Type':current_component,\
+                                                                                                                    'Central Magnitude': None ,
+                                                                                                                    'Total Magnitude': None ,
+                                                                                                                    'R effective': None ,
+                                                                                                                    'scale height':None,
+                                                                                                                    'scale lenght':None,
+                                                                                                                    'sersic index':None,
+                                                                                                                    'central position':None,
+                                                                                                                    'axis ratio':None,
+                                                                                                                    'PA':None,}
+
             if tmp[0] == '3)' and read_component:
                 if  current_component in ['edgedisk']:
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}'][2] = float(tmp[1])
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['Central Magnitude'] = float(tmp[1])*unit.mag/unit.arcsec**2
                 else:
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}'][1] = float(tmp[1])
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['Total Magnitude'] = float(tmp[1])*unit.mag
             if tmp[0] == '4)' and read_component:
-                if current_component in ['expdisk','sersic']:
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}'][3] = float(tmp[1])*np.mean(plate_scale)
-                if current_component in ['edgedisk']:
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}'][4] = float(tmp[1])*np.mean(plate_scale)
-                if current_component in ['expdisk']:
-                    if max_radius < 10 * float(tmp[1]): max_radius = 10 * float(tmp[1])
-                elif current_component in ['sersic']:
+                if current_component in ['sersic']:
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['R effective'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
                     if max_radius < 5* float(tmp[1]): max_radius = 5 * float(tmp[1])
+                if current_component in ['edgedisk']:
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['scale height'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
+                if current_component in ['expdisk']:
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['scale length'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
+
+                    if max_radius < 10 * float(tmp[1]): max_radius = 10 * float(tmp[1])
+
+
             if tmp[0] == '5)' and read_component and current_component in ['sersic','edgedisk']:
                 if current_component == 'sersic':
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}'][4] = float(tmp[1])
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['sersic index'] = float(tmp[1])
                 elif current_component in ['edgedisk']:
                     if max_radius < 10 * float(tmp[1]): max_radius = 10 * float(tmp[1])
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}'][3] = float(tmp[1])*np.mean(plate_scale)
-                else:
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}'][4] = float(tmp[1])*np.mean(plate_scale)
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['scale length'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
+
             if tmp[0] == '9)' and read_component and current_component in ['expdisk','sersic']:
-                components[f'{current_component}_{counter[recognized_components.index(current_component)]}'][5] = float(tmp[1])
+                components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['axis ratio'] = float(tmp[1])
+            if tmp[0] == '10)' and read_component:
+                components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['PA'] = float(tmp[1])*unit.degree
+
     if len(plate_scale) == 0 or len(mag_zero) == 0:
         raise BadFileError(f'Your file  is not recognized by pyROTMOD')
-    components['radii'] = np.linspace(0,max_radius,int(max_radius/2.))*np.mean(plate_scale) # in arcsec
-    components['plate_scale'] = plate_scale #[arcsec per pixel]
-    components['magnitude_zero'] = mag_zero
+    components['radii'] = np.linspace(0,max_radius,int(max_radius/2.))*np.mean(plate_scale)*unit.arcsec # in arcsec
+    components['plate_scale'] = plate_scale*unit.arcsec #[arcsec per pixel]
+    components['magnitude_zero'] = mag_zero*unit.mag
     # Components are returned as [type,integrated magnitude, central magnitude/arcsec^2 ,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]
     return components
 
@@ -299,7 +508,7 @@ read_galfit.__doc__ =f'''
     debug = False
 
  OUTPUTS:
-   components = set of parameters for each component as well as some global components
+   components = set of parameters with units for each component as well as some global components
 
 
 
@@ -310,166 +519,25 @@ read_galfit.__doc__ =f'''
 
  NOTE:
 '''
-
-def mag_to_lum_galfit(mag,band = 'SPITZER3.6', magnitude_zeropoint=-1,texp=1.,distance= 0.):
-    # images provided to galfit should be in ADU and then the EXPTIME should be set in the header of the image.
-    # The mag zero should correspond to 1 ADU/s
-    if magnitude_zeropoint == -1:
-        magnitude_zeropoint = c.zero_point_magnitudes[band]
-    Ftot=10**((mag-magnitude_zeropoint)/-2.5)
-    #Ftot=10**(0.4*(mag-magnitude_zeropoint))
-    print(Ftot)
-    # in units of the galfit image. Assuming ADU
-    Ftot = Ftot/texp #ADU/s
-    print(Ftot)
-    Ftot = Ftot*c.zero_point_fluxes[band] #Jy
-    print(Ftot)
-    lumin= Ftot*np.pi*4.*distance**2*3.085677581**2*1e18 #W/hz
-
-    lumin = lumin/c.zero_point_fluxes[band]
-
-    lumin = lumin*texp
-    print(lumin)
-    Mout = magnitude_zeropoint-2.5*np.log10(lumin)
-    print(Mout)
-    M= mag-2.5*np.log10((distance*1e6/10.)**2)
-    print(M)
-    inL=10**(-0.4*(M-3.24))
-    print(f'{inL:.2e}')
-    #The distance is in Mpc and the parsec in m hence here a factor 1e12*1e32 = 1e44 is missing.
-    # However converting from Jy to Watt takes out a factor of 1e-26 so we multiply by a factor of 1e18
-    # assuming in band luminosities
-    frequency = c.c/c.bands[band]
-    Intlum  =  (Ftot*np.pi*4.*distance**2*3.085677581**2*1e18)/c.solar_luminosity
-    #*frequency
-
-    return Intlum
-
-
-mag_to_lum_galfit.__doc__ =f'''
- NAME:
-    convert absolute magnitudes to intrinsic luminosities in L_solar
-
- PURPOSE:
-    Convert the components from the galfit file into luminosity profiles
-
- CATEGORY:
-    optical
-
- INPUTS:
-    components = the components read from the galfit file.
-
- OPTIONAL INPUTS:
-    zero_point_flux =0.
-        The magnitude zero point flux value. Set by selecting the correct band.
-    distance  = 0.
-        Distance to the galaxy
-    log = None
-    debug = False
-
- OUTPUTS:
-   organized = the luminosity profile for each component
-   lum_components = a set of homogenized luminosity components for the components in galfit file.
-
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-    Unspecified
-
- NOTE:
-'''
-
-def mag_to_lum(mag,band = 'WISE3.4',distance= 0.):
-    # Integrated flux is
-    print(zero_point_flux)
-    IntFlux = zero_point_flux*10**(-1.*(mag-20.752)/2.5) #Jy
-    print(IntFlux)
-    # Convert it to a luminosity
-    #The distance is in Mpc and the parsec in m hence here a factor 1e12*1e32 = 1e44 is missing.
-    # However converting from Jy to Watt takes out a factor of 1e-26 so we multiply by a factor of 1e18
-    IntLum  =  IntFlux*np.pi*4.*distance**2*3.085677581**2*1e18 #W/m**2/hz
-    print(f'{IntLum/c.solar_luminosity:.2e}' )
-    print(f'From magnitude')
-
-    M= mag-2.5*np.log10((distance*1e6/10.)**2)
-    print(M)
-    inL=10**(-0.4*(M-3.24))
-    print(f'{inL:.2e}')
-    # We need to multiply this with the band frequency
-    # 3.6 micron for Spitzer 3.4 for WISE
-    frequency = c.c/wavelength
-    # and convert to L_solar
-    return IntLum*frequency/c.solar_luminosity      # L_solar
-mag_to_lum.__doc__ =f'''
- NAME:
-    convert absolute magnitudes to intrinsic luminosities in L_solar
-
- PURPOSE:
-    Convert the components from the galfit file into luminosity profiles
-
- CATEGORY:
-    optical
-
- INPUTS:
-    components = the components read from the galfit file.
-
- OPTIONAL INPUTS:
-    zero_point_flux =0.
-        The magnitude zero point flux value. Set by selecting the correct band.
-    distance  = 0.
-        Distance to the galaxy
-    log = None
-    debug = False
-
- OUTPUTS:
-   organized = the luminosity profile for each component
-   lum_components = a set of homogenized luminosity components for the components in galfit file.
-
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-    Unspecified
-
- NOTE:
-'''
-
-
-def exponential_luminosity(components,radii = [],band = 'SPITZER3.6',zero_point_magnitude= -1,distance= 0.,texp=1.):
-    lum_components = copy.deepcopy(components)
-    #Ftot = 2πrs2Σ0q
-
-    IntLum = mag_to_lum_galfit(components[1],band = band, zero_point_magnitude=zero_point_magnitude,
-                        texp = texp, distance=distance)
-    lum_components[1] = IntLum/components[5]
-    # convert the scale length to kpc
-    h_kpc = sup.convertskyangle(components[3],distance)
-    lum_components[3] = h_kpc
-    # this assumes perfect ellipses for now and no deviations are allowed
-    central_luminosity = IntLum/(2.*np.pi*(h_kpc*1000.)**2*components[5]) #L_solar/pc^2
-    lum_components[2] = central_luminosity
-    return central_luminosity*np.exp(-1.*(radii/float(components[3]))),lum_components
-
 
     # This is untested for now
-def edge_luminosity(components,radii = [],zero_point_flux=0.,
-                    values= {'magnitude_zero': 0,'wavelength':0.,'plate_scale':[0.,0.], 'exp_time':1.}
+def edge_luminosity(components,radii = [],exposure_time = 1.,band = 'WISE3.4'
                     ,distance=0 ):
     lum_components = copy.deepcopy(components)
 
     #mu_0 (mag/arcsec) = -2.5*log(sig_0/(t_exp*dx*dy))+mag_zpt
     #this has to be in L_solar/pc^2 but our value comes in mag/arcsec^2
-
-    central_luminosity = float(mag_to_lum(components[2],zero_point_flux=zero_point_flux,\
-                        wavelength=float(values['wavelength']), distance=distance))/\
-                        (float(sup.convertskyangle(1.,distance))*1000.)**2.
+    if radii.unit != unit.kpc:
+        radii = sup.convertskyangle(radii.value,distance)*unit.kpc
+    central_luminosity = float(mag_to_lum(components['Central Magnitude'],band = band, distance=distance))
 
     #Need to integrate the luminosity of the model and put it in component[1] still
-    lum_components[2] = central_luminosity
-    lum_components[3] = sup.convertskyangle(components[3],distance)
-    lum_components[4] = sup.convertskyangle(components[4],distance)
+    lum_components['Central Magnitude'] = central_luminosity
+    lum_components['scale length'] = sup.convertskyangle(components['scale length'].value,distance)*unit.kpc
+    lum_components['scale height'] = sup.convertskyangle(components['scale height'].value,distance)*unit.kpc
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        lum_profile = central_luminosity*radii/components[3]*k1(radii/components[3])
+        lum_profile = central_luminosity*radii.value/components['scale length'].value*k1(radii.value/components['scale length'].value)
         if np.isnan(lum_profile[0]):
             lum_profile[0] = central_luminosity
     # this assumes perfect ellipses for now and no deviations are allowed
