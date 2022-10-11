@@ -143,7 +143,7 @@ This is version {pyROTMOD.__version__} of the program.
     try:
 
         optical_profiles,components,galfit_file,optical_vel = get_optical_profiles(cfg.galaxy.optical_file,
-                                                    distance= float(cfg.galaxy.distance),exposure_time=cfg.galaxy.exposure_time
+                                                    distance= float(cfg.galaxy.distance),exposure_time=cfg.galaxy.exposure_time,
                                                     MLRatio= float(cfg.galaxy.mass_to_light_ratio),band = cfg.galaxy.band, log= log)
     except Exception as e:
         print_log(f" We could not obtain the optical components and profiles because of {e}",log,debug=cfg.general.debug,screen=False)
