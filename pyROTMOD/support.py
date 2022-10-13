@@ -83,7 +83,7 @@ def integrate_surface_density(radii,density, log=None):
     mass = np.sum([x*y for x,y in zip(ringarea,density)])
     return mass
 
-def read_columns(filename,optical=True,gas=False,debug=False):
+def read_columns(filename,optical=True,gas=False,debug=False,log=None):
     with open(filename, 'r') as input_text:
         lines= input_text.readlines()
 
@@ -101,6 +101,7 @@ def read_columns(filename,optical=True,gas=False,debug=False):
             if units[i] not in possible_radius_units:
                 raise InputError(f'''Your RADI column in the input file {filename} does not have the right units.
 Possible units are: {', '.join(possible_radius_units)}. Yours is {units[i]}.''')
+
         else:
             if types.split('_')[0] not in allowed_types and types not in allowed_velocities:
                 raise InputError(f'''Column {types} is not a recognized input.
@@ -125,25 +126,62 @@ the unit {units[i]} can not be processed.''')
         increase = 60 if found_input['RADI'][1] == 'ARCMIN' else 3600.
         found_input['RADI'][2:] = [x*increase for x in optical_profiles[0][2:]]
         found_input['RADI'][1] = 'ARCSEC'
+    print_log(f'''In {filename} we have found the following columns:
+{', '.join([f'{x} ({y})' for x,y in zip(input_columns,units)])}.
+''',log)
     return found_input
 
-def plot_profiles(radii,gas_profile,optical_profiles,distance = 1., errors = [0.],output_dir = './'):
-    plt.plot(convertskyangle(radii[2:],distance=distance),np.array(gas_profile[2:]),label = gas_profile[0])
-    max = np.nanmax(np.array(gas_profile[2:]))
-    lower_ind = np.where(np.array(optical_profiles['RADI'][2:],dtype=float) > float(radii[2])/2.)[0][0]
-    tot_opt = []
+def ensure_kpc_radii(in_radii,distance=1.,log=None):
+    '''Check that our list is a proper radius only list in kpc. if not try to convert.'''
+
+    if in_radii[0] != 'RADI':
+        raise InputError('This is list is not marked RADI but you are trying to use it as such.')
+    if in_radii[1] == 'KPC':
+        return in_radii
+    elif in_radii[1] == 'PC':
+        correct_rad = copy.deepcopy(in_radii)
+        correct_rad[2:] = [x/1000. for x in in_radii[2:]]
+        correct_rad[1] = 'KPC'
+    elif in_radii[1] in ['ARCSEC','ARCMIN','DEGREE']:
+        correct_rad = copy.deepcopy(in_radii)
+        correct_rad[2:] = convertskyangle(np.array(correct_rad[2:],dtype=float),\
+            float(cfg.galaxy.distance),unit=in_radii[1])
+        correct_rad[1] = 'KPC'
+    return correct_rad
+
+def plot_profiles(in_radii,gas_profile,optical_profiles,distance = 1., \
+                    log= None, errors = [0.],output_dir = './'):
+    '''This function makes a simple plot of the optical profiles'''
+    radii = ensure_kpc_radii(in_radii, distance=distance)
+    opt_radii = ensure_kpc_radii(optical_profiles['RADI'],distance=distance)
+    max = 0.
+    lower_ind = 0
+    if gas_profile[1] == 'M_SOLAR/PC^2':
+        plt.plot(radii[2:],np.array(gas_profile[2:]),label = gas_profile[0])
+        max = np.nanmax(np.array(gas_profile[2:]))
+        lower_ind = np.where(np.array(opt_radii[2:],dtype=float) > float(radii[2])/2.)[0][0]
+    else:
+        print_log(f'''The units of {gas_profile[0]} are not M_SOLAR/PC^2.
+Not plotting this profile.''',log )
+    tot_opt = [0 for x in opt_radii[2:]]
     for x in optical_profiles:
         if x != 'RADI':
-            plt.plot(convertskyangle(optical_profiles['RADI'][2:],distance=distance),np.array(optical_profiles[x][2:]), label = optical_profiles[x][0])
+            if optical_profiles[x][1] != 'M_SOLAR/PC^2':
+                print_log(f'''The units of {optical_profiles[x][0]} are not M_SOLAR/PC^2.
+Not plotting this profile.''',log )
+                continue
+            plt.plot(opt_radii[2:],np.array(optical_profiles[x][2:]), label = optical_profiles[x][0])
             if np.nanmax(np.array(optical_profiles[x][2+lower_ind:])) > max:
                 max =  np.nanmax(np.array(optical_profiles[x][2+lower_ind:]))
             if len(tot_opt) > 0:
                 tot_opt = [old+new for old,new in zip(tot_opt,optical_profiles[x][2:])]
             else:
                 tot_opt =  optical_profiles[x][2:]
-    plt.plot(convertskyangle(optical_profiles['RADI'][2:],distance=distance),np.array(tot_opt), label='Total Optical')
+    plt.plot(opt_radii[2:],np.array(tot_opt), label='Total Optical')
     max = np.nanmax(tot_opt)
-    plt.ylim(0.1,max)
+    min = np.nanmin(np.array([x for x in tot_opt if x > 0.]))
+
+    plt.ylim(min,max)
     #plt.xlim(0,6)
     plt.ylabel('Density (M$_\odot$/pc$^2$)')
     plt.xlabel('Radius (kpc)')
@@ -191,7 +229,8 @@ print_log.__doc__ =f'''
     This is useful for testing functions.
 '''
 
-def write_RCs(RCs,total_rc,rc_err,distance = 1., errors = [0.],output_dir= './'):
+def write_RCs(RCs,total_rc,rc_err,distance = 1., errors = [0.],\
+            log=None, output_dir= './'):
     #print(RCs)
     with open(f'{output_dir}/All_RCs.txt','w') as opt_file:
         for x in range(len(RCs[0])):
@@ -207,14 +246,14 @@ def write_RCs(RCs,total_rc,rc_err,distance = 1., errors = [0.],output_dir= './')
             writel = f'{writel} \n'
             opt_file.write(writel)
 
-def write_profiles(radii,gas_profile,total_rc,optical_profiles,distance = 1., errors = [0.],output_dir= './'):
+def write_profiles(in_radii,gas_profile,total_rc,optical_profiles,distance = 1., \
+            errors = [0.],output_dir= './', log =None):
+    '''Function to write all the profiles to some text files.'''
+    radii = ensure_kpc_radii(in_radii,distance=distance,log=log)
+    optical_profiles['RADI'] =  ensure_kpc_radii(optical_profiles['RADI'],distance=distance,log=log)
     with open(f'{output_dir}Optical_Mass_Densities.txt','w') as opt_file:
         for x in range(len(optical_profiles['RADI'])):
             line = [optical_profiles[i][x] for i in optical_profiles]
-            if x == 1:
-                line[0] = 'KPC'
-            if x > 1:
-                line[0] = convertskyangle(float(line[0]), distance)
             if x <= 1:
                 writel = ' '.join([f'{y:>15s}' for y in line])
             else:
@@ -226,10 +265,6 @@ def write_profiles(radii,gas_profile,total_rc,optical_profiles,distance = 1., er
             line = [radii[x],gas_profile[x],total_rc[x]]
             if errors[0] != 0.:
                 line.append(errors[x])
-            if x == 1:
-                line[0] = 'KPC'
-            if x > 1:
-                line[0] = convertskyangle(float(line[0]), distance)
             if x <= 1:
                 writel = ' '.join([f'{y:>15s}' for y in line])
             else:

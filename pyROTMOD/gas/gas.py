@@ -97,9 +97,25 @@ def get_gas_profiles(filename,log=None, debug =False):
     print_log(f"Reading the gas density profile from {filename}. \n",log,screen =True )
     if filename.split('.')[1].lower() == 'def':
         #we have a tirific file
-        inrad, sbr,sbr2, total_RC_1, total_RC_2,total_RC_err_1,total_RC_err_2, vsys,scaleheight1,scaleheight2 = \
-            load_tirific(filename, Variables = ['RADI','SBR','SBR_2','VROT','VROT_2','VROT_ERR','VROT_2_ERR','VSYS','Z0','Z0_2'])
+        inrad, sbr,sbr2, total_RC_1, total_RC_2,total_RC_err_1,total_RC_err_2, vsys,scaleheight1,scaleheight2,layer1,layer2 = \
+            load_tirific(filename, Variables = ['RADI','SBR','SBR_2','VROT','VROT_2','VROT_ERR','VROT_2_ERR','VSYS','Z0','Z0_2','LTYPE','LTYPE_2'])
         scaleheight=[scaleheight1,scaleheight2]
+        if layer1[0] != layer2[0]:
+            print_log(f'Your def file has different layers. We always assume layer 1',log)
+        if layer1[0] == 0:
+            scaleheight.append('constant')
+        elif layer1[0] == 1:
+            scaleheight.append('gaussian')
+        elif layer1[0] == 2:
+            scaleheight.append('sech-sq')
+        elif layer1[0] == 3:
+            scaleheight.append('exp')
+        elif layer1[0] == 4:
+            scaleheight.append('lorentzian')
+            
+
+
+
         radii = ['RADI','ARCSEC']+list(inrad)
 
         gas_density = ['DISK_G','M_SOLAR/PC^2']
@@ -114,7 +130,7 @@ def get_gas_profiles(filename,log=None, debug =False):
         for x1,x2 in zip(total_RC_err_1,total_RC_err_2):
             total_RC_Err.append((x1+x2)/2.)
     else:
-        all_profiles = read_columns(filename,debug=debug)
+        all_profiles = read_columns(filename,debug=debug,log=log)
         found = False
         gas_density =[]
         total_RC = []
@@ -122,7 +138,8 @@ def get_gas_profiles(filename,log=None, debug =False):
         for type in all_profiles:
             if all_profiles[type][0] == 'RADI':
                 radii = all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]
-            elif all_profiles[type][0].split('_')[0] == 'DISK':
+            elif all_profiles[type][0].split('_')[0] == 'DISK' and \
+                all_profiles[type][0].split('_')[1] in ['G','GAS']:
                 if len(gas_density) < 1:
                     gas_density = all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]
                 else:
@@ -146,7 +163,7 @@ def get_gas_profiles(filename,log=None, debug =False):
                         total_RC_Err[2:] = [float((x+y)/2.) for x,y in (all_profiles[type][2:],total_RC_Err[2:])]
                     else:
                         raise InputError(f'We do not know how to mix units for the gas disk')
-        scaleheight = [0.,0.]
+        scaleheight = [0.,0.,None]
 
     return radii, gas_density, total_RC,total_RC_Err,scaleheight
 

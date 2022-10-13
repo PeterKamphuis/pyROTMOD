@@ -684,6 +684,7 @@ plot_curves.__doc__ =f'''
 
 def rotmass_main(radii, derived_RCs, total_RC,total_RC_err,no_negative =True,out_dir = None,\
                 interactive = False,rotmass_settings = None,log_directory=None,log=None,debug = False):
+
     #Dictionary for translate RC and mass parameter for the baryonic disks
     disk_var = {'MD': 'V_disk','MG': 'V_gas','MB': 'V_bulge' }
 

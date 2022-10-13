@@ -21,6 +21,8 @@ class Galaxy_Settings:
     optical_file: Optional[str] = None
     gas_file: Optional[str] = None
     distance: Optional[float] = None  #This uses the vsys from the gas input file
+    scaleheight: List = field(default_factory=lambda: [0., None]) #If 0 use infinitely thin disks, if vertical mode is none as wel #vertical options are  ['exp', 'sech-sq',''sech-simple'] These do not apply to parametrized functions.
+    gas_scaleheight: List = field(default_factory=lambda: [0., None]) #If 0 use infinitely thin disks, if vertical mode is none as wel #vertical options are  ['exp', 'sech-sq',''sech-simple'] set secon value to 'tir' to use tirific values
     exposure_time: float = 1.
     mass_to_light_ratio: float = 0.6
     band: str='SPITZER3.6'
