@@ -13,13 +13,18 @@ class BadFileError(Exception):
 class InputError(Exception):
     pass
 
+class CalculateError(Exception):
+    pass
 
 
-def convert_parameters_to_luminosity(components, band='SPITZER3.6',distance= 0.,debug=False):
+def convert_parameters_to_luminosity(components, band='SPITZER3.6',distance= 0.,
+                                    log=None, debug=False):
+
     lum_components =copy.deepcopy(components)
     # We plot a value every 2 pixels out to 7 x the scale length and finish with a 0.
     disk = []
     bulge = []
+    sersic_disk = []
     for key in components:
         if key[0:4].lower() in ['expd','sers','edgedisk']:
             if components[key]['Type'] in ['expdisk']:
@@ -30,23 +35,50 @@ def convert_parameters_to_luminosity(components, band='SPITZER3.6',distance= 0.,
             elif components[key]['Type'] in ['edgedisk']:
                 tmp,tmp_components = edge_luminosity(components[key],radii = components['radii'],band=band, t_exp = components['exposure_time'], distance= distance)
                 lum_components[key] = tmp_components
-                lum_components[key][1] = sup.integrate_surface_density(sup.convertskyangle(components['radii'],distance),tmp)
-                lum_components[key][5] = lum_components[key][4]/lum_components[key][3]
+                lum_components[key]['Central SB'] = sup.integrate_surface_density(sup.convertskyangle(components['radii'],distance,quantity=True),tmp)
+                lum_components[key]['axis ratio'] = lum_components[key]['scale height']/lum_components[key]['scale length']
                 disk.append(tmp)
 
             elif components[key]['Type'] in ['sersic']:
                 tmp,tmp_components = sersic_luminosity(components[key],radii = components['radii'],
-                                        zero_point_flux=zero_point_flux,distance= distance,
-                                        wavelength= components['wavelength'])
-                lum_components[key] = tmp_components
-                bulge.append(tmp)
+                                            band = band,distance= distance)
+                if (0.75 < tmp_components['sersic index']< 1.25):
+                    sup.print_log(f''' Your sersic index = {tmp_components['sersic index']} which is so close to 1 that we will treat this as an exponential disk.
+''',log)
+                    lum_components[key] = tmp_components
+                    disk.append(tmp)
+                elif 3.75 < tmp_components['sersic index'] < 4.25:
+                    sup.print_log(f''' Your sersic index = {tmp_components['sersic index']} which is so close to 4 that we will treat this as a Bulge.
+''',log)
+                    lum_components[key] = tmp_components
+                    bulge.append(tmp)
+                else:
+                    sup.print_log(f''' Your sersic index = {tmp_components['sersic index']} which cannot be estimated by a density profile.
+''',log)
+                    lum_components[key] = tmp_components
+                    sersic_disk.append(tmp)
+
 
     organized = {}
-    organized['RADI'] = ['RADI','ARCSEC']+[x for x in components['radii']]
+    organized['RADI'] = ['RADI','ARCSEC']+[x.value for x in components['radii']]
     for i,disks in enumerate(disk):
-        organized[f'EXPONENTIAL_{i+1}'] = [f'EXPONENTIAL_{i+1}',f'L_SOLAR/PC^2']+[x for x in disks]
+        organized[f'EXPONENTIAL_{i+1}'] = [f'EXPONENTIAL_{i+1}',f'L_SOLAR/PC^2']\
+                    +[x.value if x.unit == unit.Lsun/unit.pc**2 else float('NaN') for x in disks]
+        if float('NaN') in organized[f'EXPONENTIAL_{i+1}']:
+            print(f'We got {organized[f"EXPONENTIAL_{i+1}"]}')
+            raise CalculateError(f'Something went wrong in EXPONENTIAL_{i+1}')
     for i,bulges in enumerate(bulge):
-        organized[f'SERSIC_{i+1}'] = [f'SERSIC_{i+1}',f'L_SOLAR/PC^2']+[x for x in bulges]
+        organized[f'BULGE_{i+1}'] = [f'BULGE_{i+1}',f'L_SOLAR/PC^2']\
+                    +[x.value if x.unit == unit.Lsun/unit.pc**2 else float('NaN') for x in bulges]
+        if float('NaN') in organized[f'BULGE_{i+1}']:
+            print(f'We got {organized[f"BULGE_{i+1}"]}')
+            raise CalculateError(f'Something went wrong in BULGE_{i+1}')
+    for i,sersic_disks in enumerate(sersic_disk):
+        organized[f'SERSIC_{i+1}'] = [f'SERSIC_{i+1}',f'L_SOLAR/PC^2']\
+                    +[x.value if x.unit == unit.Lsun/unit.pc**2 else float('NaN') for x in sersic_disks]
+        if float('NaN') in organized[f'SERSIC_{i+1}']:
+            print(f'We got {organized[f"SERSIC_{i+1}"]}')
+            raise CalculateError(f'Something went wrong in SERSIC_{i+1}')
 
     return organized,lum_components
 convert_parameters_to_luminosity.__doc__ =f'''
@@ -89,21 +121,23 @@ def edge_luminosity(components,radii = [],exposure_time = 1.,band = 'WISE3.4'
     #mu_0 (mag/arcsec) = -2.5*log(sig_0/(t_exp*dx*dy))+mag_zpt
     #this has to be in L_solar/pc^2 but our value comes in mag/arcsec^2
     if radii.unit != unit.kpc:
-        radii = sup.convertskyangle(radii.value,distance)*unit.kpc
-    central_luminosity = float(mag_to_lum(components['Central Magnitude'],band = band, distance=distance))
+        radii = sup.convertskyangle(radii,distance,quantity=True)
+    central_luminosity = mag_to_lum(components['Central SB'],band = band, distance=distance)
 
     #Need to integrate the luminosity of the model and put it in component[1] still
-    lum_components['Central Magnitude'] = central_luminosity
-    lum_components['scale length'] = sup.convertskyangle(components['scale length'].value,distance)*unit.kpc
-    lum_components['scale height'] = sup.convertskyangle(components['scale height'].value,distance)*unit.kpc
+    lum_components['Central SB'] = central_luminosity
+    if lum_components['scale length'].unit != unit.kpc:
+        lum_components['scale length'] = sup.convertskyangle(components['scale length'],distance,quantity=True)
+    if lum_components['scale height'].unit != unit.kpc:
+        lum_components['scale height'] = sup.convertskyangle(components['scale height'],distance,quantity=True)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        lum_profile = central_luminosity*radii.value/components['scale length'].value*k1(radii.value/components['scale length'].value)
+        lum_profile = central_luminosity*radii/components['scale length']*k1(radii.value/components['scale length'].value)
         if np.isnan(lum_profile[0]):
             lum_profile[0] = central_luminosity
     # this assumes perfect ellipses for now and no deviations are allowed
     return lum_profile,lum_components
- edge_luminosity.__doc__ = f'''
+edge_luminosity.__doc__ = f'''
  NAME:
      edge_luminosity
 
@@ -138,22 +172,24 @@ def edge_luminosity(components,radii = [],exposure_time = 1.,band = 'WISE3.4'
  NOTE: This is not well tested yet !!!!!!!!!
 '''
 
-def exponential_luminosity(components,radii = [],band = 'WISE3.4',distance= 0.,texp=1.):
+def exponential_luminosity(components,radii = [],band = 'WISE3.4',distance= 0.):
     lum_components = copy.deepcopy(components)
     #Ftot = 2πrs2Σ0q
 
-    IntLum = mag_to_lum(components['Total Magnitude'],band = band, distance=distance)
+    IntLum = mag_to_lum(components['Total SB'],band = band, distance=distance)
     # and transform to a face on total magnitude (where does this come from?)
-    lum_components['Total Magnitude'] = IntLum/components['axis ratio']
+    lum_components['Total SB'] = IntLum/components['axis ratio']
     # convert the scale length to kpc
-    lum_components['scale length'] = sup.convertskyangle(components['scale length'].value,distance)*unit.kpc
+    lum_components['scale length'] = sup.convertskyangle(components['scale length'],distance, quantity=True)
     # this assumes perfect ellipses for now and no deviations are allowed
     central_luminosity = IntLum/(2.*np.pi*lum_components['scale length'].to(unit.pc)**2*components['axis ratio']) #L_solar/pc^2
 
-    lum_components['Central Magnitude'] = central_luminosity
+    lum_components['Central SB'] = central_luminosity
     if radii.unit != unit.kpc:
-        radii = sup.convertskyangle(radii.value,distance)*unit.kpc
-    return central_luminosity*np.exp(-1.*(radii.value/float(components['scale length'].value))),lum_components
+        radii = sup.convertskyangle(radii,distance,quantity=True)
+    profile= central_luminosity*np.exp(-1.*(radii/lum_components['scale length']))
+    #profile = [x.value for x in profile]
+    return profile,lum_components
 exponential_luminosity.__doc__ = f'''
  NAME:
     exponential_luminosity
@@ -168,12 +204,8 @@ exponential_luminosity.__doc__ = f'''
     components = the components read from the galfit file.
 
  OPTIONAL INPUTS:
-    zero_point_flux =0.
-        The magnitude zero point flux value. Set by selecting the correct band.
-    distance  = 0.
-        Distance to the galaxy
-    log = None
-    debug = False
+    radii = the radii at which to evaluate the profile
+
 
  OUTPUTS:
    profile  = the luminosity profile
@@ -191,6 +223,8 @@ exponential_luminosity.__doc__ = f'''
 def get_optical_profiles(filename,distance = 0.,band = 'SPITZER3.6',exposure_time=1.,\
                             MLRatio = 0.6, log =None,debug=False, scale_height=None):
     '''Read in the optical Surface brightness profiles or the galfit file'''
+    # as we do a lot of conversions in the optical module we make distance a quantity with unit Mpc
+    distance = distance * unit.Mpc
     sup.print_log(f" We are reading the optical parameters from {filename}. \n",log, screen =True)
     if distance == 0.:
         raise InputError(f'We cannot convert profiles adequately without a distance')
@@ -210,9 +244,8 @@ def get_optical_profiles(filename,distance = 0.,band = 'SPITZER3.6',exposure_tim
     if not correctfile:
         components = read_galfit(input,log=log,debug=debug)
         components['exposure_time'] = exposure_time*unit.second
-        print(components)
         optical_profiles,lum_components = convert_parameters_to_luminosity(\
-            components,band = band,distance= distance,debug=debug)
+            components,band = band,distance= distance,debug=debug,log=log)
         galfit_file = True
         # Clean components to only contain the profiles in a list not a dictionary
         cleaned_components = []
@@ -238,7 +271,7 @@ def get_optical_profiles(filename,distance = 0.,band = 'SPITZER3.6',exposure_tim
                     if vel_found:
                         raise InputError('Your optical file mixes velocities with densities. We can not deal with this')
                     wavelength = co.bands[band]
-                    pc_conv = sup.convertskyangle(1,distance)*1000.
+                    pc_conv = sup.convertskyangle(1,distance.value)*1000.
                     #optical_profiles[types] = [types,'L_SOLAR/PC^2']+\
                     #                          [float(mag_to_lum(x,\
                     #                                 zero_point_flux=co.zero_point_fluxes[band]\
@@ -260,28 +293,41 @@ def get_optical_profiles(filename,distance = 0.,band = 'SPITZER3.6',exposure_tim
                 else:
                     raise InputError(f'We do not know how to deal with the unit {optical_profiles[types][1]}. Acceptable input is M_SOLAR/PC^2, KM/S, M/S')
             # otherwise we extract the columns and such from the file
+                cleaned_components.append({'Type': None,
+                                    'Central SB': None ,
+                                    'Total SB': None ,
+                                    'R effective': None ,
+                                    'scale height':None,
+                                    'scale length':None,
+                                    'sersic index':None,
+                                    'central position':None,
+                                    'axis ratio':None,
+                                    'PA':None})
+
                 if types[:3] == 'EXP':
-                    cleaned_components.append(['expdisk',0])
+                    cleaned_components[-1]['Type']= 'expdisk'
                 elif types[:3] == 'SER':
-                    cleaned_components.append(['sersic',0])
+                    cleaned_components[-1]['Type']= 'sersic'
+
                 elif types[:3] == 'BUL':
-                    cleaned_components.append(['bulge',0])
+                    cleaned_components[-1]['Type']= 'bulge'
                 elif types.split('_')[0] == 'DISK' and \
                      types.split('_')[1] in ['S','STELLAR']:
-                    cleaned_components.append(['inifite_disk',0])
+                    cleaned_components[-1]['Type']= 'infinite_disk'
                 else:
                     raise InputError(f'We do not know how to deal with the column {types}. Acceptable input is SERSIC, EXPONENTIAL, BULGE')
 
     for types in optical_profiles:
-        optical_profiles[types]=optical_profiles[types][:2]+[float(x) for x in optical_profiles[types][2:]]
         if types != 'RADI':
             if optical_profiles[types][1] == 'L_SOLAR/PC^2':
                 optical_profiles[types][1] = 'M_SOLAR/PC^2'
                 optical_profiles[types][2:] = [float(y)*MLRatio for y in optical_profiles[types][2:]]
     if galfit_file:
         for i in range(len(cleaned_components)):
-            cleaned_components[i][1] = cleaned_components[i][1]*MLRatio
-            cleaned_components[i][2] = cleaned_components[i][2]*MLRatio
+            if cleaned_components[i]['Central SB']:
+                cleaned_components[i]['Central SB'] = cleaned_components[i]['Central SB']*MLRatio
+            if cleaned_components[i]['Total SB']:
+                cleaned_components[i]['Total SB'] = cleaned_components[i]['Total SB']*MLRatio
 
     return optical_profiles,cleaned_components,galfit_file,vel_found
 
@@ -327,11 +373,11 @@ def mag_to_lum(mag,band = 'WISE3.4',distance= 0.,debug = False):
     if mag.unit == unit.mag/unit.arcsec**2:
         # Surface brightness is constant with distance and hence works differently
         #from Oh 2008.
-        factor = (21.56+co.solar_magnitudes[band])*unit.mag
-        inL= (10**(-0.4*(mag-factor)))*unit.Lsun/unit.parsec**2  #L_solar/pc^2
+        factor = (21.56+co.solar_magnitudes[band])
+        inL= (10**(-0.4*(mag.value-factor)))*unit.Lsun/unit.parsec**2  #L_solar/pc^2
     elif mag.unit == unit.mag:
-        M= mag.value-2.5*np.log10((distance*1e6/10.)**2) # Absolute magnitude
-        inL= (10**(-0.4*(M-co.solar_magnitudes[band])))*unit.Lsun # in band Luminosity in L_solar
+        M= mag-2.5*np.log10((distance/(10.*unit.pc))**2)*unit.mag # Absolute magnitude
+        inL= (10**(-0.4*(M.value-co.solar_magnitudes[band])))*unit.Lsun # in band Luminosity in L_solar
     else:
         raise InputError('MAG_to_LUM: this unit is not recognized for the magnitude')
     # Integrated flux is
@@ -398,29 +444,34 @@ def read_galfit(lines,log=None,debug=False):
                 else:
                     counter[recognized_components.index(current_component)] += 1
                     components[f'{current_component}_{counter[recognized_components.index(current_component)]}'] = {'Type':current_component,\
-                                                                                                                    'Central Magnitude': None ,
-                                                                                                                    'Total Magnitude': None ,
+                                                                                                                    'Central SB': None ,
+                                                                                                                    'Total SB': None ,
                                                                                                                     'R effective': None ,
                                                                                                                     'scale height':None,
-                                                                                                                    'scale lenght':None,
+                                                                                                                    'scale length':None,
                                                                                                                     'sersic index':None,
                                                                                                                     'central position':None,
                                                                                                                     'axis ratio':None,
                                                                                                                     'PA':None,}
+                    if current_component in ['expdisk','sersic']:
+                        components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['scale height'] = 0. * unit.kpc
+
 
             if tmp[0] == '3)' and read_component:
                 if  current_component in ['edgedisk']:
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['Central Magnitude'] = float(tmp[1])*unit.mag/unit.arcsec**2
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['Central SB'] = float(tmp[1])*unit.mag/unit.arcsec**2
                 else:
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['Total Magnitude'] = float(tmp[1])*unit.mag
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['Total SB'] = float(tmp[1])*unit.mag
             if tmp[0] == '4)' and read_component:
                 if current_component in ['sersic']:
                     components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['R effective'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
                     if max_radius < 5* float(tmp[1]): max_radius = 5 * float(tmp[1])
+
                 if current_component in ['edgedisk']:
                     components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['scale height'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
                 if current_component in ['expdisk']:
                     components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['scale length'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['scale height'] = 0.*unit.arcsec
 
                     if max_radius < 10 * float(tmp[1]): max_radius = 10 * float(tmp[1])
 
@@ -442,7 +493,7 @@ def read_galfit(lines,log=None,debug=False):
     components['radii'] = np.linspace(0,max_radius,int(max_radius/2.))*np.mean(plate_scale)*unit.arcsec # in arcsec
     components['plate_scale'] = plate_scale*unit.arcsec #[arcsec per pixel]
     components['magnitude_zero'] = mag_zero*unit.mag
-    # Components are returned as [type,integrated magnitude, central magnitude/arcsec^2 ,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]
+
     return components
 
 read_galfit.__doc__ =f'''
@@ -476,19 +527,24 @@ read_galfit.__doc__ =f'''
 '''
 
 
-def sersic_luminosity(components,radii = [],zero_point_flux=0.,distance= 0.,wavelength = 0.):
+def sersic_luminosity(components,radii = [],band = 'WISE3.4',distance= 0.):
     # This is not a deprojected surface density profile we should use the formula from Baes & gentile 2010
+    # Once we implement that it should be possible use an Einasto profile/potential
     lum_components = copy.deepcopy(components)
-    IntLum = mag_to_lum(components[1],zero_point_flux=zero_point_flux,
-                        wavelength=wavelength, distance=distance)
-    kappa=2.*components[4]-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
-    h_kpc = sup.convertskyangle(components[3],distance)
-    central_luminosity = IntLum/(2.*np.pi*(h_kpc*1000.)**2*np.exp(kappa)*components[4]*\
-                                kappa**(-2*components[4])*components[5]*gamma(2.*components[4])) #L_solar/pc^2
-    lum_components[1] = IntLum/components[5]
-    lum_components[2] = central_luminosity
-    lum_components[3] = sup.convertskyangle(components[3],distance)
-    return central_luminosity*np.exp(-1.*kappa*((radii/components[3])**(1./components[4])-1)),lum_components
+    IntLum = mag_to_lum(components['Total SB'],band=band, distance=distance)
+    kappa=2.*components['sersic index']-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
+    if components['R effective'].unit != unit.kpc:
+        R_kpc = sup.convertskyangle(components['R effective'],distance,quantity =True)
+
+    if radii.unit != unit.kpc:
+        radii = sup.convertskyangle(radii,distance,quantity=True)
+    effective_luminosity = IntLum/(2.*np.pi*(R_kpc.to(unit.pc))**2*np.exp(kappa)*components['sersic index']*\
+                                kappa**(-2*components['sersic index'])*components['axis ratio']*gamma(2.*components['sersic index'])) #L_solar/pc^2
+    lum_components['Total SB'] = IntLum/components['axis ratio']
+    lum_components['R effective'] = R_kpc
+    lum_profile = effective_luminosity*np.exp(-1.*kappa*((radii/lum_components['R effective'])**(1./components['sersic index'])-1))
+    lum_components['Central SB'] = effective_luminosity*np.exp(-1.*kappa*(((0.*unit.kpc)/lum_components['R effective'])**(1./components['sersic index'])-1))
+    return lum_profile,lum_components
 sersic_luminosity.__doc__ = f'''
 NAME:
     sersic_luminosity

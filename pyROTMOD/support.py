@@ -1,20 +1,41 @@
 # -*- coding: future_fstrings -*-
 
-
+import copy
 import numpy as np
 import warnings
+
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import matplotlib
     matplotlib.use('pdf')
     import matplotlib.pyplot as plt
 
+from astropy import units as u
+
 class InputError(Exception):
     pass
 
 # function for converting kpc to arcsec and vice versa
 
-def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', physical=False,debug = False):
+def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', \
+                    physical=False,debug = False, quantity= False):
+
+    if quantity:
+        try:
+            angle = angle.to(u.kpc)
+            unit = 'kpc'
+            if not physical:
+                raise InputError(f'CONVERTSKYANGLE: {angle} is a distance but you claim it is a sky angle.\n')
+        except u.UnitConversionError:
+            if physical:
+                raise InputError(f'CONVERTSKYANGLE: {angle} is sky angle but you claim it is a distance.\n')
+            angle = angle.to(u.arcsec)
+            unit='arcsec'
+        angle = angle.value
+        distance = distance.to(u.Mpc)
+        distance = distance.value
+        distance_unit= 'Mpc'
+
     if debug:
             print_log(f'''CONVERTSKYANGLE: Starting conversion from the following input.
     {'':8s}Angle = {angle}
@@ -53,6 +74,8 @@ def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', phys
 
 
         kpc = 2. * (distance * np.tan(radians / 2.))
+        if quantity:
+            kpc = kpc*u.kpc
     else:
         if unit.lower() == 'kpc':
             kpc = angle
@@ -67,7 +90,9 @@ def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', phys
 
         radians = 2. * np.arctan(kpc / (2. * distance))
         kpc = (radians * (360. / (2. * np.pi))) * 3600.
-    if len(kpc) == 1:
+        if quantity:
+            kpc = kpc*u.arcsec
+    if len(kpc) == 1 and not quantity:
         kpc = float(kpc[0])
     return kpc
 
@@ -145,7 +170,7 @@ def ensure_kpc_radii(in_radii,distance=1.,log=None):
     elif in_radii[1] in ['ARCSEC','ARCMIN','DEGREE']:
         correct_rad = copy.deepcopy(in_radii)
         correct_rad[2:] = convertskyangle(np.array(correct_rad[2:],dtype=float),\
-            float(cfg.galaxy.distance),unit=in_radii[1])
+            float(distance),unit=in_radii[1])
         correct_rad[1] = 'KPC'
     return correct_rad
 

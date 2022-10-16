@@ -157,18 +157,17 @@ This is version {pyROTMOD.__version__} of the program.
         print_log(f"We found the following optical components:\n",log,debug=cfg.general.debug)
         for x in components:
                 # Components are returned as [type,integrated magnitude,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]
-            if x[0] in ['expdisk','edgedisk']:
+            if x['Type'] in ['expdisk','edgedisk']:
                 print_log(f'''We have found an exponential disk with the following values.
-        The total mass of the disk is {x[1]:.2e} M_sol  a central mass density {x[2]:.2f} M_sol/pc^2 with a M/L {float(cfg.galaxy.mass_to_light_ratio)}.
-        The scale length is {x[3]:.2f} kpc and the scale height {x[4]:.2f} kpc.
-        The axis ratio is {x[5]:.2f}.
-        ''' ,log,debug=cfg.general.debug)
-            if x[0] in ['sersic']:
+''',log,debug=cfg.general.debug)
+            if x['Type'] in ['sersic']:
                 print_log(f'''We have found a sersic component with the following values.
-        The total mass is {x[1]:.2e} a central mass density {x[2]:.2f} M_sol/pc^2 with a M/L {float(cfg.galaxy.mass_to_light_ratio)}.
-        The effective radius {x[3]:.2f} kpc and sersic index = {x[4]:.2f}.
-        The axis ratio is {x[5]:.2f}.
-        ''' ,log,debug=cfg.general.debug)
+''',log,debug=cfg.general.debug)
+            print_log(f'''The total mass of the disk is {x['Total SB']}   a central mass density {x['Central SB']}  with a M/L {float(cfg.galaxy.mass_to_light_ratio)}.
+The scale length is {x['scale length']}  and the scale height {x['scale height']}.
+The axis ratio is {x['axis ratio']}.
+''' ,log,debug=cfg.general.debug)
+
 
 
     ######################################### Read the gas profiles and RC ################################################
@@ -176,7 +175,7 @@ This is version {pyROTMOD.__version__} of the program.
 
     if gas_profile[1] == 'M_SOLAR/PC^2':
         correct_rad = ensure_kpc_radii(radii,distance=cfg.galaxy.distance)
-        print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(correct_radii[2:],np.array(gas_profile[2:],dtype=float)):.2e}
+        print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(correct_rad[2:],np.array(gas_profile[2:],dtype=float)):.2e}
 and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
 ''' ,log,screen= True)
 
@@ -185,13 +184,14 @@ and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
     plot_profiles(radii, gas_profile,optical_profiles,\
         distance =float(cfg.galaxy.distance),\
         output_dir = cfg.general.output_dir, log=log)
+    '''
     comb = []
     for x in range(len(optical_profiles['RADI'][2:])):
         comb.append(f"{optical_profiles['RADI'][x+2]:.2f} {optical_profiles['DISK_STELLAR'][x+2]:.2f};" )
 
     print(f"{''.join(comb)}")
     print(f"{', '.join([f'{x:.2f}' for x in optical_profiles['RADI'][2:]])}")
-
+    '''
     ########################################## Make a nice file with all the different components as a column ######################3
     write_profiles(radii, gas_profile,total_rc,optical_profiles,\
         distance =float(cfg.galaxy.distance), errors = total_rc_err ,\
