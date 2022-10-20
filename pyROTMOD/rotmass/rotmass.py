@@ -8,6 +8,7 @@ import numpy as np
 import warnings
 import pyROTMOD.constants as cons
 import copy
+import shutil
 from types import FunctionType
 import lmfit
 import traceback
@@ -156,6 +157,7 @@ def calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,DM_curve,function_va
                 high_curve =  Baryonic_RC[key][0]
             if function_variable_settings[key][1]:
                 low_curve = np.sqrt(function_variable_settings[key][1])*low_curve
+            if function_variable_settings[key][2]:
                 high_curve = np.sqrt(function_variable_settings[key][2])*high_curve
             if np.array_equal(low_curve,Baryonic_RC[key][0]):
                 combined_RC[disk_var[key]][1] = np.zeros(len(radii))
@@ -301,8 +303,8 @@ def get_baryonic_RC(radii,total_RC,derived_RCs,variables,
         elif derived_RCs[x][0][:6] == 'DISK_G' and 'MG' in variables:
             component = 'MG'
         else:
-            if derived_RCs[x][0][:3] not in ['EXP','BUL','SER'] and derived_RCs[x][0][:6] != 'DISK_G':
-                print("We do not recognize this type of RC and don't know what to do with it")
+            if derived_RCs[x][0][:3] not in ['EXP','BUL','SER','DIS'] and derived_RCs[x][0][:6] != 'DISK_G':
+                print(f"We do not recognize this type ({derived_RCs[x][0][:3]}) of RC and don't know what to do with it")
                 exit()
         if component != 'Empty':
             if component not in RC:
@@ -508,8 +510,6 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
                                             result_emcee.params[variable].max:
                         if not original_variable_settings[variable][1] or not \
                             original_variable_settings[variable][2]:
-                            print(result_emcee.params[variable].value,result_emcee.params[variable].stderr)
-
                             print_log(f''' The boundaries for {variable} were too small, we sampled an incorrect area
     Changing the parameter and its boundaries and trying again.
     ''',log)
@@ -535,7 +535,8 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
                          'RHO_C': '$\mathrm{\\rho_{c}\\times 10^{-3}(M_{\\odot}/pc^{3})}$',
                          'R_C': '$ \mathrm{R_{c}(kpc)}$',
                          'C':'$\mathrm{c}$',
-                         'R200':'$ \mathrm{R_{200}(kpc)}$'
+                         'R200':'$ \mathrm{R_{200}(kpc)}$',
+                         'm': '$\mathrm{Axion Mass\\times 10^{-23}(eV)}$',
                          }
 
         lab = [label_dictionary[x] for x in result_emcee.params if function_variable_settings[x][3]]
@@ -543,6 +544,7 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
                         title_kwargs={"fontsize": 15},labels=lab)
         fig.savefig(f"{out_dir}MCMC_COV_Fits.pdf",dpi=300)
     print_log(f''' MCMC_RUN: We find the following parameters for this fit.''',log)
+
     for variable in function_variable_settings:
         if function_variable_settings[variable][3]:
             function_variable_settings[variable][1] = float(result_emcee.params[variable].value-\
@@ -556,7 +558,8 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
 
 
 
-    return function_variable_settings
+
+    return function_variable_settings,result_emcee
 
 mcmc_run.__doc__ =f'''
  NAME:
@@ -581,6 +584,27 @@ mcmc_run.__doc__ =f'''
 
  NOTE:
 '''
+
+def write_output_file(final_variable_fits,result_emcee,output_dir='./',\
+                results_file = 'Final_Results.txt'):
+    variables_fitted = [x for x in final_variable_fits]
+    variable_line = f'{"Variable":>15s} {"Value":>15s} {"Error":>15s} {"Lower Bound":>15s} {"Upper Bound":>15s} \n'
+    with open(f'{output_dir}{results_file}.txt','w') as file:
+        file.write('# These are the results from pyROTMOD. \n')
+        file.write('# An error Fixed indicates a parameter that is not fitted. \n')
+        file.write(variable_line)
+        for variable in final_variable_fits:
+            if final_variable_fits[variable][4]:
+                variable_line = f'{variable:>15s} {result_emcee.params[variable].value:>15.4f}'
+                min = result_emcee.params[variable].min
+                max = result_emcee.params[variable].max
+                if not final_variable_fits[variable][3]:
+                    variable_line += f' {"Fixed":>15s} {min:>15.4f} {max:>15.4f} \n'
+                else:
+                    err = result_emcee.params[variable].stderr
+                    variable_line += f' {err:>15.7f} {min:>15.4f} {max:>15.4f} \n'
+                file.write(variable_line)
+
 
 def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False):
 
@@ -683,11 +707,11 @@ plot_curves.__doc__ =f'''
 '''
 
 def rotmass_main(radii, derived_RCs, total_RC,total_RC_err,no_negative =True,out_dir = None,\
-                interactive = False,rotmass_settings = None,log_directory=None,log=None,debug = False):
+                interactive = False,rotmass_settings = None,log_directory=None,\
+                results_file = 'Final_Results',log=None,debug = False):
 
     #Dictionary for translate RC and mass parameter for the baryonic disks
     disk_var = {'MD': 'V_disk','MG': 'V_gas','MB': 'V_bulge' }
-
     # First combine all parameters that to be included in the total fit in a single dictionary
     function_variable_settings = set_fitting_parameters(rotmass_settings,disk_var)
 
@@ -727,7 +751,7 @@ for the {rotmass_settings} DM halo the parameters are {','.join([key for key in 
         exit()
         #Start GUI with default settings or input yml settings. these are already in function_parameters
     else:
-        plot_curves(f'{log_directory}/Input_Curves.pdf', current_curves,variables=function_variable_settings, halo=rotmass_settings['HALO'])
+        plot_curves(f'{log_directory}/{results_file}_Input_Curves.pdf', current_curves,variables=function_variable_settings, halo=rotmass_settings['HALO'])
         pass
 
         #Then download settings
@@ -741,15 +765,20 @@ for the {rotmass_settings} DM halo the parameters are {','.join([key for key in 
 
     current_curves = calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,\
                                         DM_curve,initial_variable_settings,disk_var)
-    plot_curves(f'{log_directory}/Initial_Guess_Curves.pdf', current_curves,variables= initial_variable_settings,halo=rotmass_settings['HALO'])
+    plot_curves(f'{log_directory}/{results_file}_Initial_Guess_Curves.pdf', current_curves,variables= initial_variable_settings,halo=rotmass_settings['HALO'])
 
-    final_variable_fits = mcmc_run(full_curve,radii,total_RC,initial_variable_settings,function_variable_settings,\
+    final_variable_fits,emcee_results = mcmc_run(full_curve,radii,total_RC,\
+                            initial_variable_settings,function_variable_settings,\
                             out_dir = out_dir, debug=debug,log=log,negative=rotmass_settings.negative_values,steps=rotmass_settings.mcmc_steps)
-
+    shutil.copy(f'{out_dir}MCMC_COV_Fits.pdf',f'{out_dir}{results_file}_MCMC_COV_Fits.pdf')
     current_curves = calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,\
                                         DM_curve,final_variable_fits,disk_var)
+    print_log('Plotting and writing',log)
+    plot_curves(f'{out_dir}/{results_file}_Final_Curves.pdf', current_curves ,variables=final_variable_fits,halo=rotmass_settings['HALO'])
 
-    plot_curves(f'{out_dir}/Final_Curves.pdf', current_curves ,variables=final_variable_fits,halo=rotmass_settings['HALO'])
+    write_output_file(final_variable_fits,emcee_results,output_dir=out_dir,\
+                results_file = results_file)
+
 
 rotmass_main.__doc__ =f'''
  NAME:

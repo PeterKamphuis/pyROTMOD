@@ -2,7 +2,9 @@
 
 import copy
 import numpy as np
+import os
 import warnings
+import time
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -11,6 +13,8 @@ with warnings.catch_warnings():
     import matplotlib.pyplot as plt
 
 from astropy import units as u
+from omegaconf import OmegaConf,MissingMandatoryValue,ListConfig
+from datetime import datetime
 
 class InputError(Exception):
     pass
@@ -95,6 +99,116 @@ def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', \
     if len(kpc) == 1 and not quantity:
         kpc = float(kpc[0])
     return kpc
+
+def check_input(cfg,default_output,default_log_directory,version,debug=False):
+    if cfg.general.output_dir[-1] != '/':
+        cfg.general.output_dir = f"{cfg.general.output_dir}/"
+
+    using_default=False
+    if default_output != cfg.general.output_dir:
+        if default_log_directory == cfg.general.log_directory:
+            using_default =True
+            cfg.general.log_directory=f'{cfg.general.output_dir}Logs/{datetime.now().strftime("%H:%M:%S-%d-%m-%Y")}/'
+
+    if not os.path.isdir(cfg.general.output_dir):
+        os.mkdir(cfg.general.output_dir)
+
+    if not os.path.isdir(f"{cfg.general.output_dir}/Logs"):
+        os.mkdir(f"{cfg.general.output_dir}/Logs")
+
+    if not os.path.isdir(f"{cfg.general.log_directory}"):
+        os.mkdir(f"{cfg.general.log_directory}")
+    else:
+        if using_default:
+            time.sleep(1.)
+            cfg.general.log_directory=f'{cfg.general.output_dir}Logs/{datetime.now().strftime("%H:%M:%S-%d-%m-%Y")}/'
+            os.mkdir(f"{cfg.general.log_directory}")
+
+    #write the input to the log dir.
+    with open(f"{cfg.general.log_directory}run_input.yml",'w') as input_write:
+        input_write.write(OmegaConf.to_yaml(cfg))
+
+
+    log = f"{cfg.general.log_directory}{cfg.general.log}"
+    #If it exists move the previous Log
+    if os.path.exists(log):
+        os.rename(log,f"{cfg.general.log_directory}/Previous_Log.txt")
+
+
+    print_log(f'''This file is a log of the modelling process run at {datetime.now()}.
+This is version {version} of the program.
+''',log,debug=cfg.general.debug)
+    if not cfg.RC_Construction.gas_file and cfg.RC_Construction.enable:
+        print(f'''You did not set the gas file input''')
+        cfg.RC_Construction.gas_file = input('''Please add the gas file or tirific output to be evaluated: ''')
+    print_log(f'''We are using the input from {cfg.RC_Construction.gas_file} for the gaseous component.
+''',log,debug=cfg.general.debug)
+
+
+    if not cfg.RC_Construction.optical_file and cfg.RC_Construction.enable:
+        cfg.RC_Construction.optical_file = input('''Please add the optical or galfit file to be evaluated: ''')
+    print_log(f'''We are using the input from {cfg.RC_Construction.optical_file} for the optical component.
+''',log,debug=cfg.general.debug)
+
+    if not cfg.general.distance:
+        cfg.general.distance= input(f'''Please provide the distance (0. will use vsys and the hubble flow from a .def file): ''')
+
+    if cfg.general.distance == 0.:
+        try:
+            vsys = gas_profiles.load_tirific(cfg.RC_Construction.gas_file, Variables = ['VSYS'])
+            if vsys[0] == 0.:
+                raise InputError(f'We cannot model profiles adequately without a distance')
+            else:
+                cfg.general.distance = vsys[0]/c.H_0
+        except:
+            raise InputError(f'We cannot model profiles adequately without a distance proper distance')
+        ######################################## Read the optical profiles ##########################################
+    print_log(f'''We are using the following distance = {cfg.general.distance}.
+''',log,debug=cfg.general.debug)
+
+    if cfg.fitting.enable:
+        for key in dir(cfg.fitting):
+            if type(getattr(cfg.fitting,key))==ListConfig:
+                tmp = getattr(cfg.fitting,key)
+                for i in range(3):
+                    try:
+                        if tmp[i].lower() != 'none':
+                            tmp[i]=float(tmp[i])
+                        else:
+                            tmp[i]=None
+                    except AttributeError:
+                        pass
+
+                for i in [3,4]:
+                    tmp[i]=bool(tmp[i])
+                setattr(cfg.fitting,key,tmp)
+    return cfg,log
+check_input.__doc__ =f'''
+ NAME:
+    check_input(cfg)
+ PURPOSE:
+    Handle a set check parameters on the input omega conf
+
+ CATEGORY:
+    support_functions
+
+ INPUTS:
+    cfg = input omega conf object
+
+ OPTIONAL INPUTS:
+    debug = False
+
+ OUTPUTS:
+    checked and modified object and the name of the log file
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+
+
+ NOTE:
+
+'''
 
 def integrate_surface_density(radii,density, log=None):
 
@@ -254,10 +368,139 @@ print_log.__doc__ =f'''
     This is useful for testing functions.
 '''
 
-def write_RCs(RCs,total_rc,rc_err,distance = 1., errors = [0.],\
-            log=None, output_dir= './'):
+def read_RCs(dir= './', file= 'You_Should_Set_A_File_RC.txt'):
+    with open(f'{dir}{file}','r') as file:
+        lines = file.readlines()
+
+    RCs = []
+
+    count = 0
+    start = False
+    while not start:
+        if lines[count][0] != '#':
+            start =True
+        else:
+            count += 1
+
+    for i in range(count,len(lines)):
+        values = [x.strip() for x in lines[i].split()]
+
+        for x in range(len(values)):
+            if i == count:
+                RCs.append([values[x]])
+                if values[x] == 'V_OBS':
+                    totalind = x
+                if values[x] == 'V_OBS_ERR':
+                    errind = x
+            elif i == count+1:
+                RCs[x].append(values[x])
+            else:
+                RCs[x].append(float(values[x]))
+    totalrc = RCs[totalind]
+    del RCs[totalind]
+    if totalind < errind:
+        errind -= 1
+    err_rc = RCs[errind]
+    del RCs[errind]
+    print(RCs)
+    return RCs,totalrc,err_rc
+    #           RCs
+
+read_RCs.__doc__ =f'''
+ NAME:
+    read_RCs
+ PURPOSE:
+    Read the RCs from a file. The file has to adhere to the pyROTMOD output format
+ CATEGORY:
+    support_functions
+
+ INPUTS:
+    di    directory
+    RCs = Dictionary with derived RCs
+    total_rc = The observed RC
+    rc_err = Error on the observed RC
+
+ OPTIONAL INPUTS:
+    dir= './'
+
+    Directory where  the file file is locate
+
+    file= 'You_Should_Set_A_File_RC.txt'
+
+    file name
+
+ OUTPUTS:
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+
+ NOTE:
+
+'''
+def write_header(distance= None, MLratio= None, opt_scaleheight=None,\
+        gas_scaleheight=None, RC = True,opt_disk_type = None,
+        output_dir= './', file= 'You_Should_Set_A_File_RC.txt'):
+
+    with open(f'{output_dir}{file}','w') as file:
+        if RC:
+            file.write('# This file contains the rotation curves derived by pyROTMOD. \n')
+        else:
+            file.write('# This file contains the mass density profiles derived by pyROTMOD. \n')
+        if distance != None:
+            file.write(f'# We used a distance of {distance:.1f} Mpc. \n')
+        if MLratio != None:
+            file.write(f'# We used a Mass to Light ratio for the stars of {MLratio:.3f}. \n')
+        if opt_scaleheight != None:
+            if opt_scaleheight[0] > 0:
+                file.write(f'# We used stellar scale height {opt_scaleheight[0]:.3f}. \n')
+            else:
+                file.write(f'# We assumed the stellar disk to be infinitely thin. \n')
+        if gas_scaleheight != None:
+            if gas_scaleheight[0] > 0:
+                file.write(f'# We used a gas scale height {gas_scaleheight[0]:.3f}. \n')
+            else:
+                file.write(f'# We assumed the gas disk to be infinitely thin. \n')
+
+
+
+write_header.__doc__ =f'''
+ NAME:
+    write_header
+ PURPOSE:
+    Write a header containing the conversion used in  a table with derived products
+ CATEGORY:
+    support_functions
+
+ INPUTS:
+
+
+ OPTIONAL INPUTS:
+    output_dir= './'
+
+    Directory where to write the file
+
+    file= 'You_Should_Set_A_File_RC.txt'
+
+    file name
+
+
+
+
+ OUTPUTS:
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+
+ NOTE:
+
+'''
+
+def write_RCs(RCs,total_rc,rc_err,log=None,\
+        output_dir= './', file= 'You_Should_Set_A_File_RC.txt'):
     #print(RCs)
-    with open(f'{output_dir}/All_RCs.txt','w') as opt_file:
+    with open(f'{output_dir}{file}','a') as opt_file:
         for x in range(len(RCs[0])):
 
             line = [RCs[i][x] for i in range(len(RCs))]
@@ -270,6 +513,37 @@ def write_RCs(RCs,total_rc,rc_err,distance = 1., errors = [0.],\
                 writel = ' '.join([f'{y:>15.2f}' for y in line])
             writel = f'{writel} \n'
             opt_file.write(writel)
+write_RCs.__doc__ =f'''
+ NAME:
+    write_RCs
+ PURPOSE:
+    Write the derived RC
+ CATEGORY:
+    support_functions
+
+ INPUTS:
+    RCs = Dictionary with derived RCs
+    total_rc = The observed RC
+    rc_err = Error on the observed RC
+
+ OPTIONAL INPUTS:
+    output_dir= './'
+
+    Directory where to write the file
+
+    file= 'You_Should_Set_A_File_RC.txt'
+
+    file name
+
+ OUTPUTS:
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+
+ NOTE:
+
+'''
 
 def write_profiles(in_radii,gas_profile,total_rc,optical_profiles,distance = 1., \
             errors = [0.],output_dir= './', log =None):

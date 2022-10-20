@@ -38,7 +38,7 @@ def convert_dens_rc(radii, optical_profiles, gas_profile,components,\
         if optical_profiles[type][0] != 'RADI' and optical_profiles[type][1] != 'KM/S':
             #create an interpolated profile of in profile
             tmp = CubicSpline(optical_radii,np.array(optical_profiles[type][2:]),extrapolate=True)
-            if components[x-1]['Type'] == 'inifite_disk':
+            if components[x-1]['Type'] == 'infinite_disk':
                 print_log(f'We have detected the input to be a random density profile hence we extrapolate from that to get the rotation curve',log)
                 found_RC= random_density_disk(kpc_radii,tmp(kpc_radii),h_z = opt_h_z[0],mode = opt_h_z[1], log=log)
             elif components[x-1]['Type'] in ['expdisk','edgedisk']:
@@ -57,7 +57,7 @@ This is not something that pyROTMOD can deal with yet. If you know of a good pyt
 Please let us know and we'll give it a go.''',log)
                     raise InputError('We have detected the input to be a density profile for a sersic profile. pyROTMOD cannot yet process this.')
 
-            elif components[x-1][0] in ['bulge']:
+            elif components[x-1]['Type'] in ['bulge']:
                 #if not galfit_file:
                 #    found_RC = bulge_RC(kpc_radii,optical_radii,np.array(o))
                 #    print_log(f'We have detected the input to be a density profile for a bulge that is too complicated for us',log)
@@ -66,7 +66,7 @@ Please let us know and we'll give it a go.''',log)
                 found_RC = bulge_RC(kpc_radii,optical_radii,np.array(optical_profiles[type][2:]),debug=debug,log=log)
             else:
                 found_RC = None
-                print_log(f'We do not know how to convert the mass density of {components[x-1][0]}',log)
+                print_log(f'We do not know how to convert the mass density of {components[x-1]["Type"]}',log)
             if np.any(found_RC):
                 RCs.append([optical_profiles[type][0], 'KM/S']+list(found_RC))
         else:
@@ -255,7 +255,7 @@ def exponential(radii,central,h):
 
 # Obtain the velocities of a density profile where the vertical distribution is a exponential disk.
 def exponential_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'expdisk', 'scale height': None, 'scale length': None}, \
-            log = None, debug=False, output_dir = './'):
+            log = None, debug=False, output_dir = './', truncated = -1.):
     # First we need to get the total mass in the disk
     #print(f'We are using this vertical distributions {vertical_distribution}')
     #print(radii,density)
@@ -280,13 +280,13 @@ def exponential_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'expdisk
 
 
     print_log(f'''We have found an exponential disk with the following values.
-The total mass of the disk is {components[1]:.2e} M_sol  a central mass density {components[2]:.2f} M_sol/pc^2.
-The scale length is {components[3]:.2f} kpc and the scale height {components[4]:.2f} kpc.
-The axis ratio is {components[5]:.2f}.
+The total mass of the disk is {components['Total SB']} a central mass density {components['Central SB']} .
+The scale length is {components['scale length']} kpc and the scale height {components['scale height']} kpc.
+The axis ratio is {components['axis ratio']}.
 ''' ,log,debug=debug)
     plot_exponentials(radii,density,exp_profile,output_dir=output_dir)
-    RC = exponential_parameter_RC(radii,components,log,sech = sech, \
-                    truncation = truncation )
+    RC = exponential_parameter_RC(radii,components,log = log,sech = sech, \
+                    truncated = truncated )
 
     return RC
 exponential_RC.__doc__ =f'''
@@ -346,9 +346,10 @@ def exponential_parameter_RC(radii,parameters, sech =False, truncated =-1.,log= 
             warnings.simplefilter("ignore")
             area = 2.*quad(sechsquare,0,np.inf,args=(parameters['scale height'].value))[0]*unit.pc
         central = parameters['Central SB']/(1000.*area)
-        exp_disk_potential = MNP(amp=central*unit.Msun/unit.pc**3,hr=float(parameters['scale length'])*unit.kpc,hz=float(parameters['scale height'])*unit.kpc,sech=sech)
+        
+        exp_disk_potential = MNP(amp=central,hr=parameters['scale length'],hz=parameters['scale height'],sech=sech)
     else:
-        exp_disk_potential = EP(amp=float(parameters['Central_SB'])*unit.Msun/unit.pc**2,hr=float(parameters['scale length'])*unit.kpc)
+        exp_disk_potential = EP(amp=parameters['Central_SB'],hr=parameters['scale length'])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         RC = exp_disk_potential.vcirc(radii*unit.kpc)

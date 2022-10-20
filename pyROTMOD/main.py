@@ -3,7 +3,7 @@
 # This is an attempt at a holistic python version of ROTMOD and ROTMAS using bayesian fitting and such
 
 #from optparse import OptionParser
-from omegaconf import OmegaConf,MissingMandatoryValue
+from omegaconf import OmegaConf,MissingMandatoryValue,ListConfig
 
 import pyROTMOD
 from pyROTMOD.conf.config_defaults import RotModConfig
@@ -12,14 +12,14 @@ from pyROTMOD.gas.gas import get_gas_profiles
 from pyROTMOD.rotmod.rotmod import convert_dens_rc
 from pyROTMOD.rotmass.rotmass import rotmass_main
 from pyROTMOD.support import plot_profiles,write_profiles,write_RCs,print_log,\
-            integrate_surface_density, ensure_kpc_radii
+            integrate_surface_density, ensure_kpc_radii,check_input,write_header,\
+            read_RCs
 import pyROTMOD.constants as c
 import traceback
 import warnings
 import os
 import sys
 import numpy as np
-from datetime import datetime
 class InputError(Exception):
     pass
 
@@ -82,150 +82,98 @@ configuration_file = ''')
     cfg = OmegaConf.merge(cfg,inputconf)
     if cfg.general.debug:
         warnings.showwarning = warn_with_traceback
-    if cfg.general.output_dir == f'{os.getcwd()}/pyROTMOD_products/':
-        cfg.general.output_dir = f'{os.getcwd()}/pyROTMOD_products_{cfg.fitting.HALO}/'
-    if cfg.general.output_dir[-1] != '/':
-        cfg.general.output_dir = f"{cfg.general.output_dir}/"
 
-    if default_output != cfg.general.output_dir:
-        if default_log_directory == cfg.general.log_directory:
-            cfg.general.log_directory=f'{cfg.general.output_dir}Logs/{datetime.now().strftime("%H:%M:%S-%d-%m-%Y")}/'
+    cfg, log= check_input(cfg,default_output,default_log_directory,pyROTMOD.__version__)
 
-    if not os.path.isdir(cfg.general.output_dir):
-        os.mkdir(cfg.general.output_dir)
-
-    if not os.path.isdir(f"{cfg.general.output_dir}/Logs"):
-        os.mkdir(f"{cfg.general.output_dir}/Logs")
-
-    if not os.path.isdir(f"{cfg.general.log_directory}"):
-        os.mkdir(f"{cfg.general.log_directory}")
-
-    #write the input to the log dir.
-    with open(f"{cfg.general.log_directory}run_input.yml",'w') as input_write:
-        input_write.write(OmegaConf.to_yaml(cfg))
-
-
-    log = f"{cfg.general.log_directory}{cfg.general.log}"
-    #If it exists move the previous Log
-    if os.path.exists(log):
-        os.rename(log,f"{cfg.general.log_directory}/Previous_Log.txt")
-
-
-    print_log(f'''This file is a log of the modelling process run at {datetime.now()}.
-This is version {pyROTMOD.__version__} of the program.
-''',log,debug=cfg.general.debug)
-    if not cfg.galaxy.gas_file:
-        print(f'''You did not set the gas file input''')
-        cfg.galaxy.gas_file = input('''Please add the gas file or tirific output to be evaluated: ''')
-    print_log(f'''We are using the input from {cfg.galaxy.gas_file} for the gaseous component.
-''',log,debug=cfg.general.debug)
-
-
-    if not cfg.galaxy.optical_file:
-        cfg.galaxy.optical_file = input('''Please add the optical or galfit file to be evaluated: ''')
-    print_log(f'''We are using the input from {cfg.galaxy.optical_file} for the optical component.
-''',log,debug=cfg.general.debug)
-
-    if not cfg.galaxy.distance:
-        cfg.galaxy.distance= input(f'''Please provide the distance (0. will use vsys and the hubble flow from a .def file): ''')
-
-    if cfg.galaxy.distance == 0.:
+    if cfg.RC_Construction.enable:
         try:
-            vsys = gas_profiles.load_tirific(cfg.galaxy.gas_file, Variables = ['VSYS'])
-            if vsys[0] == 0.:
-                raise InputError(f'We cannot model profiles adequately without a distance')
-            else:
-                cfg.galaxy.distance = vsys[0]/c.H_0
-        except:
-            raise InputError(f'We cannot model profiles adequately without a distance proper distance')
-        ######################################## Read the optical profiles ##########################################
-    print_log(f'''We are using the following distance = {cfg.galaxy.distance}.
-''',log,debug=cfg.general.debug)
-    try:
+            optical_profiles,components,galfit_file,optical_vel = \
+                get_optical_profiles(cfg.RC_Construction.optical_file,\
+                    distance= cfg.general.distance,exposure_time=cfg.RC_Construction.exposure_time,\
+                    MLRatio= cfg.RC_Construction.mass_to_light_ratio,band = cfg.RC_Construction.band,\
+                    log= log)
+        except Exception as e:
+            print_log(f" We could not obtain the optical components and profiles because of {e}",log,debug=cfg.general.debug,screen=False)
+            traceback.print_exc()
+            raise InputError(f'We failed to retrieved the optical components from {cfg.RC_Construction.optical_file}')
 
-        optical_profiles,components,galfit_file,optical_vel = \
-            get_optical_profiles(cfg.galaxy.optical_file,\
-                distance= float(cfg.galaxy.distance),exposure_time=cfg.galaxy.exposure_time,\
-                MLRatio= float(cfg.galaxy.mass_to_light_ratio),band = cfg.galaxy.band,\
-                log= log)
-    except Exception as e:
-        print_log(f" We could not obtain the optical components and profiles because of {e}",log,debug=cfg.general.debug,screen=False)
-        traceback.print_exc()
-        raise InputError(f'We failed to retrieved the optical components from {cfg.galaxy.optical_file}')
-
-    if galfit_file:
-        print_log(f"We found the following optical components:\n",log,debug=cfg.general.debug)
-        for x in components:
-                # Components are returned as [type,integrated magnitude,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]
-            if x['Type'] in ['expdisk','edgedisk']:
-                print_log(f'''We have found an exponential disk with the following values.
-''',log,debug=cfg.general.debug)
-            if x['Type'] in ['sersic']:
-                print_log(f'''We have found a sersic component with the following values.
-''',log,debug=cfg.general.debug)
-            print_log(f'''The total mass of the disk is {x['Total SB']}   a central mass density {x['Central SB']}  with a M/L {float(cfg.galaxy.mass_to_light_ratio)}.
-The scale length is {x['scale length']}  and the scale height {x['scale height']}.
-The axis ratio is {x['axis ratio']}.
-''' ,log,debug=cfg.general.debug)
+        if galfit_file:
+            print_log(f"We found the following optical components:\n",log,debug=cfg.general.debug)
+            for x in components:
+                    # Components are returned as [type,integrated magnitude,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]
+                if x['Type'] in ['expdisk','edgedisk']:
+                    print_log(f'''We have found an exponential disk with the following values.
+    ''',log,debug=cfg.general.debug)
+                if x['Type'] in ['sersic']:
+                    print_log(f'''We have found a sersic component with the following values.
+    ''',log,debug=cfg.general.debug)
+                print_log(f'''The total mass of the disk is {x['Total SB']}   a central mass density {x['Central SB']}  with a M/L {float(cfg.RC_Construction.mass_to_light_ratio)}.
+    The scale length is {x['scale length']}  and the scale height {x['scale height']}.
+    The axis ratio is {x['axis ratio']}.
+    ''' ,log,debug=cfg.general.debug)
 
 
 
-    ######################################### Read the gas profiles and RC ################################################
-    radii,gas_profile, total_rc,total_rc_err,scaleheights  = get_gas_profiles(cfg.galaxy.gas_file,log=log,debug =cfg.general.debug)
+        ######################################### Read the gas profiles and RC ################################################
+        radii,gas_profile, total_rc,total_rc_err,scaleheights  = get_gas_profiles(cfg.RC_Construction.gas_file,log=log,debug =cfg.general.debug)
 
-    if gas_profile[1] == 'M_SOLAR/PC^2':
-        correct_rad = ensure_kpc_radii(radii,distance=cfg.galaxy.distance)
-        print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(correct_rad[2:],np.array(gas_profile[2:],dtype=float)):.2e}
-and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
-''' ,log,screen= True)
+        if gas_profile[1] == 'M_SOLAR/PC^2':
+            correct_rad = ensure_kpc_radii(radii,distance=cfg.general.distance)
+            print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(correct_rad[2:],np.array(gas_profile[2:],dtype=float)):.2e}
+    and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
+    ''' ,log,screen= True)
 
 
-    ########################################## Make a plot with the extracted profiles ######################3
-    plot_profiles(radii, gas_profile,optical_profiles,\
-        distance =float(cfg.galaxy.distance),\
-        output_dir = cfg.general.output_dir, log=log)
-    '''
-    comb = []
-    for x in range(len(optical_profiles['RADI'][2:])):
-        comb.append(f"{optical_profiles['RADI'][x+2]:.2f} {optical_profiles['DISK_STELLAR'][x+2]:.2f};" )
+        ########################################## Make a plot with the extracted profiles ######################3
+        plot_profiles(radii, gas_profile,optical_profiles,\
+            distance =float(cfg.general.distance),\
+            output_dir = cfg.general.output_dir, log=log)
 
-    print(f"{''.join(comb)}")
-    print(f"{', '.join([f'{x:.2f}' for x in optical_profiles['RADI'][2:]])}")
-    '''
-    ########################################## Make a nice file with all the different components as a column ######################3
-    write_profiles(radii, gas_profile,total_rc,optical_profiles,\
-        distance =float(cfg.galaxy.distance), errors = total_rc_err ,\
-        output_dir = cfg.general.output_dir, log=log)
-    ######################################### Convert to Rotation curves ################################################
-    if cfg.galaxy.scaleheight[0] == 0.:
-        opt_h_z = [cfg.galaxy.scaleheight[0],None]
+        ########################################## Make a nice file with all the different components as a column ######################3
+        write_profiles(radii, gas_profile,total_rc,optical_profiles,\
+            distance =float(cfg.general.distance), errors = total_rc_err ,\
+            output_dir = cfg.general.output_dir, log=log)
+        ######################################### Convert to Rotation curves ################################################
+        if cfg.RC_Construction.scaleheight[0] == 0.:
+            opt_h_z = [cfg.RC_Construction.scaleheight[0],None]
+        else:
+            opt_h_z = cfg.RC_Construction.scaleheight
+        if cfg.RC_Construction.gas_scaleheight[1]:
+            cfg.RC_Construction.gas_scaleheight[1]=cfg.RC_Construction.gas_scaleheight[1].lower()
+
+        if cfg.RC_Construction.gas_scaleheight[1] == 'tir':
+            gas_hz = [np.nanmean(scaleheights[0,1]),scaleheights[2]]
+        elif cfg.RC_Construction.gas_scaleheight[0] != 0:
+            gas_hz = cfg.RC_Construction.gas_scaleheight
+        else:
+            gas_hz= [0.,None]
+
+        derived_RCs = convert_dens_rc(radii, optical_profiles, gas_profile,\
+                components,distance =cfg.general.distance,
+                galfit_file = galfit_file,opt_h_z = opt_h_z,
+                gas_scaleheight=gas_hz,output_dir=cfg.general.output_dir)
+
+        write_header(distance=cfg.general.distance,MLratio=cfg.RC_Construction.mass_to_light_ratio,\
+            opt_scaleheight=opt_h_z,gas_scaleheight=gas_hz,\
+            output_dir = cfg.general.output_dir, file= cfg.general.RC_file)
+        write_RCs(derived_RCs,total_rc,total_rc_err, log = log, \
+                    output_dir = cfg.general.output_dir, file= cfg.general.RC_file)
     else:
-        opt_h_z = cfg.galaxy.scaleheight
-    if cfg.galaxy.gas_scaleheight[1]:
-        cfg.galaxy.gas_scaleheight[1]=cfg.galaxy.gas_scaleheight[1].lower()
-
-    if cfg.galaxy.gas_scaleheight[1] == 'tir':
-        gas_hz = [np.nanmean(scaleheights[0,1]),scaleheights[2]]
-    elif cfg.galaxy.gas_scaleheight[0] != 0:
-        gas_hz = cfg.galaxy.gas_scaleheight
-    else:
-        gas_hz= [0.,None]
-
-    derived_RCs = convert_dens_rc(radii, optical_profiles, gas_profile,\
-            components,distance =float(cfg.galaxy.distance),
-            galfit_file = galfit_file,opt_h_z = opt_h_z,
-            gas_scaleheight=gas_hz,output_dir=cfg.general.output_dir)
-    print(derived_RCs)
-    write_RCs(derived_RCs,total_rc,total_rc_err, log = log, \
-                output_dir = cfg.general.output_dir)
-
-
+        print_log(f'We start to read the RCs',log)
+        derived_RCs,total_rc,total_rc_err = read_RCs(dir=cfg.general.output_dir, file=cfg.general.RC_file)
+        print_log(f'We managed to read the RCs',log)
 
     ######################################### Run our Bayesian interactive fitter thingy ################################################
 
     if  cfg.fitting.enable:
-        radii = ensure_kpc_radii(radii,distance=cfg.galaxy.distance,log=log )
-        rotmass_main(radii,derived_RCs, total_rc,total_rc_err,out_dir = cfg.general.output_dir,rotmass_settings=cfg.fitting,log_directory=cfg.general.log_directory,log=log,debug=cfg.general.debug)
+        if not os.path.isdir( f'{cfg.general.output_dir}{cfg.fitting.HALO}/'):
+            os.mkdir( f'{cfg.general.output_dir}{cfg.fitting.HALO}/')
+        radii = ensure_kpc_radii(derived_RCs[0],distance=cfg.general.distance,log=log )
+        rotmass_main(radii,derived_RCs, total_rc,total_rc_err,\
+        out_dir = f'{cfg.general.output_dir}{cfg.fitting.HALO}/',\
+        rotmass_settings=cfg.fitting,log_directory=cfg.general.log_directory,\
+        results_file = cfg.fitting.results_file,\
+        log=log,debug=cfg.general.debug)
 
 if __name__ =="__main__":
     main()

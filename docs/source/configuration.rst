@@ -63,9 +63,21 @@ General Keywords
 
   Switch for printing debug messages in the log. If you are posting an issue with a log on the github please run once with this turned on.
 
-Galaxy Keywords
+**RC_File.txt**
+
+  *str, optional, default = 'RCs_For_Fitting.txt'*
+
+  File with all the input RCs in the pyROTMOD format. If RC_Contrustion is enabled this is where the RCs are written to if only fitting is enabled this is where the RCs are obtained from.
+
+RC_Construction Keywords
 --------
-*Specified with general*
+*Specified with RC_Construction*
+
+**enable**
+
+  *bool, optional, default =True*
+
+  Whether to construct the RC from the density files
 
 **optical_file**: null
 
@@ -109,6 +121,11 @@ Fitting Keywords
 --------
 *Specified with fitting*
 
+**enable**
+
+  *bool, optional, default =True*
+
+  Run the Bayesian Fitting.
 
 **negative_values**:
 
