@@ -82,35 +82,43 @@ configuration_file = ''')
     cfg = OmegaConf.merge(cfg,inputconf)
     if cfg.general.debug:
         warnings.showwarning = warn_with_traceback
-
     cfg, log= check_input(cfg,default_output,default_log_directory,pyROTMOD.__version__)
-
     if cfg.RC_Construction.enable:
         try:
             optical_profiles,components,galfit_file,optical_vel = \
                 get_optical_profiles(cfg.RC_Construction.optical_file,\
                     distance= cfg.general.distance,exposure_time=cfg.RC_Construction.exposure_time,\
                     MLRatio= cfg.RC_Construction.mass_to_light_ratio,band = cfg.RC_Construction.band,\
-                    log= log)
+                    log= log,output_dir=cfg.general.output_dir)
         except Exception as e:
             print_log(f" We could not obtain the optical components and profiles because of {e}",log,debug=cfg.general.debug,screen=False)
             traceback.print_exc()
             raise InputError(f'We failed to retrieved the optical components from {cfg.RC_Construction.optical_file}')
 
-        if galfit_file:
-            print_log(f"We found the following optical components:\n",log,debug=cfg.general.debug)
-            for x in components:
-                    # Components are returned as [type,integrated magnitude,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]
-                if x['Type'] in ['expdisk','edgedisk']:
-                    print_log(f'''We have found an exponential disk with the following values.
-    ''',log,debug=cfg.general.debug)
-                if x['Type'] in ['sersic']:
-                    print_log(f'''We have found a sersic component with the following values.
-    ''',log,debug=cfg.general.debug)
-                print_log(f'''The total mass of the disk is {x['Total SB']}   a central mass density {x['Central SB']}  with a M/L {float(cfg.RC_Construction.mass_to_light_ratio)}.
-    The scale length is {x['scale length']}  and the scale height {x['scale height']}.
-    The axis ratio is {x['axis ratio']}.
-    ''' ,log,debug=cfg.general.debug)
+
+        print_log(f"We found the following optical components:\n",log,debug=cfg.general.debug)
+        print(components)
+        for x in components:
+                # Components are returned as [type,integrated magnitude,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]
+            if x['Type'] in ['expdisk','edgedisk']:
+                print_log(f'''We have found an exponential disk with the following values.
+''',log,debug=cfg.general.debug)
+            elif x['Type'] in ['sersic']:
+                print_log(f'''We have found a sersic component with the following values.
+''',log,debug=cfg.general.debug)
+            elif x['Type'] in ['hernquist']:
+                print_log(f'''We have found a hernquist component with the following values.
+''',log,debug=cfg.general.debug)
+            elif x['Type'] in ['random_disk','random_bulge']:
+                print_log(f'''We have found a hernquist component with the following values.
+''',log,debug=cfg.general.debug)
+            else:
+                print_log(f'''We have found a {x['Type']} component with the following values.
+''',log,debug=cfg.general.debug)
+            print_log(f'''The total mass of the disk is {x['Total SB']}   a central mass density {x['Central SB']}  with a M/L {float(cfg.RC_Construction.mass_to_light_ratio)}.
+The scale length is {x['scale length']}  and the scale height {x['scale height']}.
+The axis ratio is {x['axis ratio']}.
+''' ,log,debug=cfg.general.debug)
 
 
 
@@ -149,7 +157,7 @@ configuration_file = ''')
             gas_hz= [0.,None]
 
         derived_RCs = convert_dens_rc(radii, optical_profiles, gas_profile,\
-                components,distance =cfg.general.distance,
+                components,distance =cfg.general.distance,log=log,
                 galfit_file = galfit_file,opt_h_z = opt_h_z,
                 gas_scaleheight=gas_hz,output_dir=cfg.general.output_dir)
 
@@ -159,9 +167,9 @@ configuration_file = ''')
         write_RCs(derived_RCs,total_rc,total_rc_err, log = log, \
                     output_dir = cfg.general.output_dir, file= cfg.general.RC_file)
     else:
-        print_log(f'We start to read the RCs',log)
+        print_log(f'We start to read the RCs.\n',log)
         derived_RCs,total_rc,total_rc_err = read_RCs(dir=cfg.general.output_dir, file=cfg.general.RC_file)
-        print_log(f'We managed to read the RCs',log)
+        print_log(f'We managed to read the RCs.\n',log)
 
     ######################################### Run our Bayesian interactive fitter thingy ################################################
 

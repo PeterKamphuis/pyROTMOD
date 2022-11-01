@@ -26,6 +26,7 @@ class Galaxy_Settings:
     gas_file: Optional[str] = None
     scaleheight: List = field(default_factory=lambda: [0., None]) #If 0 use infinitely thin disks, if vertical mode is none as wel #vertical options are  ['exp', 'sech-sq','sech'] These do not apply to parametrized functions.
     gas_scaleheight: List = field(default_factory=lambda: [0., None]) #If 0 use infinitely thin disks, if vertical mode is none as wel #vertical options are  ['exp', 'sech-sq',''sech-simple'] set secon value to 'tir' to use tirific values
+    axis_ratio: float = 1.
     exposure_time: float = 1.
     mass_to_light_ratio: float = 1.0
     band: str='SPITZER3.6'

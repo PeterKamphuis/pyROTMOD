@@ -2,10 +2,10 @@ general:
   ncpu: 6
   log: log.txt
   debug: true
-galaxy:
+  distance: 28.9
+RC_Construction:
   optical_file: galfit.93
   gas_file: One_Step_Convergence.def
-  distance: 28.9
   band: 'SPITZER3.6'
   mass_to_light_ratio: 0.6
 fitting:

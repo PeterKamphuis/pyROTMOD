@@ -85,7 +85,15 @@ RC_Construction Keywords
 
   The file containing the optical light distributions. This can either be a galfit file or a table in a text file. In case of the latter the first column should be 'RADI' and specify the radii of the profile in kpc or arcsec.
   The units of every column should be specified on the second row.  Acceptable units are  'KM/S', 'M/S', 'M_SOLAR/PC^2', 'M_SOLAR/PC^2', 'MAG/ARCSEC^2' where the velocity profiles can not be mixed with luminosity or mass profiles.
-  Other columns can be EXPONTIAL_# or BULGE_# where the # indicates an integer number. In case multiple profiles are specified for EXPONENTIAL or BULGE their individual RCs
+  Other columns can be EXPONTIAL_#,HERNQUIST_#, SERSIC_#,  DENSITY_#, DISK_# ,BULGE_#  where the # indicates an integer number.
+  IF the input is in velocities the input is transfer directly to the RC fitting else the following scheme is maintained:
+  The profiles EXPONENTIAL and HERNQUIST are parameterized with their respective functions.
+  The SERSIC profiles are parameterized with an exponential when 0.75 < n < 1.25 and an hernquist profile when  3.75 < n < 4.25
+  The DISK and BULGE profiles are assumed to be unparameterized disk profiles
+  With the DENSITY an attempt will be made to fit the exponential or hernquist profiles or both and if it will be split according to the best reduced chi square.
+  In case the parameterisation fails a random disk will be assumed (EXP,SER,DENS) or the profile will be removed from the RC fitting (HERN, BULG)
+  In the RC fitting all components are combined and only a disk component (EXPONENTIAL,DISK,SERSIC) and a bulge component (HERNQUIST, BULGE) are used.
+  Note that we cannot yet convert random BULGE profiles hence they need to be in velocity to be included.
 
 **gas_file**: null
 
@@ -108,14 +116,34 @@ RC_Construction Keywords
 
 **mass_to_light_ratio**:
 
-  *float, optional, default = 0.6*
+  *float, optional, default = 1.0*
 
   Mass to light ratio to be used for converting the optical luminosity profiles to mass profiles
 
-**band**: SPITZER3.6
+**band**:
+
+  *str, optional , default = SPITZER3.6*
 
   Band to be used for magnitude to flux/luminosity conversion. This is only used if the input file is in MAG/ARCSEC^2 or when the input file is a galfit file.
 
+**scaleheight**
+
+  *list, optional, default = [0., None]*
+
+  scale height and vertical mode of the optical disks. If 0. or vertical mode = None infinitely thin disks are used.
+  vertical mode options are  ['exp', 'sech-sq','sech']. Anything in galfit file supersedes this input.
+**gas_scaleheight**
+
+  *list, optional, default = [0., None]*
+
+  scale height and vertical mode of the optical disks. If 0. or vertical mode = None infinitely thin disks are used.
+  vertical mode options are  ['exp', 'sech-sq','sech']. Anything in tirific file supersedes this input.
+
+**axis_ratio**
+
+  * float, optional, default = 1.*
+
+  axis ratio of the bulge. Anything in galfit file supersedes this input.
 
 Fitting Keywords
 --------

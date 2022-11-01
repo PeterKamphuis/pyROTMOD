@@ -159,15 +159,20 @@ def calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,DM_curve,function_va
                 low_curve = np.sqrt(function_variable_settings[key][1])*low_curve
             if function_variable_settings[key][2]:
                 high_curve = np.sqrt(function_variable_settings[key][2])*high_curve
-            if np.array_equal(low_curve,Baryonic_RC[key][0]):
-                combined_RC[disk_var[key]][1] = np.zeros(len(radii))
-            else:
-                combined_RC[disk_var[key]][1] = low_curve
-            if np.array_equal(high_curve,Baryonic_RC[key][0]):
-                combined_RC[disk_var[key]][2] = np.zeros(len(radii))
-            else:
-                combined_RC[disk_var[key]][2] = high_curve
 
+
+            if np.array_equal(low_curve,Baryonic_RC[key][0]) and np.array_equal(high_curve,Baryonic_RC[key][0]):
+                combined_RC[disk_var[key]][1] = np.zeros(len(radii))
+                combined_RC[disk_var[key]][2] = np.zeros(len(radii))
+            elif not np.array_equal(low_curve,Baryonic_RC[key][0]) and not np.array_equal(high_curve,Baryonic_RC[key][0]):
+                combined_RC[disk_var[key]][1] = low_curve
+                combined_RC[disk_var[key]][2] = high_curve
+            elif np.array_equal(low_curve,Baryonic_RC[key][0]):
+                combined_RC[disk_var[key]][1] = 2.*combined_RC[disk_var[key]][0]-high_curve
+                combined_RC[disk_var[key]][2] = high_curve
+            else:
+                combined_RC[disk_var[key]][2] = 2.*combined_RC[disk_var[key]][0]-low_curve
+                combined_RC[disk_var[key]][1] = low_curve
         else:
             combined_RC[disk_var[key]][1] = np.zeros(len(radii))
             combined_RC[disk_var[key]][2] = np.zeros(len(radii))
@@ -215,7 +220,38 @@ calculate_curves.__doc__ =f'''
 
  NOTE:
 '''
+def calculate_red_chisq(curves,parameters):
+    free_parameters=0
+    for var in parameters:
+        if parameters[var][3]:
+            free_parameters  += 1.
+    errors = [np.mean([x-y,z-x]) for x,y,z in zip(*curves['V_total'])]
+    Chi_2 = np.sum((curves['V_total'][0]-curves['V_fit'][0])**2/errors)
+    red_chisq = Chi_2/(len(curves['V_total'][0])-free_parameters)
+    return red_chisq
+calculate_red_chisq.__doc__ =f'''
+ NAME:
+    calculate_curves
 
+ PURPOSE:
+    calculate a the reduced chi square of the fit
+ CATEGORY:
+    rotmass
+
+ INPUTS:
+    curves= the fitted curves +observed curve
+    parameters = the parameters in the total curve
+ OPTIONAL INPUTS:
+
+ OUTPUTS:
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
 
 def create_formula_code(initial_formula,replace_dict,function_name='python_formula' ,log=None,debug =False):
     lines=initial_formula.__doc__.split('\n')
@@ -275,7 +311,8 @@ create_formula_code.__doc__ =f'''
 '''
 
 def get_baryonic_RC(radii,total_RC,derived_RCs,variables,
-                    V_total_error=[0.,0.,0.],baryonic_error= {'Empty':True},debug=False):
+                    V_total_error=[0.,0.,0.],baryonic_error= {'Empty':True},
+                    log = None, debug=False):
     if 'Empty' not in baryonic_error:
         baryonic_error['Empty']=False
     #We can strip the total rc and the radius from their indicators
@@ -296,15 +333,15 @@ def get_baryonic_RC(radii,total_RC,derived_RCs,variables,
         if derived_RCs[x][0] == 'RADI':
             rad_in = np.array(derived_RCs[x][2:])
             component = 'Empty'
-        elif derived_RCs[x][0][:3] == 'EXP' and 'MD' in variables:
+        elif derived_RCs[x][0][:6] in ['EXPONE','DISK_S','SERSIC'] and 'MD' in variables:
             component = 'MD'
-        elif (derived_RCs[x][0][:3] == 'SER' or derived_RCs[x][0][:3] == 'BUL') and 'MB' in variables:
+        elif derived_RCs[x][0][:3] in ['BUL','HER'] and 'MB' in variables:
             component = 'MB'
         elif derived_RCs[x][0][:6] == 'DISK_G' and 'MG' in variables:
             component = 'MG'
         else:
-            if derived_RCs[x][0][:3] not in ['EXP','BUL','SER','DIS'] and derived_RCs[x][0][:6] != 'DISK_G':
-                print(f"We do not recognize this type ({derived_RCs[x][0][:3]}) of RC and don't know what to do with it")
+            if derived_RCs[x][0][:3] not in ['EXP','BUL','SER','DIS','HER']:
+                print_log(f"We do not recognize this type ({derived_RCs[x][0][:3]}) of RC and don't know what to do with it",log)
                 exit()
         if component != 'Empty':
             if component not in RC:
@@ -366,7 +403,7 @@ get_baryonic_RC.__doc__ =f'''
 def initial_guess(fit_function,radii,total_RC,function_variable_settings,\
                   function_name='curve_np',debug =False,log=None,negative = False):
 
-
+    from numpy import nan
     #code = f'sum_of_square =lambda {",".join([x for x in fit_function["variables"] ])}: np.sum(((np.array([{", ".join([str(i) for i in total_RC[0]])}],dtype=float)-{function_name}({",".join([x for x in fit_function["variables"] ])}))/np.array([{", ".join([str(i) for i in total_RC[1]])}],dtype=float))**2)'
     #exec(code,globals())
 
@@ -374,6 +411,7 @@ def initial_guess(fit_function,radii,total_RC,function_variable_settings,\
     guess_variables = copy.deepcopy(function_variable_settings)
     #First set the model
     #model = lmfit.Model(sum_of_square)
+
     model = lmfit.Model(fit_function['function'])
     no_input = False
     for variable in guess_variables:
@@ -407,9 +445,12 @@ limits are between {guess_variables[variable][1]} - {guess_variables[variable][2
     while no_errors:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="invalid value encountered in sqrt")
-            initial_fit = model.fit(data=total_RC[0], params=parameters, r=radii,method='differential_evolution'\
-                                     , nan_policy='omit',scale_covar=False)
 
+            #initial_fit = model.fit(data=total_RC[0], params=parameters, r=radii,method='differential_evolution'\
+            #                         , nan_policy='omit',scale_covar=False)
+
+            initial_fit = model.fit(data=total_RC[0], params=parameters, r=radii,method='differential_evolution'\
+                                     ,nan_policy='omit',scale_covar=False)
             if not initial_fit.errorbars or not initial_fit.success:
                 print(f"\r The initial guess did not produce errors, retrying with new guesses: {counter/float(500.)*100.:.1f} % of maximum attempts.", end =" ",flush = True)
                 for variable in parameters:
@@ -463,7 +504,8 @@ initial_guess.__doc__ =f'''
 '''
 
 def mcmc_run(fit_function,radii,total_RC,function_variable_settings,original_variable_settings,\
-                  out_dir = None,log_directory=None,debug=False,negative=False,log=None,steps=2000.):
+                  out_dir = None,log_directory=None,debug=False,negative=False,log=None,steps=2000.,\
+                  results_name = 'MCMC'):
     steps=int(steps*(len(fit_function['variables'])-1))
     burning=int(steps/4.)
     #First set the model
@@ -488,7 +530,7 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
     parameters = model.make_params()
     emcee_kws = dict(steps=steps, burn=burning, thin=10, is_weighted=True)
     no_succes =True
-
+    count = 0
     while no_succes:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
@@ -497,31 +539,53 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
             result_emcee = model.fit(data=total_RC[0], r=radii, params=parameters, method='emcee',nan_policy='omit',
                              fit_kws=emcee_kws,weights=1./total_RC[1])
             no_succes=False
+            triggered =False
             # we have to check that our results are only limited by the boundaries in the user has set them
             for variable in original_variable_settings:
                 if function_variable_settings[variable][3]:
-                    mini = result_emcee.params[variable].value-result_emcee.params[variable].stderr
+                    prev_bound = [parameters[variable].min,parameters[variable].max]
+                    mini = result_emcee.params[variable].value-3.*result_emcee.params[variable].stderr
                     if not negative and mini < 0.:
                         mini = 1e-7
-                    if mini <\
-                                            result_emcee.params[variable].min or\
-                                            result_emcee.params[variable].value+\
-                                            result_emcee.params[variable].stderr >\
-                                            result_emcee.params[variable].max:
-                        if not original_variable_settings[variable][1] or not \
-                            original_variable_settings[variable][2]:
-                            print_log(f''' The boundaries for {variable} were too small, we sampled an incorrect area
-    Changing the parameter and its boundaries and trying again.
-    ''',log)
-                            no_succes =True
-                            parameters[variable].value = result_emcee.params[variable].value
-                            parameters[variable].min = result_emcee.params[variable].value - 10.*result_emcee.params[variable].stderr
-                            parameters[variable].max = result_emcee.params[variable].value + 10.*result_emcee.params[variable].stderr
-                            print_log(f''' Setting {variable} = {parameters[variable].value} between {parameters[variable].min}-{parameters[variable].max}
-    ''',log)
-                        else:
+                    if mini < result_emcee.params[variable].min:
+                        triggered =True
+                        parameters[variable].min = result_emcee.params[variable].value - 10.*result_emcee.params[variable].stderr
+                        if not negative and parameters[variable].min < 0.:
+                                parameters[variable].min = 1e-7
+                        if original_variable_settings[variable][1]:
+                            if original_variable_settings[variable][1] > parameters[variable].min:
+                                parameters[variable].min=original_variable_settings[variable][1]
+
+
+                    if result_emcee.params[variable].value+\
+                        3.*result_emcee.params[variable].stderr >\
+                        result_emcee.params[variable].max:
+                        triggered =True
+                        parameters[variable].max = result_emcee.params[variable].value + 10.*result_emcee.params[variable].stderr
+                        if original_variable_settings[variable][2]:
+                            if original_variable_settings[variable][2] < parameters[variable].max:
+                                parameters[variable].max=original_variable_settings[variable][2]
+
+                    if np.array_equal(prev_bound, [parameters[variable].min,parameters[variable].max]) :
+                        if triggered:
                             print_log(f''' The boundaries for {variable} were too small, consider changing them
-    ''',log)
+''',log)
+                        else:
+                            print_log(f'''{variable} is fitted wel in the boundaries {parameters[variable].min} - {parameters[variable].max}.
+''',log)
+                    else:
+                        count += 1
+                        if count >= 10:
+                            print_log(f''' Your boundaries are not converging. Condidering fitting less variables or manually fix the boundaries
+''',log)
+                        else:
+                            print_log(f''' The boundaries for {variable} were too small, we sampled an incorrect area
+Changing the parameter and its boundaries and trying again.
+''',log)
+                            parameters[variable].value = result_emcee.params[variable].value
+                            print_log(f''' Setting {variable} = {parameters[variable].value} between {parameters[variable].min}-{parameters[variable].max}
+''',log)
+                            no_succes =True
 
 
     print_log(result_emcee.fit_report(),log,screen=False)
@@ -532,7 +596,7 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
         label_dictionary = {'MD':'$\mathrm{M/L_{disk}}$',
                          'MB':'$\mathrm{M/L_{bulge}}$',
                          'MG':'$\mathrm{M/L_{gas}}$',
-                         'RHO_C': '$\mathrm{\\rho_{c}\\times 10^{-3}(M_{\\odot}/pc^{3})}$',
+                         'RHO_0': '$\mathrm{\\rho_{c}\\times 10^{-3}(M_{\\odot}/pc^{3})}$',
                          'R_C': '$ \mathrm{R_{c}(kpc)}$',
                          'C':'$\mathrm{c}$',
                          'R200':'$ \mathrm{R_{200}(kpc)}$',
@@ -542,7 +606,7 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
         lab = [label_dictionary[x] for x in result_emcee.params if function_variable_settings[x][3]]
         fig = corner.corner(result_emcee.flatchain, quantiles=[0.16, 0.5, 0.84],show_titles=True,
                         title_kwargs={"fontsize": 15},labels=lab)
-        fig.savefig(f"{out_dir}MCMC_COV_Fits.pdf",dpi=300)
+        fig.savefig(f"{out_dir}{results_name}_COV_Fits.pdf",dpi=300)
     print_log(f''' MCMC_RUN: We find the following parameters for this fit.''',log)
 
     for variable in function_variable_settings:
@@ -586,12 +650,14 @@ mcmc_run.__doc__ =f'''
 '''
 
 def write_output_file(final_variable_fits,result_emcee,output_dir='./',\
-                results_file = 'Final_Results.txt'):
+                results_file = 'Final_Results.txt', red_chisq= None):
     variables_fitted = [x for x in final_variable_fits]
     variable_line = f'{"Variable":>15s} {"Value":>15s} {"Error":>15s} {"Lower Bound":>15s} {"Upper Bound":>15s} \n'
     with open(f'{output_dir}{results_file}.txt','w') as file:
         file.write('# These are the results from pyROTMOD. \n')
-        file.write('# An error Fixed indicates a parameter that is not fitted. \n')
+        file.write('# An error designated as Fixed indicates a parameter that is not fitted. \n')
+        file.write(f'# The Reduced Xi^2 for this fit is {red_chisq}.\n')
+        file.write(f'# The Bayesian Information Criterion for this fit is {result_emcee.bic}.\n')
         file.write(variable_line)
         for variable in final_variable_fits:
             if final_variable_fits[variable][4]:
@@ -617,14 +683,6 @@ def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False):
 
                     }
     styles = ['-','-.',':','--','-','-.',':','--']
-
-    if 'V_fit' in curves:
-        figure,  (ax1, ax2) = plt.subplots(nrows=2, ncols=1,figsize=(10,10), gridspec_kw={'height_ratios': [3, 1]})
-    else:
-         figure = plt.figure(figsize=(10,7.5) , dpi=300, facecolor='w', edgecolor='k')
-         ax1 = figure.add_subplot(1,1,1)
-
-
     labelfont = {'family': 'Times New Roman',
              'weight': 'bold',
              'size': 14}
@@ -632,6 +690,12 @@ def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False):
     plt.rcParams['xtick.direction'] = 'in'
     plt.rcParams['ytick.direction'] = 'in'
     plt.rc('axes', linewidth=2)
+    if 'V_fit' in curves:
+        figure,  (ax1, ax2) = plt.subplots(nrows=2, ncols=1,figsize=(10,10), gridspec_kw={'height_ratios': [3, 1]})
+    else:
+        figure = plt.figure(figsize=(10,7.5) , dpi=300, facecolor='w', edgecolor='k')
+        ax1 = figure.add_subplot(1,1,1)
+
 
     for rcs in curves:
         if rcs != 'RADI':
@@ -667,12 +731,8 @@ def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False):
         buffer = (ymax-ymin)/20.
         ax2.set_ylim(ymin-buffer,ymax+buffer)
         if variables:
-            free_parameters=0
-            for var in variables:
-                if variables[var][3]:
-                    free_parameters  += 1.
-            Chi_2 = np.sum((curves['V_total'][0]-curves['V_fit'][0])**2/curves['V_total'][1])
-            red_Chi_2 = Chi_2/(len(curves['V_total'][0])-free_parameters)
+            red_Chi_2 = calculate_red_chisq(curves,variables)
+
             ax2.text(1.0,1.0,f'''Red. $\chi^{{2}}$ = {red_Chi_2:.4f}''',rotation=0, va='top',ha='right', color='black',\
               bbox=dict(facecolor='white',edgecolor='white',pad=0.5,alpha=0.),\
               zorder=7, backgroundcolor= 'white',fontdict=dict(weight='bold',size=16),transform = ax2.transAxes)
@@ -681,6 +741,8 @@ def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False):
         raise InputError(f"An interactive mode is not available yet, feel free to right a Gui. Here you can plot the curves")
     else:
         plt.savefig(name,dpi=300)
+    #return red_Chi_2
+
 
 
 plot_curves.__doc__ =f'''
@@ -713,27 +775,29 @@ def rotmass_main(radii, derived_RCs, total_RC,total_RC_err,no_negative =True,out
     #Dictionary for translate RC and mass parameter for the baryonic disks
     disk_var = {'MD': 'V_disk','MG': 'V_gas','MB': 'V_bulge' }
     # First combine all parameters that to be included in the total fit in a single dictionary
+
     function_variable_settings = set_fitting_parameters(rotmass_settings,disk_var)
 
     # Then we will group the baryonic  rotation curves that are define,the error of the total_RC is added.
     # When introducing errors on the RCs of the curves we need to do that here.
     radii ,total_RC,Baryonic_RC= get_baryonic_RC(radii,total_RC,derived_RCs,\
-                                            function_variable_settings,V_total_error=total_RC_err)
+                                            function_variable_settings,\
+                                            V_total_error=total_RC_err,log=log)
 
     if debug:
-        print_log(f'We will use the following initial RCs for the mass decomposition',log)
+        print_log(f'We will use the following initial RCs for the mass decomposition. \n',log)
         print_log(f'''Radi = {radii}
-total RC = {total_RC[0]}, error = {total_RC[1]}''',log)
+total RC = {total_RC[0]}, error = {total_RC[1]}. \n''',log)
         for key in Baryonic_RC:
-            print_log(f'{key} = {Baryonic_RC[key]}',log)
+            print_log(f'{key} = {Baryonic_RC[key]} \n',log)
     # Then we check for which parameters we actaully have an RC
     for component in disk_var:
         if component in function_variable_settings and component not in Baryonic_RC:
             function_variable_settings.pop(component)
     if debug:
-        print_log(f'We will use the following initial fitting settings',log)
+        print_log(f'We will use the following initial fitting settings: \n',log)
         for key in function_variable_settings:
-            print_log(f'{key} = {function_variable_settings[key]}',log)
+            print_log(f'{key} = {function_variable_settings[key]} \n',log)
 
     # Construct the function to be fitted, note that the actual fit_curve is
     DM_curve,full_curve,check_curve = build_curve(function_variable_settings,disk_var,\
@@ -751,8 +815,8 @@ for the {rotmass_settings} DM halo the parameters are {','.join([key for key in 
         exit()
         #Start GUI with default settings or input yml settings. these are already in function_parameters
     else:
+
         plot_curves(f'{log_directory}/{results_file}_Input_Curves.pdf', current_curves,variables=function_variable_settings, halo=rotmass_settings['HALO'])
-        pass
 
         #Then download settings
 
@@ -769,15 +833,21 @@ for the {rotmass_settings} DM halo the parameters are {','.join([key for key in 
 
     final_variable_fits,emcee_results = mcmc_run(full_curve,radii,total_RC,\
                             initial_variable_settings,function_variable_settings,\
-                            out_dir = out_dir, debug=debug,log=log,negative=rotmass_settings.negative_values,steps=rotmass_settings.mcmc_steps)
-    shutil.copy(f'{out_dir}MCMC_COV_Fits.pdf',f'{out_dir}{results_file}_MCMC_COV_Fits.pdf')
+                            out_dir = out_dir, debug=debug,log=log,\
+                            negative=rotmass_settings.negative_values,\
+                            steps=rotmass_settings.mcmc_steps,
+                            results_name= results_file)
+
     current_curves = calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,\
                                         DM_curve,final_variable_fits,disk_var)
     print_log('Plotting and writing',log)
     plot_curves(f'{out_dir}/{results_file}_Final_Curves.pdf', current_curves ,variables=final_variable_fits,halo=rotmass_settings['HALO'])
 
+
+    red_chisq = calculate_red_chisq(current_curves,final_variable_fits)
+
     write_output_file(final_variable_fits,emcee_results,output_dir=out_dir,\
-                results_file = results_file)
+                results_file = results_file, red_chisq = red_chisq)
 
 
 rotmass_main.__doc__ =f'''

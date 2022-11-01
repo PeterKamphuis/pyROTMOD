@@ -19,6 +19,52 @@ from datetime import datetime
 class InputError(Exception):
     pass
 
+
+def create_directory(directory,base_directory,debug=False):
+    split_directory = [x for x in directory.split('/') if x]
+    split_directory_clean = [x for x in directory.split('/') if x]
+    split_base = [x for x in base_directory.split('/') if x]
+    #First remove the base from the directory but only if the first directories are the same
+    if split_directory[0] == split_base[0]:
+        for dirs,dirs2 in zip(split_base,split_directory):
+            if dirs == dirs2:
+                split_directory_clean.remove(dirs2)
+            else:
+                if dirs != split_base[-1]:
+                    raise InputError(f"You are not arranging the directory input properly ({directory},{base_directory}).")
+    for new_dir in split_directory_clean:
+        if not os.path.isdir(f"{base_directory}/{new_dir}"):
+            os.mkdir(f"{base_directory}/{new_dir}")
+        base_directory = f"{base_directory}/{new_dir}"
+create_directory.__doc__ =f'''
+ NAME:
+    create_directory
+
+ PURPOSE:
+    create a directory recursively if it does not exists and strip leading directories when the same fro the base directory and directory to create
+
+ CATEGORY:
+    support
+
+ INPUTS:
+    directory = string with directory to be created
+    base_directory = string with directory that exists and from where to start the check from
+
+ OPTIONAL INPUTS:
+    debug = False
+
+ OUTPUTS:
+
+ OPTIONAL OUTPUTS:
+    The requested directory is created but only if it does not yet exist
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
+
 # function for converting kpc to arcsec and vice versa
 
 def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', \
@@ -103,6 +149,20 @@ def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', \
 def check_input(cfg,default_output,default_log_directory,version,debug=False):
     if cfg.general.output_dir[-1] != '/':
         cfg.general.output_dir = f"{cfg.general.output_dir}/"
+    if cfg.general.output_dir[0] == '/':
+        first_dir= cfg.general.output_dir.split('/')[1]
+    else:
+        first_dir= cfg.general.output_dir.split('/')[0]
+    if cfg.general.log_directory[-1] != '/':
+        cfg.general.log_directory = f"{cfg.general.log_directory}/"
+    if cfg.general.log_directory[0] == '/':
+        cfg.general.log_directory = cfg.general.log_directory[1:]
+
+    first_log= cfg.general.log_directory.split('/')[0]
+    if first_dir != first_log:
+        cfg.general.log_directory = f'{cfg.general.output_dir}{cfg.general.log_directory}'
+    else:
+        cfg.general.log_directory = f'/{cfg.general.log_directory}'
 
     using_default=False
     if default_output != cfg.general.output_dir:
@@ -112,18 +172,7 @@ def check_input(cfg,default_output,default_log_directory,version,debug=False):
 
     if not os.path.isdir(cfg.general.output_dir):
         os.mkdir(cfg.general.output_dir)
-
-    if not os.path.isdir(f"{cfg.general.output_dir}/Logs"):
-        os.mkdir(f"{cfg.general.output_dir}/Logs")
-
-    if not os.path.isdir(f"{cfg.general.log_directory}"):
-        os.mkdir(f"{cfg.general.log_directory}")
-    else:
-        if using_default:
-            time.sleep(1.)
-            cfg.general.log_directory=f'{cfg.general.output_dir}Logs/{datetime.now().strftime("%H:%M:%S-%d-%m-%Y")}/'
-            os.mkdir(f"{cfg.general.log_directory}")
-
+    create_directory(cfg.general.log_directory,cfg.general.output_dir)
     #write the input to the log dir.
     with open(f"{cfg.general.log_directory}run_input.yml",'w') as input_write:
         input_write.write(OmegaConf.to_yaml(cfg))
@@ -180,7 +229,10 @@ This is version {version} of the program.
                         pass
 
                 for i in [3,4]:
-                    tmp[i]=bool(tmp[i])
+                    try:
+                        tmp[i]=eval(tmp[i])
+                    except TypeError:
+                        tmp[i]=bool(tmp[i])
                 setattr(cfg.fitting,key,tmp)
     return cfg,log
 check_input.__doc__ =f'''
@@ -210,14 +262,17 @@ check_input.__doc__ =f'''
 
 '''
 
-def integrate_surface_density(radii,density, log=None):
+def integrate_surface_density(radii,density, log=None, calc_ring_area= False):
 
     ringarea= [0 if radii[0] == 0 else np.pi*((radii[0]+radii[1])/2.)**2]
     ringarea = np.hstack((ringarea,
                          [np.pi*(((y+z)/2.)**2-((y+x)/2.)**2) for x,y,z in zip(radii,radii[1:],radii[2:])],
                          [np.pi*((radii[-1]+0.5*(radii[-1]-radii[-2]))**2-((radii[-1]+radii[-2])/2.)**2)]
                          ))
+    #radii are in kpc and density in M_sun/pc^2
     ringarea = ringarea*1000.**2
+    if calc_ring_area:
+        return ringarea
     #print(ringarea,density)
     mass = np.sum([x*y for x,y in zip(ringarea,density)])
     return mass
@@ -230,7 +285,7 @@ def read_columns(filename,optical=True,gas=False,debug=False,log=None):
     units = [x.strip().upper() for x in lines[1].split()]
 
     possible_radius_units = ['KPC','PC','ARCSEC','ARCMIN','DEGREE',]
-    allowed_types = ['EXPONENTIAL','SERSIC','DISK','BULGE']
+    allowed_types = ['EXPONENTIAL','SERSIC','DISK','BULGE','DENSITY','HERNQUIST']
     possible_units = ['L_SOLAR/PC^2','M_SOLAR/PC^2','MAG/ARCSEC^2','KM/S','M/S']
     allowed_velocities = ['V_OBS','V_OBS_ERR']
     for i,types in enumerate(input_columns):
@@ -301,13 +356,15 @@ def plot_profiles(in_radii,gas_profile,optical_profiles,distance = 1., \
         lower_ind = np.where(np.array(opt_radii[2:],dtype=float) > float(radii[2])/2.)[0][0]
     else:
         print_log(f'''The units of {gas_profile[0]} are not M_SOLAR/PC^2.
-Not plotting this profile.''',log )
+Not plotting this profile.
+''',log )
     tot_opt = [0 for x in opt_radii[2:]]
     for x in optical_profiles:
         if x != 'RADI':
             if optical_profiles[x][1] != 'M_SOLAR/PC^2':
                 print_log(f'''The units of {optical_profiles[x][0]} are not M_SOLAR/PC^2.
-Not plotting this profile.''',log )
+Not plotting this profile.
+''',log )
                 continue
             plt.plot(opt_radii[2:],np.array(optical_profiles[x][2:]), label = optical_profiles[x][0])
             if np.nanmax(np.array(optical_profiles[x][2+lower_ind:])) > max:
@@ -402,7 +459,6 @@ def read_RCs(dir= './', file= 'You_Should_Set_A_File_RC.txt'):
         errind -= 1
     err_rc = RCs[errind]
     del RCs[errind]
-    print(RCs)
     return RCs,totalrc,err_rc
     #           RCs
 
