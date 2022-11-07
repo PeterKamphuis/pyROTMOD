@@ -246,91 +246,251 @@ def fit_profile(radii,density,components,function='EXPONENTIAL_1',output_dir = '
         count = type_split[1]
     except:
         count='1'
-    if type[0:3] =='EXP':
-        fit_function= exponential
-        initial = [density[0],radii[density < density[0]/np.e ][0]]
-        name='Exponential'
+    fit_function_dictionary = {'EXPONENTIAL':
+                {'initial':[density[0],radii[density < density[0]/np.e ][0]],
+                'out':['Central SB','scale length'],
+                'function': exponential,
+                'Type':'expdisk,
+                'max_red_sqr': 1000,
+                'name':'Exponential',
+                'fail':'random_disk'},
+                'HERNQUIST':
+                {'initial':[components['Total SB'].value,float(components['R effective'].value/1.8153)][0]],
+                'out':['Total SB','scale length'],
+                'Type':'hernquist',
+                'max_red_sqr': 3000,
+                'name':'Hernquist',
+                'fail':'failed'},
+                'SERSIC':
+                {'initial':[density[radii < components['R effective'].value][0],\
+                            components['R effective'].value, 2.],
+                'out':[None,'R effective','sersic index'],
+                'Type':'sersic',
+                'max_red_sqr': 1000,
+                'name':'Sersic',
+                'fail':'random_disk'},
+                'EXP+HERN':
+                {'initial':[components['Total SB'].value/3.,float(components['R effective'].value/(2.*1.8153)),\
+                                density[0]/2.,radii[density < density[0]/np.e][0]],
+                'out':[['Total SB','scale length'],['Central SB','scale length']],
+                'function': fit_function = lambda r,mass,hern_length,central,scale_length:\
+                        hernquist_profile(r,mass,hern_length) + exponential(r,central,scale_length),
+                'separate_functions': [hernquist_profile,exponential],
+                'Type':'split',
+                'max_red_sqr': 3000,
+                'name':'Exp_Hern',
+                'fail':'failed'},
+                }
 
-    elif type[0:3] =='HER':
-        #fit_function = lambda r,scale_length:\
-        #        hernquist_profile(r,components['Total SB'].value,scale_length)
-        fit_function=hernquist_profile
-        initial = [components['Total SB'].value,float(components['R effective'].value/1.8153)]
-        name='Hernquist'
-    elif type[0:3] =='SER':
-        fit_function= sersic
-        initial = [density[radii < components['R effective'].value][0],\
-                    components['R effective'].value, 2.]
-        name='Sersic'
-    elif type[0:3] == 'DEN':
 
-        fit_function = lambda r,mass,hern_length,central,scale_length:\
-                hernquist_profile(r,mass,hern_length) + exponential(r,central,scale_length)
-        guess_scale = radii[density < density[0]/np.e][0]
-        initial= [components['Total SB'].value/3.,float(components['R effective'].value/(2.*1.8153)),\
-                    density[0]/2.,guess_scale]
-        name= 'Combined'
-    # if this is specified as an exponential disk without the parameters defined we fit a expoenential
 
-    #try:
-    print(initial)
-    print('123344')
-    tot_parameters, tot_covariance = curve_fit(fit_function, radii[density > 0.],\
-                    density[density > 0.],sigma= 0.1*density[density > 0.],\
-                    p0=initial,maxfev=5000)
-
-    print(tot_parameters)
-    print('123344')
-    # let's see if our fit has a reasonable reduced chi square
-    profile = fit_function(radii,*tot_parameters)
-    components['Total SB'] = sup.integrate_surface_density(radii,density)*unit.Msun
-    red_chi = np.sum((density[density > 0.]-profile[density > 0.])**2/(0.1*density[density > 0.]))
-    red_chisq = red_chi/(len(density[density > 0.])-len(tot_parameters))
-    plot_exponentials(radii,density,profile,name=name,
-                    output_dir=output_dir,red_chi= red_chisq,count=count)
-    sup.print_log(f'''FIT_PROFILE: We fit the {name} with a reduced Chi^2 = {red_chisq} with a 10% error.''', log)
-    result = 'ok'
-    if red_chisq > 1000.:
-        sup.print_log(f'''FIT_EXPONENTIAL:: You claim the profile is an {name}, but the fit is a really bad.''',log)
-        profile = density
-        exit()
-        if type[0:3] in ['SER','BUL','HER']:
-            components['Type'] = 'Failed'
-            sup.print_log(f'''FIT_PROFILE: We will remove this profile from the fit. \n''', log)
-        else:
-            components['Type'] = 'random_disk'
-            sup.print_log(f'''FIT_PROFILE: We will fit a random density disk. \n''', log)
+    if type == 'DENSITY':
+        evaluate = ['EXPONENTIAL','EXP+HERN']
+    elif type == 'BULGE'
+        evaluate = ['HERNQUIST']
+    elif type == 'DISK'
+        evaluate = ['EXPONENTIAL']
     else:
-        if type[0:3] =='EXP':
-            components['scale length'] = tot_parameters[1]*unit.kpc
-            components['Central SB'] =  tot_parameters[0]*unit.Msun/unit.pc**2
-            components['Type'] = 'expdisk'
+        evaluate = [type]
+
+    fitted_dict = {}
+
+    try:
+    for ev in evaluate
+        try:
+            tmp_fit_parameters, tmp_red_chisq,tmp_profile = single_fit_profile(\
+                    fit_function_dictionary[ev]['function'],\
+                    radii[density > 0.],density[density > 0.],\
+                    fit_function_dictionary[ev]['initial'],\
+                    debug=debug,log=log,name=fit_function_dictionary[ev]['name'],\
+                    ,output_dir=output_dir,\
+                    count= count)
+            if tmp_red_chisq > fit_function_dictionary[ev]['max_red_sqr']:
+                tmp_red_chisq = float('NaN')
+            if fit_function_dictionary[ev]['Type'] == 'split':
+                tmp_profile = []
+                prev= 0
+                for i in len(fit_function_dictionary[ev]['separate_functions']):
+                    len_parameter= len(fit_function_dictionary[ev]['out'][i])
+                    tmp_profile.append(fit_function_dictionary[ev]['seperate_functions'][i]\
+                                        (radii,tmp_fit_parameters[prev:prev+len_parameter])))
+
+
+            fitted_dict[ev]= {'parameters': tmp_fit_parameters,
+                'red_chi_sq':tmp_red_chisq,
+                'profile': tmp_profile,
+                'result': fit_function_dictionary[ev]['Type'],
+                'component_parameter': fit_function_dictionary[ev]['out']}
+        except:
+            fitted_dict[ev]= {'result': fit_function_dictionary[ev]['fail'],\
+                              'red_chi_sq': float('NaN')}
+
+    red_chi = [x['red_chi_sq']  for x in fitted_dict]
+    if np.min(red_chi) != float('NaN'):
+        for ev in fitted_dict:
+            if fitted_dict[ev]['red_chi_sq'] == np.min(red_chi):
+                break
+        fitted_dict =fitted_dict[ev]
+    else:
+        for ev in fitted_dict:
+            if fitted_dict[ev]['result'] == 'random_disk':
+                profile = density
+                components['Type'] = 'random_disk'
+                return 'ok',profile,components
+
+    if fitted_dict['result'] != 'split':
+        profile = [[],[]]
+        for i in [0,1]:
+            profile[i] =
+
+        profile = [hernquist_profile(radii,tot_parameters[0],tot_parameters[1]),
+                    exponential(radii,tot_parameters[2],tot_parameters[3]) ]
+        components_com = [copy.deepcopy(components),copy.deepcopy(components)]
+        components_com[0]['Total SB'] = tot_parameters[0]*unit.Msun
+        components_com[1]['Total SB'] = sup.integrate_surface_density(profile[1],density)*unit.Msun
+        components_com[0]['Central SB'] =  profile[1][0]*  unit.Msun /unit.pc**2
+        components_com[1]['Central SB'] = tot_parameters[2]*unit.Msun/unit.pc**2
+        components_com[1]['scale length'] = tot_parameters[3]*  unit.kpc
+        components_com[0]['scale length'] = tot_parameters[1]*  unit.kpc
+        components_com[0]['Type'] = 'hernquist'
+        components_com[1]['Type'] = 'expdisk'
+        components = copy.deepcopy(components_com)
+        result = 'process'
+
+    else:
+        for i,parameter in enumerate(fitted_dict['component_parameter']):
+            component[parameter]=fitted_dict['parameters'][i]
+        components['Type'] = fitted_dict['result']
+        result = 'ok'
+
+
+
+
+
+            if red_chisq < 1000.:
+                components['scale length'] = fit_parameters[1]*unit.kpc
+                components['Central SB'] =  fit_parameters[0]*unit.Msun/unit.pc**2
+                components['Type'] = 'expdisk'
+            else:
+                sup.print_log(f'''FIT_EXPONENTIAL:: You claim the profile is an {type}, but the fit is a really bad.''',log)
+                profile = density
+                components['Type'] = 'random_disk'
+                sup.print_log(f'''FIT_PROFILE: We will fit a random density disk. \n''', log)
+            result = 'ok'
         elif type[0:3] =='HER':
-            components['Total SB'] = tot_parameters[0]*unit.Msun
-            components['scale length'] = tot_parameters[1]*unit.kpc
-            components['Central SB'] =  profile[0]*unit.Msun/unit.pc**2
-            components['Type'] = 'hernquist'
+            initial =  [components['Total SB'].value,float(components['R effective'].value/1.8153)]
+
+            fit_parameters, red_chisq,profile = single_fit_profile(hernquist_profile,\
+                    radii[density > 0.],density[density > 0.],initial,\
+                    debug=debug,log=log,name='Hernquist',output_dir=output_dir,\
+                    count= count)
+
+            if red_chisq < 1500.:
+                components['Total SB'] = tot_parameters[0]*unit.Msun
+                components['scale length'] = tot_parameters[1]*unit.kpc
+                components['Central SB'] =  profile[0]*unit.Msun/unit.pc**2
+                components['Type'] = 'hernquist'
+                result = 'ok'
+            else:
+                sup.print_log(f'''FIT_EXPONENTIAL:: You claim the profile is an {type}, but the fit is a really bad.''',log)
+                profile = density
+                components['Type'] = 'Failed'
+                sup.print_log(f'''FIT_PROFILE: We will remove this profile from the fit. \n''', log)
+                result = 'Failed'
+            #fit_function = lambda r,scale_length:\
+            #        hernquist_profile(r,components['Total SB'].value,scale_length)
 
         elif type[0:3] =='SER':
-            components['R effective'] = tot_parameters[1]*unit.kpc
-            components['sersic index'] =  tot_parameters[2]
-            components['Type'] = 'sersic'
-        elif type[0:3] == 'DEN':
-            profile = [hernquist_profile(radii,tot_parameters[0],tot_parameters[1]),
-                        exponential(radii,tot_parameters[2],tot_parameters[3]) ]
-            components_com = [copy.deepcopy(components),copy.deepcopy(components)]
-            components_com[0]['Total SB'] = tot_parameters[0]*unit.Msun
-            components_com[1]['Total SB'] = sup.integrate_surface_density(profile[1],density)*unit.Msun
-            components_com[0]['Central SB'] =  profile[1][0]*  unit.Msun /unit.pc**2
-            components_com[1]['Central SB'] = tot_parameters[2]*unit.Msun/unit.pc**2
-            components_com[1]['scale length'] = tot_parameters[3]*  unit.kpc
-            components_com[0]['scale length'] = tot_parameters[1]*  unit.kpc
-            components_com[0]['Type'] = 'hernquist'
-            components_com[1]['Type'] = 'expdisk'
-            components = copy.deepcopy(components_com)
-            result = 'process'
+            initial = [density[radii < components['R effective'].value][0],\
+                        components['R effective'].value, 2.]
+            name='Sersic'
+            initial =  [components['Total SB'].value,float(components['R effective'].value/1.8153)]
 
-    #except:
+            fit_parameters, red_chisq,profile = single_fit_profile(sersic,\
+                    radii[density > 0.],density[density > 0.],initial,\
+                    debug=debug,log=log,name='Sersic',output_dir=output_dir,\
+                    count= count)
+
+            if red_chisq < 1000.:
+                components['R effective'] = tot_parameters[1]*unit.kpc
+                components['sersic index'] =  tot_parameters[2]
+                components['Type'] = 'sersic'
+                result = 'ok'
+            else:
+                sup.print_log(f'''FIT_EXPONENTIAL:: You claim the profile is an {type}, but the fit is a really bad.''',log)
+                profile = density
+                components['Type'] = 'Failed'
+                sup.print_log(f'''FIT_PROFILE: We will remove this profile from the fit. \n''', log)
+                result = 'Failed'
+        elif type[0:3] == 'DEN':
+            fit_parameters,red_chisq,profile,type = multiple_fit_profile(\
+                    radii[density > 0.],density[density > 0.],\
+                    debug=debug,log=log,output_dir=output_dir,\
+                    count= count)
+            fit_function = lambda r,mass,hern_length,central,scale_length:\
+                    hernquist_profile(r,mass,hern_length) + exponential(r,central,scale_length)
+            guess_scale = radii[density < density[0]/np.e][0]
+            initial= [components['Total SB'].value/3.,float(components['R effective'].value/(2.*1.8153)),\
+                        density[0]/2.,guess_scale]
+            name= 'Combined'
+
+    # if this is specified as an exponential disk without the parameters defined we fit a expoenential
+    except:
+
+          components['Type'] = 'random_disk'
+          sup.print_log(f'''FIT_PROFILE: You claim the density profile is {function}, but we fail to fit the function.
+''', log)
+          if type[0:3] in ['SER','BUL','HER']:
+              components['Type'] = 'Failed'
+              sup.print_log(f'''FIT_PROFILE: We will remove this profile from the fit. \n''', log)
+          else:
+              components['Type'] = 'random_disk'
+              sup.print_log(f'''FIT_PROFILE: We will fit a random density disk. \n''', log)
+    try:
+
+
+        result = 'ok'
+        if red_chisq > 1000.:
+            sup.print_log(f'''FIT_EXPONENTIAL:: You claim the profile is an {name}, but the fit is a really bad.''',log)
+            profile = density
+            exit()
+            if type[0:3] in ['SER','BUL','HER']:
+                components['Type'] = 'Failed'
+                sup.print_log(f'''FIT_PROFILE: We will remove this profile from the fit. \n''', log)
+            else:
+                components['Type'] = 'random_disk'
+                sup.print_log(f'''FIT_PROFILE: We will fit a random density disk. \n''', log)
+        else:
+            if type[0:3] =='EXP':
+                components['scale length'] = tot_parameters[1]*unit.kpc
+                components['Central SB'] =  tot_parameters[0]*unit.Msun/unit.pc**2
+                components['Type'] = 'expdisk'
+            elif type[0:3] =='HER':
+                components['Total SB'] = tot_parameters[0]*unit.Msun
+                components['scale length'] = tot_parameters[1]*unit.kpc
+                components['Central SB'] =  profile[0]*unit.Msun/unit.pc**2
+                components['Type'] = 'hernquist'
+
+            elif type[0:3] =='SER':
+                components['R effective'] = tot_parameters[1]*unit.kpc
+                components['sersic index'] =  tot_parameters[2]
+                components['Type'] = 'sersic'
+            elif type[0:3] == 'DEN':
+                profile = [hernquist_profile(radii,tot_parameters[0],tot_parameters[1]),
+                            exponential(radii,tot_parameters[2],tot_parameters[3]) ]
+                components_com = [copy.deepcopy(components),copy.deepcopy(components)]
+                components_com[0]['Total SB'] = tot_parameters[0]*unit.Msun
+                components_com[1]['Total SB'] = sup.integrate_surface_density(profile[1],density)*unit.Msun
+                components_com[0]['Central SB'] =  profile[1][0]*  unit.Msun /unit.pc**2
+                components_com[1]['Central SB'] = tot_parameters[2]*unit.Msun/unit.pc**2
+                components_com[1]['scale length'] = tot_parameters[3]*  unit.kpc
+                components_com[0]['scale length'] = tot_parameters[1]*  unit.kpc
+                components_com[0]['Type'] = 'hernquist'
+                components_com[1]['Type'] = 'expdisk'
+                components = copy.deepcopy(components_com)
+                result = 'process'
+
+    except:
 
     #    sup.print_log(f'''FIT_PROFILE: You claim the density profile is {function}, but we fail to fit the function.
 #''', log)
@@ -378,8 +538,69 @@ fit_profile.__doc__ =f'''
 
  NOTE:
 '''
+def  multiple_fit_profile(radii[density > 0.],density[density > 0.],\
+        debug=debug,log=log,output_dir=output_dir,\
+        count= count):
+
+    functions_to_fit= {'exponential': []
+    fit_function = lambda r,mass,hern_length,central,scale_length:\
+            hernquist_profile(r,mass,hern_length) + exponential(r,central,scale_length)
+    guess_scale = radii[density < density[0]/np.e][0]
+    initial= [components['Total SB'].value/3.,float(components['R effective'].value/(2.*1.8153)),\
+                density[0]/2.,guess_scale]
+    name= 'Combined'
+def single_fit_profile(fit_function,radii,density,initial,debug=False,log=None,\
+                        name='Generic',output_dir='./',count= 0):
+
+    tot_parameters, tot_covariance = curve_fit(fit_function, radii,\
+                    density,sigma= 0.1*density,\
+                    p0=initial,maxfev=5000)
 
 
+    # let's see if our fit has a reasonable reduced chi square
+    profile = fit_function(radii,*tot_parameters)
+    components['Total SB'] = sup.integrate_surface_density(radii,density)*unit.Msun
+    red_chi = np.sum((density[density > 0.]-profile[density > 0.])**2/(0.1*density[density > 0.]))
+    red_chisq = red_chi/(len(density[density > 0.])-len(tot_parameters))
+    plot_exponentials(radii,density,profile,name=name,
+                    output_dir=output_dir,red_chi= red_chisq,count=count)
+    sup.print_log(f'''FIT_PROFILE: We fit the {name} with a reduced Chi^2 = {red_chisq} with a 10% error.''', log)
+    return tot_parameters,red_chisq
+
+single_fit_profile.__doc__ =f'''
+ NAME:
+    fit_exponential(fit_function,radii,density,initial,\
+    output_dir = './',debug =False, log = None, count = 0)
+
+
+ PURPOSE:
+    fit an exponential to the provided density distribution
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    fit_function = function to fit
+    radii = radi at which the profile is evaluated
+    density = density profile to fit
+    inital = initial_guess
+ OPTIONAL INPUTS:
+    output_dir = './'
+    log = None
+    debug = False
+    count = 0
+        iterative number to seperate different instances of the same function
+
+ OUTPUTS:
+    tot_paramets = fitted_parametrs
+    red_chisq = reduced chisquare of the fit
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
 
 def get_optical_profiles(filename,distance = 0.,band = 'SPITZER3.6',exposure_time=1.,\
                             MLRatio = 0.6, log =None,debug=False, scale_height=None,
