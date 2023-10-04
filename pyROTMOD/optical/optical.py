@@ -956,11 +956,11 @@ def read_galfit(lines,log=None,debug=False):
         tmp = [x.strip().lower() for x in line.split()]
 
         if len(tmp) > 0:
-            if tmp[0] == 'j)':
+            if tmp[0].lower() == 'j)':
                 mag_zero = [float(tmp[1])]
-            if tmp[0] == 'k)':
+            if tmp[0].lower() == 'k)':
                 plate_scale = [float(tmp[1]), float(tmp[2])] # [arcsec per pixel]
-            if tmp[0] == 'z)':
+            if tmp[0].lower() == 'z)':
                 read_component = False
             if len(tmp) > 1:
                 if tmp[1] == 'component':
