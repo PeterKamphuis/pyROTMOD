@@ -110,7 +110,7 @@ convert_parameters_to_luminosity.__doc__ =f'''
 '''
     # This is untested for now
 def edge_luminosity(components,radii = [],exposure_time = 1.,band = 'WISE3.4'
-                    ,distance=0 ):
+                    ,distance=0.*unit.Mpc ):
     lum_components = copy.deepcopy(components)
 
     #mu_0 (mag/arcsec) = -2.5*log(sig_0/(t_exp*dx*dy))+mag_zpt
@@ -174,7 +174,7 @@ def exponential(radii,central,h):
     '''Exponential function'''
     return central*np.exp(-1.*radii/h)
 
-def exponential_luminosity(components,radii = [],band = 'WISE3.4',distance= 0.):
+def exponential_luminosity(components,radii = [],band = 'WISE3.4',distance= 0.*unit.Mpc):
     lum_components = copy.deepcopy(components)
     #Ftot = 2πrs2Σ0q
 
@@ -250,12 +250,12 @@ def fit_profile(radii,density,components,function='EXPONENTIAL_1',output_dir = '
                 {'initial':[density[0],radii[density < density[0]/np.e ][0]],
                 'out':['Central SB','scale length'],
                 'function': exponential,
-                'Type':'expdisk,
+                'Type':'expdisk',
                 'max_red_sqr': 1000,
                 'name':'Exponential',
                 'fail':'random_disk'},
                 'HERNQUIST':
-                {'initial':[components['Total SB'].value,float(components['R effective'].value/1.8153)][0]],
+                {'initial':[components['Total SB'].value,float(components['R effective'].value/1.8153)],
                 'out':['Total SB','scale length'],
                 'Type':'hernquist',
                 'max_red_sqr': 3000,
@@ -273,37 +273,36 @@ def fit_profile(radii,density,components,function='EXPONENTIAL_1',output_dir = '
                 {'initial':[components['Total SB'].value/3.,float(components['R effective'].value/(2.*1.8153)),\
                                 density[0]/2.,radii[density < density[0]/np.e][0]],
                 'out':[['Total SB','scale length'],['Central SB','scale length']],
-                'function': fit_function = lambda r,mass,hern_length,central,scale_length:\
+                'function': lambda r,mass,hern_length,central,scale_length:\
                         hernquist_profile(r,mass,hern_length) + exponential(r,central,scale_length),
                 'separate_functions': [hernquist_profile,exponential],
                 'Type':'split',
                 'max_red_sqr': 3000,
                 'name':'Exp_Hern',
-                'fail':'failed'},
-                }
+                'fail':'failed'}}
 
 
 
     if type == 'DENSITY':
         evaluate = ['EXPONENTIAL','EXP+HERN']
-    elif type == 'BULGE'
+    elif type == 'BULGE':
         evaluate = ['HERNQUIST']
-    elif type == 'DISK'
+    elif type == 'DISK':
         evaluate = ['EXPONENTIAL']
     else:
         evaluate = [type]
 
     fitted_dict = {}
 
-    try:
-    for ev in evaluate
+
+    for ev in evaluate:
         try:
-            tmp_fit_parameters, tmp_red_chisq,tmp_profile = single_fit_profile(\
+            tmp_fit_parameters, tmp_red_chisq,tmp_profile,total_sb = single_fit_profile(\
                     fit_function_dictionary[ev]['function'],\
                     radii[density > 0.],density[density > 0.],\
                     fit_function_dictionary[ev]['initial'],\
                     debug=debug,log=log,name=fit_function_dictionary[ev]['name'],\
-                    ,output_dir=output_dir,\
+                    output_dir=output_dir,\
                     count= count)
             if tmp_red_chisq > fit_function_dictionary[ev]['max_red_sqr']:
                 tmp_red_chisq = float('NaN')
@@ -313,7 +312,7 @@ def fit_profile(radii,density,components,function='EXPONENTIAL_1',output_dir = '
                 for i in len(fit_function_dictionary[ev]['separate_functions']):
                     len_parameter= len(fit_function_dictionary[ev]['out'][i])
                     tmp_profile.append(fit_function_dictionary[ev]['seperate_functions'][i]\
-                                        (radii,tmp_fit_parameters[prev:prev+len_parameter])))
+                                        (radii,tmp_fit_parameters[prev:prev+len_parameter]))
 
 
             fitted_dict[ev]= {'parameters': tmp_fit_parameters,
@@ -340,18 +339,16 @@ def fit_profile(radii,density,components,function='EXPONENTIAL_1',output_dir = '
 
     if fitted_dict['result'] != 'split':
         profile = [[],[]]
-        for i in [0,1]:
-            profile[i] =
-
-        profile = [hernquist_profile(radii,tot_parameters[0],tot_parameters[1]),
-                    exponential(radii,tot_parameters[2],tot_parameters[3]) ]
+       
+        profile = [hernquist_profile(radii,fitted_dict['parameters'][0],fitted_dict['parameters'][1]),
+                    exponential(radii,fitted_dict['parameters'][2],fitted_dict['parameters'][3]) ]
         components_com = [copy.deepcopy(components),copy.deepcopy(components)]
-        components_com[0]['Total SB'] = tot_parameters[0]*unit.Msun
+        components_com[0]['Total SB'] = fitted_dict['parameters'][0]*unit.Msun
         components_com[1]['Total SB'] = sup.integrate_surface_density(profile[1],density)*unit.Msun
         components_com[0]['Central SB'] =  profile[1][0]*  unit.Msun /unit.pc**2
-        components_com[1]['Central SB'] = tot_parameters[2]*unit.Msun/unit.pc**2
-        components_com[1]['scale length'] = tot_parameters[3]*  unit.kpc
-        components_com[0]['scale length'] = tot_parameters[1]*  unit.kpc
+        components_com[1]['Central SB'] = fitted_dict['parameters'][2]*unit.Msun/unit.pc**2
+        components_com[1]['scale length'] = fitted_dict['parameters'][3]*  unit.kpc
+        components_com[0]['scale length'] = fitted_dict['parameters'][1]*  unit.kpc
         components_com[0]['Type'] = 'hernquist'
         components_com[1]['Type'] = 'expdisk'
         components = copy.deepcopy(components_com)
@@ -359,24 +356,24 @@ def fit_profile(radii,density,components,function='EXPONENTIAL_1',output_dir = '
 
     else:
         for i,parameter in enumerate(fitted_dict['component_parameter']):
-            component[parameter]=fitted_dict['parameters'][i]
+            components[parameter]=fitted_dict['parameters'][i]
         components['Type'] = fitted_dict['result']
         result = 'ok'
 
 
 
 
-
-            if red_chisq < 1000.:
-                components['scale length'] = fit_parameters[1]*unit.kpc
-                components['Central SB'] =  fit_parameters[0]*unit.Msun/unit.pc**2
-                components['Type'] = 'expdisk'
-            else:
-                sup.print_log(f'''FIT_EXPONENTIAL:: You claim the profile is an {type}, but the fit is a really bad.''',log)
-                profile = density
-                components['Type'] = 'random_disk'
-                sup.print_log(f'''FIT_PROFILE: We will fit a random density disk. \n''', log)
-            result = 'ok'
+    '''
+        if red_chisq < 1000.:
+            components['scale length'] = fit_parameters[1]*unit.kpc
+            components['Central SB'] =  fit_parameters[0]*unit.Msun/unit.pc**2
+            components['Type'] = 'expdisk'
+        else:
+            sup.print_log(f''FIT_EXPONENTIAL:: You claim the profile is an {type}, but the fit is a really bad.'',log)
+            profile = density
+            components['Type'] = 'random_disk'
+            sup.print_log(f''FIT_PROFILE: We will fit a random density disk. \n'', log)
+        result = 'ok'
         elif type[0:3] =='HER':
             initial =  [components['Total SB'].value,float(components['R effective'].value/1.8153)]
 
@@ -392,10 +389,10 @@ def fit_profile(radii,density,components,function='EXPONENTIAL_1',output_dir = '
                 components['Type'] = 'hernquist'
                 result = 'ok'
             else:
-                sup.print_log(f'''FIT_EXPONENTIAL:: You claim the profile is an {type}, but the fit is a really bad.''',log)
+                sup.print_log(f''FIT_EXPONENTIAL:: You claim the profile is an {type}, but the fit is a really bad.'',log)
                 profile = density
                 components['Type'] = 'Failed'
-                sup.print_log(f'''FIT_PROFILE: We will remove this profile from the fit. \n''', log)
+                sup.print_log(f''FIT_PROFILE: We will remove this profile from the fit. \n'', log)
                 result = 'Failed'
             #fit_function = lambda r,scale_length:\
             #        hernquist_profile(r,components['Total SB'].value,scale_length)
@@ -417,10 +414,10 @@ def fit_profile(radii,density,components,function='EXPONENTIAL_1',output_dir = '
                 components['Type'] = 'sersic'
                 result = 'ok'
             else:
-                sup.print_log(f'''FIT_EXPONENTIAL:: You claim the profile is an {type}, but the fit is a really bad.''',log)
+                sup.print_log(f''FIT_EXPONENTIAL:: You claim the profile is an {type}, but the fit is a really bad.'',log)
                 profile = density
                 components['Type'] = 'Failed'
-                sup.print_log(f'''FIT_PROFILE: We will remove this profile from the fit. \n''', log)
+                sup.print_log(f''FIT_PROFILE: We will remove this profile from the fit. \n'', log)
                 result = 'Failed'
         elif type[0:3] == 'DEN':
             fit_parameters,red_chisq,profile,type = multiple_fit_profile(\
@@ -438,28 +435,28 @@ def fit_profile(radii,density,components,function='EXPONENTIAL_1',output_dir = '
     except:
 
           components['Type'] = 'random_disk'
-          sup.print_log(f'''FIT_PROFILE: You claim the density profile is {function}, but we fail to fit the function.
-''', log)
+          sup.print_log(f''FIT_PROFILE: You claim the density profile is {function}, but we fail to fit the function.
+'', log)
           if type[0:3] in ['SER','BUL','HER']:
               components['Type'] = 'Failed'
-              sup.print_log(f'''FIT_PROFILE: We will remove this profile from the fit. \n''', log)
+              sup.print_log(f''FIT_PROFILE: We will remove this profile from the fit. \n'', log)
           else:
               components['Type'] = 'random_disk'
-              sup.print_log(f'''FIT_PROFILE: We will fit a random density disk. \n''', log)
+              sup.print_log(f''FIT_PROFILE: We will fit a random density disk. \n'', log)
     try:
 
 
         result = 'ok'
         if red_chisq > 1000.:
-            sup.print_log(f'''FIT_EXPONENTIAL:: You claim the profile is an {name}, but the fit is a really bad.''',log)
+            sup.print_log(f''FIT_EXPONENTIAL:: You claim the profile is an {name}, but the fit is a really bad.'',log)
             profile = density
             exit()
             if type[0:3] in ['SER','BUL','HER']:
                 components['Type'] = 'Failed'
-                sup.print_log(f'''FIT_PROFILE: We will remove this profile from the fit. \n''', log)
+                sup.print_log(f''FIT_PROFILE: We will remove this profile from the fit. \n'', log)
             else:
                 components['Type'] = 'random_disk'
-                sup.print_log(f'''FIT_PROFILE: We will fit a random density disk. \n''', log)
+                sup.print_log(f''FIT_PROFILE: We will fit a random density disk. \n'', log)
         else:
             if type[0:3] =='EXP':
                 components['scale length'] = tot_parameters[1]*unit.kpc
@@ -491,7 +488,7 @@ def fit_profile(radii,density,components,function='EXPONENTIAL_1',output_dir = '
                 result = 'process'
 
     except:
-
+    '''
     #    sup.print_log(f'''FIT_PROFILE: You claim the density profile is {function}, but we fail to fit the function.
 #''', log)
     #    if type[0:3] in ['SER','BUL','HER']:
@@ -538,6 +535,7 @@ fit_profile.__doc__ =f'''
 
  NOTE:
 '''
+'''
 def  multiple_fit_profile(radii[density > 0.],density[density > 0.],\
         debug=debug,log=log,output_dir=output_dir,\
         count= count):
@@ -549,6 +547,7 @@ def  multiple_fit_profile(radii[density > 0.],density[density > 0.],\
     initial= [components['Total SB'].value/3.,float(components['R effective'].value/(2.*1.8153)),\
                 density[0]/2.,guess_scale]
     name= 'Combined'
+ '''  
 def single_fit_profile(fit_function,radii,density,initial,debug=False,log=None,\
                         name='Generic',output_dir='./',count= 0):
 
@@ -559,13 +558,13 @@ def single_fit_profile(fit_function,radii,density,initial,debug=False,log=None,\
 
     # let's see if our fit has a reasonable reduced chi square
     profile = fit_function(radii,*tot_parameters)
-    components['Total SB'] = sup.integrate_surface_density(radii,density)*unit.Msun
+    total_sb = sup.integrate_surface_density(radii,density)*unit.Msun
     red_chi = np.sum((density[density > 0.]-profile[density > 0.])**2/(0.1*density[density > 0.]))
     red_chisq = red_chi/(len(density[density > 0.])-len(tot_parameters))
-    plot_exponentials(radii,density,profile,name=name,
+    plot_profile(radii,density,profile,name=name,
                     output_dir=output_dir,red_chi= red_chisq,count=count)
     sup.print_log(f'''FIT_PROFILE: We fit the {name} with a reduced Chi^2 = {red_chisq} with a 10% error.''', log)
-    return tot_parameters,red_chisq
+    return tot_parameters,red_chisq,profile,total_sb
 
 single_fit_profile.__doc__ =f'''
  NAME:
@@ -602,7 +601,7 @@ single_fit_profile.__doc__ =f'''
  NOTE:
 '''
 
-def get_optical_profiles(filename,distance = 0.,band = 'SPITZER3.6',exposure_time=1.,\
+def get_optical_profiles(filename,distance = 0.*unit.Mpc,band = 'SPITZER3.6',exposure_time=1.,\
                             MLRatio = 0.6, log =None,debug=False, scale_height=None,
                             output_dir='./'):
     '''Read in the optical Surface brightness profiles or the galfit file'''
@@ -748,7 +747,7 @@ def hernquist_profile(radii, mass, scale_length):
 
 
 
-def mag_to_lum(mag,band = 'WISE3.4',distance= 0.,debug = False):
+def mag_to_lum(mag,band = 'WISE3.4',distance= 0.*unit.Mpc,debug = False):
     if mag.unit == unit.mag/unit.arcsec**2:
         # Surface brightness is constant with distance and hence works differently
         #from Oh 2008.
@@ -757,6 +756,8 @@ def mag_to_lum(mag,band = 'WISE3.4',distance= 0.,debug = False):
     elif mag.unit == unit.mag:
         M= mag-2.5*np.log10((distance/(10.*unit.pc))**2)*unit.mag # Absolute magnitude
         inL= (10**(-0.4*(M.value-co.solar_magnitudes[band])))*unit.Lsun # in band Luminosity in L_solar
+    elif mag.unit == unit.Lsun/unit.parsec**2:
+        inL = mag
     else:
         raise InputError('MAG_to_LUM: this unit is not recognized for the magnitude')
     # Integrated flux is
@@ -793,7 +794,7 @@ mag_to_lum.__doc__ =f'''
  NOTE:
 '''
 
-def plot_exponentials(in_radii,density, exponential,name='generic',\
+def plot_profile(in_radii,density, exponential,name='generic',\
                     output_dir='./',red_chi = None, count = '1'):
     '''This function makes a simple plot of the optical profiles'''
     figure = plt.figure(figsize=(10,7.5) , dpi=300, facecolor='w', edgecolor='k')
@@ -816,9 +817,9 @@ def plot_exponentials(in_radii,density, exponential,name='generic',\
     plt.savefig(f'{output_dir}/{name}_Profiles.png')
     plt.close()
 
-plot_exponentials.__doc__ =f'''
+plot_profile.__doc__ =f'''
  NAME:
-     plot_exponentials(in_radii,density, exponential,name='generic',\
+     plot_profile(in_radii,density, exponential,name='generic',\
                         output_dir='./',red_chi = None,bulge =False, count = 1):
  PURPOSE:
     plot the fitted function over the input profile
@@ -902,7 +903,7 @@ def process_read_profile(optical_profiles,cleaned_components,\
             optical_profiles_out[type] = optical_profiles[type]
             component_out.append(cleaned_components[i-1])
         else:
-            print_log(f'''PROCESS_READ_PROFILES: We do not know how convert the profile {optical_profiles[type][0]} with the units {optical_profiles[type][1]} to velocities
+            sup.print_log(f'''PROCESS_READ_PROFILES: We do not know how convert the profile {optical_profiles[type][0]} with the units {optical_profiles[type][1]} to velocities
 ''',log)
             raise InputError(f'''PROCESS_READ_PROFILES: We do not know how convert the profile {optical_profiles[type][0]} with the units {optical_profiles[type][1]} to velocities''')
     return optical_profiles_out,component_out
@@ -944,8 +945,15 @@ process_read_profile.__doc__ =f'''
        sersic profiles are converted to hernquist or exponential profiles in rotmod
         but only if 0.75 < n < 1.25 (to exponential) or 3.75 < n < 4.25 (hernquist)
 '''
-def read_galfit(lines,log=None,debug=False):
-    recognized_components = ['expdisk','sersic','edgedisk']
+def read_galfit(input,log=None,debug=False):
+    try:
+        with open(input) as file:
+            lines = file.readlines()
+    except FileNotFoundError:
+        sup.print_log(f'''READ_GALFIT: we could not find the file {input}
+assuming it is already a readlines construct''',log)
+        
+    recognized_components = ['expdisk','sersic','edgedisk','sky']
     counter = [0 for x in recognized_components]
     mag_zero = []
     plate_scale = []
@@ -972,24 +980,39 @@ def read_galfit(lines,log=None,debug=False):
 ''',log)
                     read_component = False
                 else:
-                    counter[recognized_components.index(current_component)] += 1
-                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}'] = {'Type':current_component,\
-                                                                                                                    'Central SB': None ,
-                                                                                                                    'Total SB': None ,
-                                                                                                                    'R effective': None ,
-                                                                                                                    'scale height':None,
-                                                                                                                    'scale length':None,
-                                                                                                                    'sersic index':None,
-                                                                                                                    'central position':None,
-                                                                                                                    'axis ratio':None,
-                                                                                                                    'PA':None,}
+                    if current_component == 'sky':
+                        components[f'{current_component}'] = {'Type': current_component,
+                                                              'Background': None,
+                                                              'dx': None,
+                                                              'dy': None}
+                    else:
+                        counter[recognized_components.index(current_component)] += 1
+                        components[f'{current_component}_{counter[recognized_components.index(current_component)]}'] = {'Type':current_component,\
+                                                                                                                        'Central SB': None ,
+                                                                                                                        'Total SB': None ,
+                                                                                                                        'R effective': None ,
+                                                                                                                        'scale height':None,
+                                                                                                                        'scale length':None,
+                                                                                                                        'sersic index':None,
+                                                                                                                        'central position':None,
+                                                                                                                        'axis ratio':None,
+                                                                                                                        'PA':None,}
                     if current_component in ['expdisk','sersic']:
                         components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['scale height'] = 0. * unit.kpc
 
-
+            if tmp[0] == '1)':
+                if current_component in ['sky']:
+                    components[f'{current_component}']['Background'] = float(tmp[1])
+                else:
+                    components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['central position'] = [float(tmp[1]),float(tmp[2])]
+            if tmp[0] == '2)':
+                if current_component in ['sky']:
+                    components[f'{current_component}']['dx'] = float(tmp[1])
             if tmp[0] == '3)' and read_component:
                 if  current_component in ['edgedisk']:
                     components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['Central SB'] = float(tmp[1])*unit.mag/unit.arcsec**2
+                elif current_component in ['sky']:
+                    components[f'{current_component}']['dy'] = float(tmp[1])
                 else:
                     components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['Total SB'] = float(tmp[1])*unit.mag
             if tmp[0] == '4)' and read_component:
@@ -1017,7 +1040,7 @@ def read_galfit(lines,log=None,debug=False):
                 components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['axis ratio'] = float(tmp[1])
             if tmp[0] == '10)' and read_component:
                 components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['PA'] = float(tmp[1])*unit.degree
-
+   
     if len(plate_scale) == 0 or len(mag_zero) == 0:
         raise BadFileError(f'Your file  is not recognized by pyROTMOD')
     components['radii'] = np.linspace(0,max_radius,int(max_radius/2.))*np.mean(plate_scale)*unit.arcsec # in arcsec
@@ -1062,7 +1085,7 @@ def sersic(r,effective_luminosity,effective_radius,n):
     func = effective_luminosity*np.exp(kappa*((r/effective_radius)**(1./n))-1)
     return func
 
-def sersic_luminosity(components,radii = [],band = 'WISE3.4',distance= 0.):
+def sersic_luminosity(components,radii = [],band = 'WISE3.4',distance= 0.*unit.Mpc):
     # This is not a deprojected surface density profile we should use the formula from Baes & gentile 2010
     # Once we implement that it should be possible use an Einasto profile/potential
     lum_components = copy.deepcopy(components)
