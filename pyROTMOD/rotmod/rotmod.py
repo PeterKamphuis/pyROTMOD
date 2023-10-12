@@ -52,7 +52,6 @@ def convert_dens_rc(radii, optical_profiles, gas_profile,components,\
                 if  0.75 < components[x-1]['sersic index'] < 1.25:
                     print_log(f'''We have detected the input to be a sersic profile.
 this one is very close to a disk so we will transform to an exponential disk. \n''',log)
-                    print(optical_profiles[type])
                     found_RC = disk_RC(optical_radii,np.array(optical_profiles[type][2:]),out_radii=kpc_radii,\
                             h_z=opt_h_z,components = components[x-1],\
                             debug=debug,log=log, output_dir =output_dir)
@@ -254,9 +253,8 @@ def hernquist_parameter_RC(radii,parameters, truncated =-1.,log= False, debug=Fa
             axis_ratio =1.
     #The two is specified in https://docs.galpy.org/en/latest/reference/potentialhernquist.html?highlight=hernquist
     #It is assumed this hold with the the triaxial potential as well.
-
     bulge_potential = THP(amp=2.*parameters['Total SB'],a= parameters['scale length'] ,b= 1.,c = axis_ratio)
-
+    #bulge_potential = THP(amp=2.*parameters['Total SB'],a= parameters['scale length'])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         RC = [bulge_potential.vcirc(x*unit.kpc) for x in radii]
@@ -404,15 +402,14 @@ disk_RC.__doc__ =f'''
 
 def get_effective_radius(radii,density,debug=False,log= None):
     #The effective radius is where the integrated profile reaches half of the total
-    print(radii)
+
     ringarea= [0 if radii[0] == 0 else np.pi*((radii[0]+radii[1])/2.)**2]
     ringarea = np.hstack((ringarea,
                          [np.pi*(((y+z)/2.)**2-((y+x)/2.)**2) for x,y,z in zip(radii,radii[1:],radii[2:])],
                          [np.pi*((radii[-1]+0.5*(radii[-1]-radii[-2]))**2-((radii[-1]+radii[-2])/2.)**2)]
                          ))
     ringarea = ringarea*1000.**2
-    #print(ringarea,density)
-    print(ringarea,density)
+
     mass = np.sum([x*y for x,y in zip(ringarea,density)])
 
     Cuma_prof = []
@@ -475,7 +472,6 @@ def exponential_parameter_RC(radii,parameters, sech =False, truncated =-1.,log= 
 
         exp_disk_potential = MNP(amp=central,hr=parameters['scale length'],hz=parameters['scale height'],sech=sech)
     else:
-        print(parameters['Central SB'])
         exp_disk_potential = EP(amp=parameters['Central SB'],hr=parameters['scale length'])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

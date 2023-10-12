@@ -85,11 +85,12 @@ configuration_file = ''')
     cfg, log= check_input(cfg,default_output,default_log_directory,pyROTMOD.__version__)
     if cfg.RC_Construction.enable:
         try:
-            optical_profiles,components,galfit_file,optical_vel = \
+            optical_profiles,components,galfit_file,optical_vel,original_profiles = \
                 get_optical_profiles(cfg.RC_Construction.optical_file,\
                     distance= cfg.general.distance,exposure_time=cfg.RC_Construction.exposure_time,\
                     MLRatio= cfg.RC_Construction.mass_to_light_ratio,band = cfg.RC_Construction.band,\
                     log= log,output_dir=cfg.general.output_dir)
+
         except Exception as e:
             print_log(f" We could not obtain the optical components and profiles because of {e}",log,debug=cfg.general.debug,screen=False)
             traceback.print_exc()
@@ -110,7 +111,7 @@ configuration_file = ''')
                 print_log(f'''We have found a hernquist component with the following values.
 ''',log,debug=cfg.general.debug)
             elif x['Type'] in ['random_disk','random_bulge']:
-                print_log(f'''We have found a hernquist component with the following values.
+                print_log(f'''We have found a unparameterized component with the following values.
 ''',log,debug=cfg.general.debug)
             else:
                 print_log(f'''We have found a {x['Type']} component with the following values.
@@ -135,7 +136,8 @@ The axis ratio is {x['axis ratio']}.
         ########################################## Make a plot with the extracted profiles ######################3
         plot_profiles(radii, gas_profile,optical_profiles,\
             distance =float(cfg.general.distance),\
-            output_dir = cfg.general.output_dir, log=log)
+            output_dir = cfg.general.output_dir, log=log,\
+            input_profiles=original_profiles)
 
         ########################################## Make a nice file with all the different components as a column ######################3
         write_profiles(radii, gas_profile,total_rc,optical_profiles,\

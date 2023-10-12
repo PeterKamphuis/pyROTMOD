@@ -344,7 +344,7 @@ def ensure_kpc_radii(in_radii,distance=1.,log=None):
     return correct_rad
 
 def plot_profiles(in_radii,gas_profile,optical_profiles,distance = 1., \
-                    log= None, errors = [0.],output_dir = './'):
+                    log= None, errors = [0.],output_dir = './',input_profiles = None):
     '''This function makes a simple plot of the optical profiles'''
     radii = ensure_kpc_radii(in_radii, distance=distance)
     opt_radii = ensure_kpc_radii(optical_profiles['RADI'],distance=distance)
@@ -369,11 +369,22 @@ Not plotting this profile.
             plt.plot(opt_radii[2:],np.array(optical_profiles[x][2:]), label = optical_profiles[x][0])
             if np.nanmax(np.array(optical_profiles[x][2+lower_ind:])) > max:
                 max =  np.nanmax(np.array(optical_profiles[x][2+lower_ind:]))
-            if len(tot_opt) > 0:
+            if len(tot_opt) > 0 :
                 tot_opt = [old+new for old,new in zip(tot_opt,optical_profiles[x][2:])]
             else:
                 tot_opt =  optical_profiles[x][2:]
     plt.plot(opt_radii[2:],np.array(tot_opt), label='Total Optical')
+
+    if not (input_profiles  is None):
+        for x in input_profiles:
+            if x != 'RADI':
+                if input_profiles[x][1] != 'M_SOLAR/PC^2':
+                    print_log(f'''The units of {input_profiles[x][0]} are not M_SOLAR/PC^2.
+Not plotting this profile.
+''',log )
+                    continue
+                plt.plot(opt_radii[2:],np.array( input_profiles[x][2:]), label =  input_profiles[x][0])
+            
     max = np.nanmax(tot_opt)
     min = np.nanmin(np.array([x for x in tot_opt if x > 0.]))
 
