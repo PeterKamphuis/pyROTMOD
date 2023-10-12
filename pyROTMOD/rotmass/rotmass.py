@@ -401,7 +401,8 @@ get_baryonic_RC.__doc__ =f'''
 
 
 def initial_guess(fit_function,radii,total_RC,function_variable_settings,\
-                  function_name='curve_np',debug =False,log=None,negative = False):
+                  function_name='curve_np',debug =False,log=None,negative = False,\
+                  minimizer = 'differential_evolution'):
 
     from numpy import nan
     #code = f'sum_of_square =lambda {",".join([x for x in fit_function["variables"] ])}: np.sum(((np.array([{", ".join([str(i) for i in total_RC[0]])}],dtype=float)-{function_name}({",".join([x for x in fit_function["variables"] ])}))/np.array([{", ".join([str(i) for i in total_RC[1]])}],dtype=float))**2)'
@@ -415,18 +416,18 @@ def initial_guess(fit_function,radii,total_RC,function_variable_settings,\
     model = lmfit.Model(fit_function['function'])
     no_input = False
     for variable in guess_variables:
-        if not function_variable_settings[variable][1]:
+        if (function_variable_settings[variable][1] is None):
             if variable in ['MD','MB','MG']:
                 guess_variables[variable][1] = function_variable_settings[variable][0]/10.
             else:
                 guess_variables[variable][1] = 0.1
 
-        if not function_variable_settings[variable][2]:
+        if (function_variable_settings[variable][2] is None):
             if variable in ['MD','MB','MG']:
                 guess_variables[variable][2] = function_variable_settings[variable][0]*20.
             else:
                 guess_variables[variable][2] = 1000.
-        if not function_variable_settings[variable][0]:
+        if (function_variable_settings[variable][0] is None):
             no_input = True
             guess_variables[variable][0] = float(np.random.rand()*(guess_variables[variable][2]-guess_variables[variable][1])+guess_variables[variable][1])
         if guess_variables[variable][3]:
@@ -448,8 +449,8 @@ limits are between {guess_variables[variable][1]} - {guess_variables[variable][2
 
             #initial_fit = model.fit(data=total_RC[0], params=parameters, r=radii,method='differential_evolution'\
             #                         , nan_policy='omit',scale_covar=False)
-
-            initial_fit = model.fit(data=total_RC[0], params=parameters, r=radii,method='differential_evolution'\
+            print(parameters)
+            initial_fit = model.fit(data=total_RC[0], params=parameters, r=radii,method= minimizer\
                                      ,nan_policy='omit',scale_covar=False)
             if not initial_fit.errorbars or not initial_fit.success:
                 print(f"\r The initial guess did not produce errors, retrying with new guesses: {counter/float(500.)*100.:.1f} % of maximum attempts.", end =" ",flush = True)
@@ -461,21 +462,23 @@ limits are between {guess_variables[variable][1]} - {guess_variables[variable][2
                 if counter > 501.:
                     raise InitialGuessWarning(f'We could not find errors and initial guesses for the function. Try smaller boundaries or set your initiial values')
             else:
-                print(f'\n')
-                print_log(f'The initial guess is a succes',log)
+                print_log(f'\n',log)
+                print_log(f'The initial guess is a succes. \n',log)
                 for variable in guess_variables:
                     buffer = np.max([abs(initial_fit.params[variable].value*0.25),10.*initial_fit.params[variable].stderr])
-                    guess_variables[variable][1] = float(initial_fit.params[variable].value-buffer if not function_variable_settings[variable][1] \
+                    guess_variables[variable][1] = float(initial_fit.params[variable].value-buffer \
+                                            if (function_variable_settings[variable][1] is None) \
                                             else initial_fit.params[variable].min)
                     if not negative:
                         if guess_variables[variable][1] < 0.:
                             guess_variables[variable][1] =1e-7
-                    guess_variables[variable][2] = float(initial_fit.params[variable].value+buffer if not function_variable_settings[variable][2]\
+                    guess_variables[variable][2] = float(initial_fit.params[variable].value+buffer \
+                                             if (function_variable_settings[variable][2] is None)\
                                              else initial_fit.params[variable].max)
 
                     guess_variables[variable][0] = float(initial_fit.params[variable].value)
                 no_errors = False
-    print_log(f'''INITIAL_GUESS: These are the statistics and values found through differential evolution fitting of the residual.
+    print_log(f'''INITIAL_GUESS: These are the statistics and values found through {minimizer} fitting of the residual.
 {initial_fit.fit_report()}
 ''',log)
     return guess_variables
@@ -505,7 +508,7 @@ initial_guess.__doc__ =f'''
 
 def mcmc_run(fit_function,radii,total_RC,function_variable_settings,original_variable_settings,\
                   out_dir = None,log_directory=None,debug=False,negative=False,log=None,steps=2000.,\
-                  results_name = 'MCMC'):
+                  results_name = 'MCMC',fixed_boundaries = False):
     steps=int(steps*(len(fit_function['variables'])-1))
     burning=int(steps/4.)
     #First set the model
@@ -539,6 +542,7 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
             result_emcee = model.fit(data=total_RC[0], r=radii, params=parameters, method='emcee',nan_policy='omit',
                              fit_kws=emcee_kws,weights=1./total_RC[1])
             no_succes=False
+
             triggered =False
             # we have to check that our results are only limited by the boundaries in the user has set them
             for variable in original_variable_settings:
@@ -566,7 +570,7 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
                             if original_variable_settings[variable][2] < parameters[variable].max:
                                 parameters[variable].max=original_variable_settings[variable][2]
 
-                    if np.array_equal(prev_bound, [parameters[variable].min,parameters[variable].max]) :
+                    if np.array_equal(prev_bound, [parameters[variable].min,parameters[variable].max]) or fixed_boundaries :
                         if triggered:
                             print_log(f''' The boundaries for {variable} were too small, consider changing them
 ''',log)
@@ -575,7 +579,7 @@ With the boundaries between {function_variable_settings[variable][1]} - {functio
 ''',log)
                     else:
                         count += 1
-                        if count >= 10:
+                        if count >= 10 :
                             print_log(f''' Your boundaries are not converging. Condidering fitting less variables or manually fix the boundaries
 ''',log)
                         else:
@@ -589,7 +593,7 @@ Changing the parameter and its boundaries and trying again.
 
 
     print_log(result_emcee.fit_report(),log,screen=False)
-
+    print_log('\n',log)
 
     if out_dir:
 
@@ -601,13 +605,21 @@ Changing the parameter and its boundaries and trying again.
                          'C':'$\mathrm{c}$',
                          'R200':'$ \mathrm{R_{200}(kpc)}$',
                          'm': '$\mathrm{Axion Mass\\times 10^{-23}(eV)}$',
+                         'central': '$\mathrm{Central SBR} (M_{\\odot}/pc^{2})$',
+                         'h': '$\mathrm{Scale length} (kpc)$',
+                         'mass': '$\mathrm{Total Mass} (M_{\\odot})$',
+                         'hern_length': '$\mathrm{Hernquist length} (kpc)$',
+                         'effective_luminosity': '$\mathrm{L_{e}} (M_{\\odot})$' ,
+                         'effective_radius': '$\mathrm{R_{e}} (kpc)$' ,
+                         'n': 'Sersic Index'
                          }
 
         lab = [label_dictionary[x] for x in result_emcee.params if function_variable_settings[x][3]]
         fig = corner.corner(result_emcee.flatchain, quantiles=[0.16, 0.5, 0.84],show_titles=True,
                         title_kwargs={"fontsize": 15},labels=lab)
         fig.savefig(f"{out_dir}{results_name}_COV_Fits.pdf",dpi=300)
-    print_log(f''' MCMC_RUN: We find the following parameters for this fit.''',log)
+        plt.close()
+    print_log(f''' MCMC_RUN: We find the following parameters for this fit. \n''',log)
 
     for variable in function_variable_settings:
         if function_variable_settings[variable][3]:
@@ -678,7 +690,7 @@ def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False):
                      'V_fit': {'color': 'r','lines':'-','name': 'V$_{Total}$','marker':'o', 'alpha': 1,'order' :6},
                      'V_dm': {'color': 'r','lines':'dotted','name': f'V$_{{{halo}}}$','marker':None, 'alpha': 1,'order' :5},
                      'V_gas': {'color': 'k','lines':'dotted','name': f'V$_{{Gas}}$','marker':None, 'alpha': 1,'order' :4},
-                     'V_disk': {'color': 'k','lines':'--','name': f'V$_{{Exp}}$','marker':None, 'alpha': 1,'order' :3},
+                     'V_disk': {'color': 'k','lines':'--','name': f'V$_{{Disk}}$','marker':None, 'alpha': 1,'order' :3},
                      'V_bulge': {'color': 'k','lines':'-.','name': f'V$_{{Bulge}}$','marker':None, 'alpha': 1,'order' :2},
 
                     }
