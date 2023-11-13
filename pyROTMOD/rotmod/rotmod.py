@@ -194,16 +194,16 @@ def bulge_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'sersic', 'axi
     else:
         scale = float(components['R effective'].value/1.8153)
 
-        #try:
-    if components['Type'] == 'sersic':
-        result,profile,components = fit_profile(optical_profiles['RADI'][2:],optical_profiles[type][2:],\
-                cleaned_components[i-1],function='HERNQUIST_1', output_dir = output_dir\
-                ,debug = debug, log = log)
+    #try:
+    #if components['Type'] == 'sersic':
+    #    result,profile,components = fit_profile(radii,optical_profiles[type][2:],\
+    #            cleaned_components[i-1],function='HERNQUIST_1', output_dir = output_dir\
+    #            ,debug = debug, log = log)
 
-        # let's see if our fit has a reasonable reduced chi square
+    # let's see if our fit has a reasonable reduced chi square
 
     if components['Type'] in ['bulge','sersic','hernquist']:
-        print_log(f'''We have found an hernquist profiile with the following values.
+        print_log(f'''We have found an hernquist profile with the following values.
 The total mass of the disk is {components['Total SB']} a central mass density {components['Central SB']} .
 The scale length is {components['scale length']} kpc and the scale height {components['scale height']} kpc.
 The axis ratio is {components['axis ratio']}.
@@ -320,10 +320,9 @@ def disk_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'expdisk', 'sca
     except UnboundLocalError:
         exp_profile = density
 
-    if not components['Total SB']:
+    if components['Total SB'] == None:
     #print(exp_profile)
         components['Total SB'] = integrate_surface_density(radii,exp_profile)*unit.Msun
-        Mass_tot = integrate_surface_density(radii,density)*unit.Msun
     sech =False
     if components['scale height'] == None:
         components['scale height'] = h_z[0]*unit.kpc

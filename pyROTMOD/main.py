@@ -13,7 +13,7 @@ from pyROTMOD.rotmod.rotmod import convert_dens_rc
 from pyROTMOD.rotmass.rotmass import rotmass_main
 from pyROTMOD.support import plot_profiles,write_profiles,write_RCs,print_log,\
             integrate_surface_density, ensure_kpc_radii,check_input,write_header,\
-            read_RCs
+            read_RCs,add_font
 import pyROTMOD.constants as c
 import traceback
 import warnings
@@ -77,12 +77,16 @@ configuration_file = ''')
     default_output=cfg.general.output_dir
     default_log_directory = cfg.general.log_directory
 
+
     # read command line arguments anything list input should be set in '' e.g. pyROTMOD 'rotmass.MD=[1.4,True,True]'
 
     cfg = OmegaConf.merge(cfg,inputconf)
     if cfg.general.debug:
         warnings.showwarning = warn_with_traceback
     cfg, log= check_input(cfg,default_output,default_log_directory,pyROTMOD.__version__)
+    #Add the requested font and get the name
+    font_name = add_font(cfg.general.font)
+
     if cfg.RC_Construction.enable:
         try:
             optical_profiles,components,galfit_file,optical_vel,original_profiles = \
@@ -180,10 +184,10 @@ The axis ratio is {x['axis ratio']}.
             os.mkdir( f'{cfg.general.output_dir}{cfg.fitting.HALO}/')
         radii = ensure_kpc_radii(derived_RCs[0],distance=cfg.general.distance,log=log )
         rotmass_main(radii,derived_RCs, total_rc,total_rc_err,\
-        out_dir = f'{cfg.general.output_dir}{cfg.fitting.HALO}/',\
-        rotmass_settings=cfg.fitting,log_directory=cfg.general.log_directory,\
-        results_file = cfg.fitting.results_file,\
-        log=log,debug=cfg.general.debug)
+            out_dir = f'{cfg.general.output_dir}{cfg.fitting.HALO}/',\
+            rotmass_settings=cfg.fitting,log_directory=cfg.general.log_directory,\
+            results_file = cfg.fitting.results_file,\
+            log=log,debug=cfg.general.debug, font=font_name)
 
 if __name__ =="__main__":
     main()

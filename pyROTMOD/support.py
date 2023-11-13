@@ -11,6 +11,7 @@ with warnings.catch_warnings():
     import matplotlib
     matplotlib.use('pdf')
     import matplotlib.pyplot as plt
+    import matplotlib.font_manager as mpl_fm
 
 from astropy import units as u
 from omegaconf import OmegaConf,MissingMandatoryValue,ListConfig
@@ -19,6 +20,16 @@ from datetime import datetime
 class InputError(Exception):
     pass
 
+class SupportRunError(Exception):
+    pass
+
+def add_font(file):
+    try:
+        mpl_fm.fontManager.addfont(file)
+        font_name = mpl_fm.FontProperties(fname=file).get_name()
+    except FileNotFoundError:
+        font_name = 'DejaVu Sans'
+    return font_name
 
 def create_directory(directory,base_directory,debug=False):
     split_directory = [x for x in directory.split('/') if x]
@@ -203,15 +214,18 @@ This is version {version} of the program.
         cfg.general.distance= input(f'''Please provide the distance (0. will use vsys and the hubble flow from a .def file): ''')
 
     if cfg.general.distance == 0.:
+        raise InputError(f'We cannot model profiles adequately without a distance proper distance')
+        '''
         try:
-            vsys = gas_profiles.load_tirific(cfg.RC_Construction.gas_file, Variables = ['VSYS'])
+            vsys = load_tirific(cfg.RC_Construction.gas_file, Variables = ['VSYS'])
             if vsys[0] == 0.:
                 raise InputError(f'We cannot model profiles adequately without a distance')
             else:
                 cfg.general.distance = vsys[0]/c.H_0
         except:
             raise InputError(f'We cannot model profiles adequately without a distance proper distance')
-        ######################################## Read the optical profiles ##########################################
+        '''
+    ######################################## Read the optical profiles ##########################################
     print_log(f'''We are using the following distance = {cfg.general.distance}.
 ''',log,debug=cfg.general.debug)
 
@@ -318,7 +332,7 @@ the unit {units[i]} can not be processed.''')
 
     if found_input['RADI'][1] in ['ARCMIN','DEGREE']:
         increase = 60 if found_input['RADI'][1] == 'ARCMIN' else 3600.
-        found_input['RADI'][2:] = [x*increase for x in optical_profiles[0][2:]]
+        found_input['RADI'][2:] = [x*increase for x in found_input['RADI'][2:]]
         found_input['RADI'][1] = 'ARCSEC'
     print_log(f'''In {filename} we have found the following columns:
 {', '.join([f'{x} ({y})' for x,y in zip(input_columns,units)])}.

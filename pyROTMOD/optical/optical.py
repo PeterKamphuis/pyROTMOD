@@ -583,9 +583,9 @@ def get_optical_profiles(filename,distance = 0.*unit.Mpc,band = 'SPITZER3.6',exp
                 optical_profiles[types][2:] = [float(y)*MLRatio.value for y in optical_profiles[types][2:]]
     if galfit_file:
         for i in range(len(cleaned_components)):
-            if cleaned_components[i]['Central SB']:
+            if cleaned_components[i]['Central SB'] != None:
                 cleaned_components[i]['Central SB'] = cleaned_components[i]['Central SB']*MLRatio
-            if cleaned_components[i]['Total SB']:
+            if cleaned_components[i]['Total SB'] != None:
                 cleaned_components[i]['Total SB'] = cleaned_components[i]['Total SB']*MLRatio
         original_profiles = None
     else:
@@ -594,7 +594,7 @@ def get_optical_profiles(filename,distance = 0.*unit.Mpc,band = 'SPITZER3.6',exp
         optical_profiles,cleaned_components = process_read_profile(optical_profiles,cleaned_components,\
             output_dir = output_dir, debug=debug, log=log)
 
-    return optical_profiles,cleaned_components,galfit_file,vel_found
+    return optical_profiles,cleaned_components,galfit_file,vel_found, original_profiles 
 
 get_optical_profiles.__doc__ =f'''
  NAME:
@@ -659,7 +659,12 @@ def hernquist_profile(r, mass, h):
 
 
 def mag_to_lum(mag,band = 'WISE3.4',distance= 0.*unit.Mpc,debug = False):
+    if band not in co.solar_magnitudes:
+        raise InputError(f''' The band {band} is not yet available in pyROTMOD. 
+Possible bands are {', '.join([x for x in co.solar_magnitudes])}. 
+Please add the info for band {band} to pyROTMOD/constants.py.''')
     if mag.unit == unit.mag/unit.arcsec**2:
+      
         # Surface brightness is constant with distance and hence works differently
         #from Oh 2008.
         factor = (21.56+co.solar_magnitudes[band])
@@ -876,7 +881,11 @@ def read_galfit(input,log=None,debug=False):
     except FileNotFoundError:
         sup.print_log(f'''READ_GALFIT: we could not find the file {input}
 assuming it is already a readlines construct''',log)
-        
+        lines = input
+    except TypeError:
+        sup.print_log(f'''READ_GALFIT: we could not find the file {input}
+assuming it is already a readlines construct''',log)
+        lines = input  
     recognized_components = ['expdisk','sersic','edgedisk','sky']
     counter = [0 for x in recognized_components]
     mag_zero = []

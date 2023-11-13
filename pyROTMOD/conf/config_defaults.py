@@ -17,7 +17,7 @@ class General:
     log_directory: str = f'{output_dir}Logs/{datetime.now().strftime("%H:%M:%S-%d-%m-%Y")}/'
     debug: bool = False
     distance: Optional[float] = None  #This uses the vsys from the gas input file
-
+    font: str = "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf"
 
 @dataclass
 class Galaxy_Settings:

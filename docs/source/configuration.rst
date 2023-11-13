@@ -99,7 +99,7 @@ RC_Construction Keywords
 
   *str, required, no default*
 
-  The file containg the total rotation curve and the gas distribution. This can be a tirific .def file or a table in a text file. In case of the latter it should be arranged as the optical file.
+  The file containing the total rotation curve and the gas distribution. This can be a tirific .def file or a table in a text file. In case of the latter it should be arranged as the optical file.
   The RADI can be different and the gas disk should be indicated with DISK_G. the observed RC as V_OBS  with V_OBS_ERR as its error.
 
 **distance**: null
@@ -125,6 +125,7 @@ RC_Construction Keywords
   *str, optional , default = SPITZER3.6*
 
   Band to be used for magnitude to flux/luminosity conversion. This is only used if the input file is in MAG/ARCSEC^2 or when the input file is a galfit file.
+  currently available bands are SPITZER3.6, WISE3.4 
 
 **scaleheight**
 

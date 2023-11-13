@@ -149,17 +149,42 @@ def calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,DM_curve,function_va
     for key in Baryonic_RC:
         combined_RC[disk_var[key]]=[np.sqrt(function_variable_settings[key][0])*Baryonic_RC[key][0],[],[]]
         if function_variable_settings[key][3]:
+            if key == 'MG':
+                print(key)
+                print(Baryonic_RC[key],function_variable_settings[key][3])
             if np.sum(Baryonic_RC[key][1]) != 0.:
                 low_curve = Baryonic_RC[key][0]-Baryonic_RC[key][1]
                 high_curve =  Baryonic_RC[key][0]+Baryonic_RC[key][1]
             else:
                 low_curve = Baryonic_RC[key][0]
-                high_curve =  Baryonic_RC[key][0]
+                high_curve =  Baryonic_RC[key][0] 
+            if key == 'MG':
+                print(f'Before applying')
+                print(low_curve,high_curve)
+                print(function_variable_settings[key][1],function_variable_settings[key][2])
+            below_low = []
+            below_high = []
             if function_variable_settings[key][1]:
-                low_curve = np.sqrt(function_variable_settings[key][1])*low_curve
+                low_curve = np.sqrt(abs(function_variable_settings[key][1]))*low_curve 
+                below_low = np.where(low_curve < 0.)[0]
+              
             if function_variable_settings[key][2]:
-                high_curve = np.sqrt(function_variable_settings[key][2])*high_curve
-
+                high_curve = np.sqrt(abs(function_variable_settings[key][2]))*high_curve
+                below_high = np.where(high_curve < 0.)[0]
+            '''   
+            if len(below_low) > 0 or   len(below_high):
+                tmp_low = copy.deepcopy(low_curve)
+                tmp_high = copy.deepcopy(high_curve)
+                if  len(below_low):
+                    low_curve[below_low] =  tmp_high[below_low]   
+                if  len(below_high):
+                    high_curve[below_high] =  tmp_low[below_high]
+                del tmp_low
+                del tmp_high 
+            '''
+            if key == 'MG':
+                print(f'low_curve high_curve')
+                print(low_curve,high_curve)
 
             if np.array_equal(low_curve,Baryonic_RC[key][0]) and np.array_equal(high_curve,Baryonic_RC[key][0]):
                 combined_RC[disk_var[key]][1] = np.zeros(len(radii))
@@ -172,10 +197,15 @@ def calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,DM_curve,function_va
                 combined_RC[disk_var[key]][2] = high_curve
             else:
                 combined_RC[disk_var[key]][2] = 2.*combined_RC[disk_var[key]][0]-low_curve
-                combined_RC[disk_var[key]][1] = low_curve
+                combined_RC[disk_var[key]][1] = low_curve 
+            if key == 'MG':
+                print(f'combined_RC')
+                print(combined_RC[disk_var[key]])
+
         else:
             combined_RC[disk_var[key]][1] = np.zeros(len(radii))
             combined_RC[disk_var[key]][2] = np.zeros(len(radii))
+    #exit()
     dm_variables = [function_variable_settings[x][0] for x in DM_curve['variables'] if x != 'r']
     if any(x == None for x in dm_variables):
         pass
@@ -684,18 +714,18 @@ def write_output_file(final_variable_fits,result_emcee,output_dir='./',\
                 file.write(variable_line)
 
 
-def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False):
+def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False, font = 'Times New Roman'):
 
     style_library = {'V_total': {'color': 'k','lines':'-','name': 'V$_{Obs}$','marker':'o', 'alpha': 0.5 ,'order' :7},
                      'V_fit': {'color': 'r','lines':'-','name': 'V$_{Total}$','marker':'o', 'alpha': 1,'order' :6},
-                     'V_dm': {'color': 'r','lines':'dotted','name': f'V$_{{{halo}}}$','marker':None, 'alpha': 1,'order' :5},
+                     'V_dm': {'color': 'b','lines':'dotted','name': f'V$_{{{halo}}}$','marker':None, 'alpha': 1,'order' :5},
                      'V_gas': {'color': 'k','lines':'dotted','name': f'V$_{{Gas}}$','marker':None, 'alpha': 1,'order' :4},
                      'V_disk': {'color': 'k','lines':'--','name': f'V$_{{Disk}}$','marker':None, 'alpha': 1,'order' :3},
                      'V_bulge': {'color': 'k','lines':'-.','name': f'V$_{{Bulge}}$','marker':None, 'alpha': 1,'order' :2},
 
                     }
     styles = ['-','-.',':','--','-','-.',':','--']
-    labelfont = {'family': 'Times New Roman',
+    labelfont = {'family': font,
              'weight': 'bold',
              'size': 14}
     plt.rc('font',**labelfont)
@@ -710,6 +740,8 @@ def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False):
 
 
     for rcs in curves:
+        if rcs == 'V_gas':
+            print(curves[rcs])
         if rcs != 'RADI':
             ax1.plot(curves['RADI'],curves[rcs][0],label=style_library[rcs]['name']\
                      ,lw=5,linestyle = style_library[rcs]['lines'],\
@@ -782,7 +814,7 @@ plot_curves.__doc__ =f'''
 
 def rotmass_main(radii, derived_RCs, total_RC,total_RC_err,no_negative =True,out_dir = None,\
                 interactive = False,rotmass_settings = None,log_directory=None,\
-                results_file = 'Final_Results',log=None,debug = False):
+                results_file = 'Final_Results',log=None,debug = False, font = 'Times New Roman'):
 
     #Dictionary for translate RC and mass parameter for the baryonic disks
     disk_var = {'MD': 'V_disk','MG': 'V_gas','MB': 'V_bulge' }
@@ -828,7 +860,9 @@ for the {rotmass_settings} DM halo the parameters are {','.join([key for key in 
         #Start GUI with default settings or input yml settings. these are already in function_parameters
     else:
 
-        plot_curves(f'{log_directory}/{results_file}_Input_Curves.pdf', current_curves,variables=function_variable_settings, halo=rotmass_settings['HALO'])
+        plot_curves(f'{log_directory}/{results_file}_Input_Curves.pdf', current_curves,\
+                    variables=function_variable_settings, halo=rotmass_settings['HALO'],\
+                    font= font)
 
         #Then download settings
 
@@ -852,6 +886,7 @@ for the {rotmass_settings} DM halo the parameters are {','.join([key for key in 
 
     current_curves = calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,\
                                         DM_curve,final_variable_fits,disk_var)
+   
     print_log('Plotting and writing',log)
     plot_curves(f'{out_dir}/{results_file}_Final_Curves.pdf', current_curves ,variables=final_variable_fits,halo=rotmass_settings['HALO'])
 
