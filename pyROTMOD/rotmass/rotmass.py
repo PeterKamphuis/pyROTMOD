@@ -37,12 +37,14 @@ def build_curve(function_variables,disk_var,dm_halo,Baryonic_RCs,debug=False,log
     symbols_to_replace = []
     values_to_be_replaced = []
     for component in Baryonic_RCs:
+       
         fitM, fitV = symbols(f"{component} {disk_var[component]}")
         curve_sym = curve_sym +fitM*fitV*Abs(fitV)
         symbols_to_replace.append(fitV)
         # keep a record of the values we need to enter
         replace_dict[disk_var[component]]=Baryonic_RCs[component][0]
         values_to_be_replaced.append(Baryonic_RCs[component][0])
+ 
     curve_sym = sqrt(curve_sym)
     #Now let's transform these to actual functions
     #for dm this is straight forward
