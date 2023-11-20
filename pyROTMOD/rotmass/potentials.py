@@ -37,7 +37,7 @@ def MOND():
     mond = sqrt(r*a0*sqrt(1+V**4/r**2*a0**2))
     return mond 
 
-class NFW_config:
+class MOND_config:
     parameters = {'a0': [None, None, None, True,True]}
 
 # Written by Aditya K.

@@ -687,8 +687,13 @@ Changing the parameter and its boundaries and trying again.
         lab = []
         for x in function_variable_settings:
             parameter = function_variable_settings[x]["Variables"][0]
-            strip_parameter,no = get_uncounted(parameter)
-            lab.append(label_dictionary[strip_parameter])
+            strip_parameter,no = get_uncounted(parameter) 
+            if strip_parameter in label_dictionary:
+                lab.append(label_dictionary[strip_parameter])
+            else:
+                print(f''' The parameter {parameter} has been stripped as the parameter {strip_parameter}
+Unfortunately we can not find it in the label dictionary.''')
+                raise RunTimeError(f'Parameter is not in label dictionary')
        
         fig = corner.corner(result_emcee.flatchain, quantiles=[0.16, 0.5, 0.84],show_titles=True,
                         title_kwargs={"fontsize": 15},labels=lab)

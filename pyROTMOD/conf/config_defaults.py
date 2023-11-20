@@ -47,7 +47,7 @@ class Parameters:
 
 
 
-
+'''
 @dataclass
 class RotModConfig:
     print_examples: bool=False
@@ -56,7 +56,7 @@ class RotModConfig:
     RC_Construction: Galaxy_Settings = Galaxy_Settings()
     fitting_general: Rotmass= Rotmass()
     fitting_parameters: Parameters = Parameters()
-
+'''
 @dataclass
 class ExtendConfig:
     print_examples: bool=False
@@ -74,6 +74,7 @@ class ShortConfig:
     RC_Construction: Galaxy_Settings = Galaxy_Settings()
     input_config: Optional[dict] = None
     file_config: Optional[dict] = None
+    fitting_general: Rotmass= Rotmass() 
 
 def read_config(argv):
     
@@ -85,7 +86,7 @@ def read_config(argv):
     cfg_input = OmegaConf.merge(cfg,short_inputconf)
    
     if cfg_input.print_examples:
-        cfg = OmegaConf.structured(RotModConfig)
+        cfg = read_fitting_config(cfg,'',print_examples=True)
         no_example = OmegaConf.masked_copy(cfg, ['general','RC_Construction','fitting'])
         with open('ROTMOD-default.yml','w') as default_write:
             default_write.write(OmegaConf.to_yaml(cfg))
@@ -124,17 +125,10 @@ configuration_file = ''')
     return cfg
 
 
-def read_fitting_config(cfg,baryonic_components):
-    halo ='NFW'
+def read_fitting_config(cfg,baryonic_components,print_examples=False):
+    if print_examples:
+        baryonic_components = {'DISK_GAS': [],'EXPONENTIAL_1':{},'HERNQUIST_1': []}
     halo = cfg.file_config.fitting_general.HALO
-    try:
-        halo = cfg.file_config.fitting_general.HALO
-    except:
-        pass
-    try:
-        halo = cfg.input_config.fitting_general.HALO
-    except:
-        pass
     halo_conf = f'{halo}_config'
     cfg_new = OmegaConf.structured(ExtendConfig)
     cfg_new = add_dynamic(cfg_new,baryonic_components,halo = halo_conf)
