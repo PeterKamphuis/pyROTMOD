@@ -22,7 +22,8 @@ with warnings.catch_warnings():
     matplotlib.use('pdf')
     import matplotlib.pyplot as plt
 
-
+class RunTimeError(Exception):
+    pass
 def build_curve(function_variables,disk_var,dm_halo,Baryonic_RCs,debug=False,log=None):
     # First get the DM function in sympy format
     DM_curve_sym = getattr(V, dm_halo)()
@@ -102,22 +103,36 @@ def calculate_confidence_area(radii,full_curve,final_variable_fits):
     all_sets =[]
     ranges = []
     variables = [x for x in full_curve['variables'] if x != 'r']
-   
-    for variable in final_variable_fits:
-        if final_variable_fits[variable]['Variables'][0] in variables:
-            if final_variable_fits[variable]['Settings'][3] and final_variable_fits[variable]['Settings'][1] != None and final_variable_fits[variable]['Settings'][2] != None:
-                ranges.append([final_variable_fits[variable]['Settings'][1],final_variable_fits[variable]['Settings'][2]])
+    coll_variables = []
+    for variable in variables:
+        fits_variable = None
+        for x in final_variable_fits:
+            if final_variable_fits[x]['Variables'][0] == variable:
+                fits_variable = x
+        if fits_variable != None:  
+            coll_variables.append(final_variable_fits[fits_variable]['Variables'][0])
+            if final_variable_fits[fits_variable]['Settings'][3] and \
+                final_variable_fits[fits_variable]['Settings'][1] != None and \
+                    final_variable_fits[fits_variable]['Settings'][2] != None:
+                ranges.append([final_variable_fits[fits_variable]['Settings'][1],final_variable_fits[fits_variable]['Settings'][2]])
             else:
-                ranges.append([final_variable_fits[variable]['Settings'][0]])
+                ranges.append([final_variable_fits[fits_variable]['Settings'][0]])
+
+    if not np.array_equal(variables,coll_variables):
+        print(f'''We have messed up the collection of variables for the curve {full_curve['function'].__name__}
+requested variables = {variables}
+collected variables = {coll_variables}''' )
+        raise RunTimeError(f'Ordering Error in variables collection')
     if  None in ranges:
          return [np.zeros(len(radii)),np.zeros(len(radii))]
     all_sets = np.array(np.meshgrid(*ranges)).T.reshape(-1,len(ranges))
-    for set in all_sets:
-        print(set)
+    
+    for set in all_sets: 
         curve = full_curve['function'](radii,*set)
         all_possible_curve.append(curve)
-   
+    
     all_possible_curve=np.array(all_possible_curve,dtype=float)
+   
     minim = np.argmin(all_possible_curve,axis=0)
     maxim =  np.argmax(all_possible_curve,axis=0)
     confidence_area = [[all_possible_curve[loc,i] for i,loc in enumerate(minim) ],\
@@ -151,7 +166,9 @@ calculate_confidence_area.__doc__ =f'''
 
 def calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,DM_curve,function_variable_settings,disk_var):
     combined_RC = {'RADI': radii, 'V_total': [total_RC[0],total_RC[0]-total_RC[1],total_RC[0]+total_RC[1]]}
+   
     for key in Baryonic_RC:
+
         combined_RC[disk_var[key][1]]=[np.sqrt(function_variable_settings[key]['Settings'][0])*Baryonic_RC[key]['RC'],[],[]]
         if function_variable_settings[key]['Settings'][3]:
             
@@ -187,8 +204,9 @@ def calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,DM_curve,function_va
         else:
             combined_RC[disk_var[key][1]][1] = np.zeros(len(radii))
             combined_RC[disk_var[key][1]][2] = np.zeros(len(radii))
-    #exit()
+   
     dm_variables = [function_variable_settings[x]['Settings'][0] for x in DM_curve['variables'] if x != 'r']
+   
     if any(x == None for x in dm_variables):
         pass
     else:
@@ -278,7 +296,6 @@ def create_disk_var(collected_RCs):
     for RC in collected_RCs:
         key = RC[0]
         if key != 'RADI':
-            print(key)
             bare,no = get_uncounted(key)
             if bare in ['EXPONENTIAL','SERSIC']:
                 disk_var[key] = [f'Gamma_disk_{counters["DISK"]}',f'V_disk_{counters["DISK"]}']
@@ -768,12 +785,8 @@ def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False, fo
         figure = plt.figure(figsize=(10,7.5) , dpi=300, facecolor='w', edgecolor='k')
         ax1 = figure.add_subplot(1,1,1)
 
-    
     for rcs_full in curves:
         rcs,no = get_uncounted(rcs_full)
-       
-        if rcs == 'V_gas':
-            print(curves[rcs_full])
         if rcs != 'RADI':
             lab = style_library[rcs]['name']
             if no != None:
@@ -914,6 +927,7 @@ for the {rotmass_settings} DM halo the parameters are {','.join([key for key in 
 
     current_curves = calculate_curves(radii ,total_RC,Baryonic_RC,full_curve,\
                                         DM_curve,initial_variable_settings,disk_var)
+   
     plot_curves(f'{log_directory}/{results_file}_Initial_Guess_Curves.pdf', current_curves,variables= initial_variable_settings,halo=rotmass_settings['HALO'])
 
     final_variable_fits,emcee_results = mcmc_run(full_curve,radii,total_RC,\

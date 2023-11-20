@@ -8,6 +8,8 @@ from typing import List
 
 
 
+
+
 # Written by Aditya K.
 def ISO():
     r,RHO_0,R_C = symbols('r RHO_0 R_C')
@@ -29,6 +31,14 @@ class NFW_config:
     parameters = {'C': [None, None, None, True,True],\
     'R200': [None, None, None, True,True]}
   
+
+def MOND():
+    r, V, a0 = symbols('r V a0')
+    mond = sqrt(r*a0*sqrt(1+V**4/r**2*a0**2))
+    return mond 
+
+class NFW_config:
+    parameters = {'a0': [None, None, None, True,True]}
 
 # Written by Aditya K.
 def BURKERT():
