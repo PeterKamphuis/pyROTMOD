@@ -24,7 +24,7 @@ FLUXCONV (MJy/sr)/(DN/second) = 0.1069±0.0026 with 1.22" pixel size thus DN to 
 '''
 #This is approxximately let's see
 #global zero_point_fluxes
-zero_point_fluxes = {'WISE3.4': 309.540, 'SPITZER3.6': 280.9} #Jy
+zero_point_fluxes = {'WISE3.4': 306.682, 'SPITZER3.6': 280.9} #Jy
 zero_point_magnitudes = {'WISE3.4': 20.5, 'SPITZER3.6': 18.8}
 solar_magnitudes =  {'WISE3.4': 3.24, 'SPITZER3.6': 3.24}
 #spitzer from https://irsa.ipac.caltech.edu/data/SPITZER/docs/irac/iracinstrumenthandbook/14/#_Toc82083613/

@@ -63,9 +63,21 @@ General Keywords
 
   Switch for printing debug messages in the log. If you are posting an issue with a log on the github please run once with this turned on.
 
-Galaxy Keywords
+**RC_File.txt**
+
+  *str, optional, default = 'RCs_For_Fitting.txt'*
+
+  File with all the input RCs in the pyROTMOD format. If RC_Contrustion is enabled this is where the RCs are written to if only fitting is enabled this is where the RCs are obtained from.
+
+RC_Construction Keywords
 --------
-*Specified with general*
+*Specified with RC_Construction*
+
+**enable**
+
+  *bool, optional, default =True*
+
+  Whether to construct the RC from the density files
 
 **optical_file**: null
 
@@ -73,13 +85,21 @@ Galaxy Keywords
 
   The file containing the optical light distributions. This can either be a galfit file or a table in a text file. In case of the latter the first column should be 'RADI' and specify the radii of the profile in kpc or arcsec.
   The units of every column should be specified on the second row.  Acceptable units are  'KM/S', 'M/S', 'M_SOLAR/PC^2', 'M_SOLAR/PC^2', 'MAG/ARCSEC^2' where the velocity profiles can not be mixed with luminosity or mass profiles.
-  Other columns can be EXPONTIAL_# or BULGE_# where the # indicates an integer number. In case multiple profiles are specified for EXPONENTIAL or BULGE their individual RCs
+  Other columns can be EXPONTIAL_#,HERNQUIST_#, SERSIC_#,  DENSITY_#, DISK_# ,BULGE_#  where the # indicates an integer number.
+  IF the input is in velocities the input is transfer directly to the RC fitting else the following scheme is maintained:
+  The profiles EXPONENTIAL and HERNQUIST are parameterized with their respective functions.
+  The SERSIC profiles are parameterized with an exponential when 0.75 < n < 1.25 and an hernquist profile when  3.75 < n < 4.25
+  The DISK and BULGE profiles are assumed to be unparameterized disk profiles
+  With the DENSITY an attempt will be made to fit the exponential or hernquist profiles or both and if it will be split according to the best reduced chi square.
+  In case the parameterisation fails a random disk will be assumed (EXP,SER,DENS) or the profile will be removed from the RC fitting (HERN, BULG)
+  In the RC fitting all components are combined and only a disk component (EXPONENTIAL,DISK,SERSIC) and a bulge component (HERNQUIST, BULGE) are used.
+  Note that we cannot yet convert random BULGE profiles hence they need to be in velocity to be included.
 
 **gas_file**: null
 
   *str, required, no default*
 
-  The file containg the total rotation curve and the gas distribution. This can be a tirific .def file or a table in a text file. In case of the latter it should be arranged as the optical file.
+  The file containing the total rotation curve and the gas distribution. This can be a tirific .def file or a table in a text file. In case of the latter it should be arranged as the optical file.
   The RADI can be different and the gas disk should be indicated with DISK_G. the observed RC as V_OBS  with V_OBS_ERR as its error.
 
 **distance**: null
@@ -96,19 +116,45 @@ Galaxy Keywords
 
 **mass_to_light_ratio**:
 
-  *float, optional, default = 0.6*
+  *float, optional, default = 1.0*
 
   Mass to light ratio to be used for converting the optical luminosity profiles to mass profiles
 
-**band**: SPITZER3.6
+**band**:
+
+  *str, optional , default = SPITZER3.6*
 
   Band to be used for magnitude to flux/luminosity conversion. This is only used if the input file is in MAG/ARCSEC^2 or when the input file is a galfit file.
+  currently available bands are SPITZER3.6, WISE3.4 
 
+**scaleheight**
 
-Fitting Keywords
+  *list, optional, default = [0., None]*
+
+  scale height and vertical mode of the optical disks. If 0. or vertical mode = None infinitely thin disks are used.
+  vertical mode options are  ['exp', 'sech-sq','sech']. Anything in galfit file supersedes this input.
+**gas_scaleheight**
+
+  *list, optional, default = [0., None]*
+
+  scale height and vertical mode of the optical disks. If 0. or vertical mode = None infinitely thin disks are used.
+  vertical mode options are  ['exp', 'sech-sq','sech']. Anything in tirific file supersedes this input.
+
+**axis_ratio**
+
+  * float, optional, default = 1.*
+
+  axis ratio of the bulge. Anything in galfit file supersedes this input.
+
+General Fitting Keywords
 --------
-*Specified with fitting*
+*Specified with fitting_general*
 
+**enable**
+
+  *bool, optional, default =True*
+
+  Run the Bayesian Fitting.
 
 **negative_values**:
 
@@ -129,6 +175,11 @@ Fitting Keywords
     Number of integration steps per parameter for the emcee fitting.
 
 
+General Fitting Keywords
+--------
+*Specified with fitting_parameters*
+
+
 The following specify the initial guesses and limits for the parameters that are fitted in the mass modelling.
 The list is build up from five parameters
 
@@ -136,24 +187,27 @@ The list is build up from five parameters
   2. Lower limit (float). if set to null no lower limit is imposed
   3. Upper limit (float). if set to null no lower limit is imposed
   4. Fit parameter (bool). If this item is false the initial guess is fixed in the fitting.
-  4. Include parameter (bool). If this item is set to false the parameter is not included in the final function to be fitted. E.g., if for MG this is False the gas disk is not added to the gas disk.
+  5. Include parameter (bool). If this item is set to false the parameter is not included in the final function to be fitted. E.g., if for MG this is False the gas disk is not added to the gas disk.
 
-For the parameters of  the DM they must be included in the definition of the DM Halo and they will always be included into the final function.
+For the parameters of the DM they must be included in the definition of the DM Halo and they will always be included into the final function.
+These are set dynamical and when not included in the final fitting equation they are ignored.
+Parameters for the baryonic curves should correspond to there type name with a counter (e.g. DISK_GAS, EXPONENTIAL_1,EXPONENTIAL_2, BULGE_1, HERNQUIST_1)
+For the DM halo they should correspond to the parameter being fitted
 
-**MG**
+**DISK_GAS**
 
   *List, optional, default = [1.4,null,null,true,true]*
 
   The mass to light ratio for the gas disk used in the fitting. If the lower limit is unset it is the initial guess divided by 10. If the upper limit is unset is is the intial guess *20.
 
-**MD**:
+**EXPONENTIAL_1**:
 
   *List, optional, default = [1.0,null,null,true,true]*
 
   The mass to light ratio for the optical exponential disk used in the fitting. If the lower limit is unset it is the initial guess divided by 10. If the upper limit is unset is is the intial guess *20.
 
 
-**MB**:
+**HENRQUIST_1**:
 
   *List, optional, default = [1.0,null,null,true,true]*
 
