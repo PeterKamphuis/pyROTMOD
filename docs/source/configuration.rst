@@ -146,9 +146,9 @@ RC_Construction Keywords
 
   axis ratio of the bulge. Anything in galfit file supersedes this input.
 
-Fitting Keywords
+General Fitting Keywords
 --------
-*Specified with fitting*
+*Specified with fitting_general*
 
 **enable**
 
@@ -175,6 +175,11 @@ Fitting Keywords
     Number of integration steps per parameter for the emcee fitting.
 
 
+General Fitting Keywords
+--------
+*Specified with fitting_parameters*
+
+
 The following specify the initial guesses and limits for the parameters that are fitted in the mass modelling.
 The list is build up from five parameters
 
@@ -182,24 +187,27 @@ The list is build up from five parameters
   2. Lower limit (float). if set to null no lower limit is imposed
   3. Upper limit (float). if set to null no lower limit is imposed
   4. Fit parameter (bool). If this item is false the initial guess is fixed in the fitting.
-  4. Include parameter (bool). If this item is set to false the parameter is not included in the final function to be fitted. E.g., if for MG this is False the gas disk is not added to the gas disk.
+  5. Include parameter (bool). If this item is set to false the parameter is not included in the final function to be fitted. E.g., if for MG this is False the gas disk is not added to the gas disk.
 
-For the parameters of  the DM they must be included in the definition of the DM Halo and they will always be included into the final function.
+For the parameters of the DM they must be included in the definition of the DM Halo and they will always be included into the final function.
+These are set dynamical and when not included in the final fitting equation they are ignored.
+Parameters for the baryonic curves should correspond to there type name with a counter (e.g. DISK_GAS, EXPONENTIAL_1,EXPONENTIAL_2, BULGE_1, HERNQUIST_1)
+For the DM halo they should correspond to the parameter being fitted
 
-**MG**
+**DISK_GAS**
 
   *List, optional, default = [1.4,null,null,true,true]*
 
   The mass to light ratio for the gas disk used in the fitting. If the lower limit is unset it is the initial guess divided by 10. If the upper limit is unset is is the intial guess *20.
 
-**MD**:
+**EXPONENTIAL_1**:
 
   *List, optional, default = [1.0,null,null,true,true]*
 
   The mass to light ratio for the optical exponential disk used in the fitting. If the lower limit is unset it is the initial guess divided by 10. If the upper limit is unset is is the intial guess *20.
 
 
-**MB**:
+**HENRQUIST_1**:
 
   *List, optional, default = [1.0,null,null,true,true]*
 

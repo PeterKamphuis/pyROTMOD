@@ -3,10 +3,10 @@
 # This is an attempt at a holistic python version of ROTMOD and ROTMAS using bayesian fitting and such
 
 #from optparse import OptionParser
-from omegaconf import OmegaConf,MissingMandatoryValue,ListConfig
+
 
 import pyROTMOD
-from pyROTMOD.conf.config_defaults import RotModConfig
+from pyROTMOD.conf.config_defaults import read_config,read_fitting_config
 from pyROTMOD.optical.optical import get_optical_profiles
 from pyROTMOD.gas.gas import get_gas_profiles
 from pyROTMOD.rotmod.rotmod import convert_dens_rc
@@ -44,45 +44,14 @@ pyROTMOD 'fitting.MD=[1.4,True,True]'
 ''')
         sys.exit()
 
-
-    #initialize constants
-    #c.initialize()
-    #initialize default settings
-    cfg = OmegaConf.structured(RotModConfig)
-    # print the default file
-    inputconf = OmegaConf.from_cli(argv)
-    cfg_input = OmegaConf.merge(cfg,inputconf)
-    if cfg_input.print_examples:
-        no_example = OmegaConf.masked_copy(cfg, ['general','galaxy','fitting'])
-        with open('ROTMOD-default.yml','w') as default_write:
-            default_write.write(OmegaConf.to_yaml(cfg))
-        print(f'''We have printed the file ROTMOD-default.yml in {os.getcwd()}.
-Exiting pyROTMOD.''')
-        sys.exit()
-
-    if cfg_input.configuration_file:
-        succes = False
-        while not succes:
-            try:
-                yaml_config = OmegaConf.load(cfg_input.configuration_file)
-        #merge yml file with defaults
-                cfg = OmegaConf.merge(cfg,yaml_config)
-                succes = True
-            except FileNotFoundError:
-                cfg_input.configuration_file = input(f'''
-You have provided a config file ({cfg_input.configuration_file}) but it can't be found.
-If you want to provide a config file please give the correct name.
-Else press CTRL-C to abort.
-configuration_file = ''')
+    cfg = read_config(argv)
+    if cfg.general.debug:
+        warnings.showwarning = warn_with_traceback
+ 
     default_output=cfg.general.output_dir
     default_log_directory = cfg.general.log_directory
 
 
-    # read command line arguments anything list input should be set in '' e.g. pyROTMOD 'rotmass.MD=[1.4,True,True]'
-
-    cfg = OmegaConf.merge(cfg,inputconf)
-    if cfg.general.debug:
-        warnings.showwarning = warn_with_traceback
     cfg, log= check_input(cfg,default_output,default_log_directory,pyROTMOD.__version__)
     #Add the requested font and get the name
     font_name = add_font(cfg.general.font)
@@ -178,15 +147,18 @@ The axis ratio is {x['axis ratio']}.
         print_log(f'We managed to read the RCs.\n',log)
 
     ######################################### Run our Bayesian interactive fitter thingy ################################################
-
-    if  cfg.fitting.enable:
-        if not os.path.isdir( f'{cfg.general.output_dir}{cfg.fitting.HALO}/'):
-            os.mkdir( f'{cfg.general.output_dir}{cfg.fitting.HALO}/')
+    baryonic_components = [x[0] for x in derived_RCs if x[0] != 'RADI']
+    cfg = read_fitting_config(cfg,baryonic_components)    
+  
+    if  cfg.fitting_general.enable:
+        if not os.path.isdir( f'{cfg.general.output_dir}{cfg.fitting_general.HALO}/'):
+            os.mkdir( f'{cfg.general.output_dir}{cfg.fitting_general.HALO}/')
         radii = ensure_kpc_radii(derived_RCs[0],distance=cfg.general.distance,log=log )
         rotmass_main(radii,derived_RCs, total_rc,total_rc_err,\
-            out_dir = f'{cfg.general.output_dir}{cfg.fitting.HALO}/',\
-            rotmass_settings=cfg.fitting,log_directory=cfg.general.log_directory,\
-            results_file = cfg.fitting.results_file,\
+            out_dir = f'{cfg.general.output_dir}{cfg.fitting_general.HALO}/',\
+            rotmass_settings=cfg.fitting_general,log_directory=cfg.general.log_directory,\
+            rotmass_parameter_settings = cfg.fitting_parameters,\
+            results_file = cfg.fitting_general.results_file,\
             log=log,debug=cfg.general.debug, font=font_name)
 
 if __name__ =="__main__":

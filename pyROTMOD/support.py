@@ -229,25 +229,7 @@ This is version {version} of the program.
     print_log(f'''We are using the following distance = {cfg.general.distance}.
 ''',log,debug=cfg.general.debug)
 
-    if cfg.fitting.enable:
-        for key in dir(cfg.fitting):
-            if type(getattr(cfg.fitting,key))==ListConfig:
-                tmp = getattr(cfg.fitting,key)
-                for i in range(3):
-                    try:
-                        if tmp[i].lower() != 'none':
-                            tmp[i]=float(tmp[i])
-                        else:
-                            tmp[i]=None
-                    except AttributeError:
-                        pass
-
-                for i in [3,4]:
-                    try:
-                        tmp[i]=eval(tmp[i])
-                    except TypeError:
-                        tmp[i]=bool(tmp[i])
-                setattr(cfg.fitting,key,tmp)
+   
     return cfg,log
 check_input.__doc__ =f'''
  NAME:
@@ -275,7 +257,39 @@ check_input.__doc__ =f'''
  NOTE:
 
 '''
+def check_fitting_input(cfg):
+    if cfg.fitting.enable:
+        for key in dir(cfg.fitting):
+            if type(getattr(cfg.fitting,key))==ListConfig:
+                tmp = getattr(cfg.fitting,key)
+                for i in range(3):
+                    try:
+                        if tmp[i].lower() != 'none':
+                            tmp[i]=float(tmp[i])
+                        else:
+                            tmp[i]=None
+                    except AttributeError:
+                        pass
 
+                for i in [3,4]:
+                    try:
+                        tmp[i]=eval(tmp[i])
+                    except TypeError:
+                        tmp[i]=bool(tmp[i])
+                setattr(cfg.fitting,key,tmp)
+    return cfg,log
+'''Stripe any possible _counters from the key'''
+def get_uncounted(key):
+    number = None
+    try:
+        gh = int(key[-1])
+        splitted = key.split('_')
+        component = '_'.join([x for x in splitted[:-1]])
+        number = splitted[-1]
+    except ValueError:
+        component = key
+       
+    return component,number
 def integrate_surface_density(radii,density, log=None, calc_ring_area= False):
 
     ringarea= [0 if radii[0] == 0 else np.pi*((radii[0]+radii[1])/2.)**2]
