@@ -284,8 +284,11 @@ def get_uncounted(key):
     try:
         gh = int(key[-1])
         splitted = key.split('_')
-        component = '_'.join([x for x in splitted[:-1]])
-        number = splitted[-1]
+        if len(splitted) == 1:
+            component = key
+        else:
+            component = '_'.join([x for x in splitted[:-1]])
+            number = splitted[-1]
     except ValueError:
         component = key
        

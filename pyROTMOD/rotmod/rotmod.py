@@ -80,6 +80,7 @@ Please let us know and we'll give it a go.''',log)
             else:
                 found_RC = [None,None,None,None]
                 print_log(f'We do not know how to convert the mass density of {components[x-1]["Type"]}',log)
+            print(found_RC[2:])
             if np.any(found_RC[2:]):
                 try:
                     type =optical_profiles[type][0].split('_')
@@ -189,10 +190,10 @@ def bulge_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'sersic', 'axi
         for i in range(1,len(radii)):
             current_mass = np.sum(ring_area[:i]*density[:i])*unit.Msun
             if current_mass < components['Total SB']/2.:
-                scale = radii[i]/1.8153
+                components['scale length'] = radii[i]/1.8153
                 break
     else:
-        scale = float(components['R effective'].value/1.8153)
+        components['scale length']  = float(components['R effective'].value/1.8153)
 
     #try:
     #if components['Type'] == 'sersic':
@@ -242,7 +243,15 @@ def bulge_RC_old(radii,opt_rad,density,debug=False,log=None):
 
 def hernquist_parameter_RC(radii,parameters, truncated =-1.,log= False, debug=False):
     '''This assumes a Hernquist potential where the scale length should correspond to hernquist scale length'''
-    #print(f'This is the total mass in the parameterized exponential disk {float(parameters[1]):.2e}')
+    #print(f'This is the total mass in the parameterized exponential disk {float(parameters[1]):.2e}') 
+    parameters['scale length'] = None
+    if parameters['scale length'] is None:
+        #This is a guess really
+        central_dens = parameters['Central SB']* 1./(1*unit.pc)
+        #I don't understand why astropy is not convvert the pc **3 to pc
+        parameters['scale length'] = (parameters['Total SB']/(2.*np.pi*central_dens))**1/3*1./(unit.pc**2)
+     
+
     if parameters['axis ratio']:
         axis_ratio = parameters['axis ratio']
     else:
@@ -251,13 +260,14 @@ def hernquist_parameter_RC(radii,parameters, truncated =-1.,log= False, debug=Fa
             axis_ratio = axis_ratio.value
         else:
             axis_ratio =1.
+     
     #The two is specified in https://docs.galpy.org/en/latest/reference/potentialhernquist.html?highlight=hernquist
     #It is assumed this hold with the the triaxial potential as well.
     bulge_potential = THP(amp=2.*parameters['Total SB'],a= parameters['scale length'] ,b= 1.,c = axis_ratio)
     #bulge_potential = THP(amp=2.*parameters['Total SB'],a= parameters['scale length'])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        RC = [bulge_potential.vcirc(x*unit.kpc) for x in radii]
+        RC = [float(bulge_potential.vcirc(x*unit.kpc)) for x in radii]
     if truncated > 0.:
         ind =  np.where(radii > truncated)
         RC[ind] = np.sqrt(c.Gsol*float(parameters['Total SB'])/(radii[ind]*1000.*c.pc/(100.*1000.)))

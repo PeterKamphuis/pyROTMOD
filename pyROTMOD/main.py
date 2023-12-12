@@ -148,9 +148,11 @@ The axis ratio is {x['axis ratio']}.
 
     ######################################### Run our Bayesian interactive fitter thingy ################################################
     baryonic_components = [x[0] for x in derived_RCs if x[0] != 'RADI']
-    cfg = read_fitting_config(cfg,baryonic_components)    
   
-    if  cfg.fitting_general.enable:
+    cfg = read_fitting_config(cfg,baryonic_components)
+    cfg, log= check_input(cfg,default_output,default_log_directory,pyROTMOD.__version__)    
+   
+    if cfg.fitting_general.enable:
         if not os.path.isdir( f'{cfg.general.output_dir}{cfg.fitting_general.HALO}/'):
             os.mkdir( f'{cfg.general.output_dir}{cfg.fitting_general.HALO}/')
         radii = ensure_kpc_radii(derived_RCs[0],distance=cfg.general.distance,log=log )

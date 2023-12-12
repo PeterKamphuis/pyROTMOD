@@ -973,7 +973,7 @@ assuming it is already a readlines construct''',log)
                 components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['axis ratio'] = float(tmp[1])
             if tmp[0] == '10)' and read_component:
                 components[f'{current_component}_{counter[recognized_components.index(current_component)]}']['PA'] = float(tmp[1])*unit.degree
-   
+    
     if len(plate_scale) == 0 or len(mag_zero) == 0:
         raise BadFileError(f'Your file  is not recognized by pyROTMOD')
     components['radii'] = np.linspace(0,max_radius,int(max_radius/2.))*np.mean(plate_scale)*unit.arcsec # in arcsec

@@ -12,12 +12,12 @@ from typing import List
 
 # Written by Aditya K.
 def ISO():
-    r,RHO_0,R_C = symbols('r RHO_0 R_C')
-    iso = sqrt((4.*pi*cons.Gpot*RHO_0*R_C**2)* (1- (R_C/r)*atan(r/R_C)))
+    r,RHO0,R_C = symbols('r RHO0 R_C')
+    iso = sqrt((4.*pi*cons.Gpot*RHO0*R_C**2)* (1- (R_C/r)*atan(r/R_C)))
     return iso
 
 class ISO_config:
-    parameters = {'RHO_0': [None, None, None, True,True],\
+    parameters = {'RHO0': [None, None, None, True,True],\
     'R_C': [None, None, None, True,True]}
    
 # Written by Aditya K.
@@ -32,23 +32,33 @@ class NFW_config:
     'R200': [None, None, None, True,True]}
   
 
-def MOND():
-    r, V, a0 = symbols('r V a0')
-    mond = sqrt(r*a0*sqrt(1+V**4/r**2*a0**2))
-    return mond 
+def MOND_CLASSIC():
+    r, V,ML, a0 = symbols('r V ML a0')
+    #Vt(r)=sqrt((mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb))*sqrt(1+sqrt(1+(2*r*a/(mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb)))**2))/sqrt(2))
+    mond = sqrt(ML*V*abs(V)*sqrt(1+sqrt(1+(2*r*(a0*3.0856776e11)/(ML*V*abs(V)))**2))/sqrt(2)) 
+    mond_in = V/abs(V)*sqrt(ML*V**2*sqrt(1+sqrt(1+(2*r*(a0*3.0856776e11)/(ML*V**2))**2))/sqrt(2))
+    #The factor 3.08e11 is to convert from cm/s**2 to km**2/(s**2*kpc)
+    return mond
 
-class MOND_config:
-    parameters = {'a0': [None, None, None, True,True]}
+def MOND_CLASSIC_INDIVIDUAL():
+    r, V,ML, a0 = symbols('r V ML a0')
+    mond_in = V/abs(V)*sqrt(ML*V**2*sqrt(1+sqrt(1+(2*r*(a0*3.0856776e11)/(ML*V**2))**2))/sqrt(2))
+    return mond_in
+
+class MOND_CLASSIC_config:
+    parameters = {'a0': [1.2e-8, None, None, True,True],
+                  'V': ['RC_input_Curve'],
+                  'ML': ['Match']}
 
 # Written by Aditya K.
 def BURKERT():
-    r,RHO_0,R_C = symbols('r RHO_0 R_C')
-    Burkert = sqrt((6.4*cons.Gpot*RHO_0*((R_C**3)/r))*(log(1+(r/R_C)) - atan(r/R_C)  + 0.5*log( 1+ (r/R_C)**2) ))
+    r,RHO0,R_C = symbols('r RHO0 R_C')
+    Burkert = sqrt((6.4*cons.Gpot*RHO0*((R_C**3)/r))*(log(1+(r/R_C)) - atan(r/R_C)  + 0.5*log( 1+ (r/R_C)**2) ))
     return Burkert
 
 
 class BURKERT_config:
-    parameters = {'RHO_0': [None, None, None, True,True],\
+    parameters = {'RHO0': [None, None, None, True,True],\
     'R_C': [None, None, None, True,True]}
    
 

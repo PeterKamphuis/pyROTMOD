@@ -36,27 +36,11 @@ class Rotmass:
     enable: bool = True
     negative_values: bool = False
     HALO: str = 'NFW'
+    optical_lock: bool = True
+    gas_lock: bool = True
     mcmc_steps: int= 2000 #Amount of steps per parameter, burn is a quarter
     results_file: str = 'Final_Results'
 
-@dataclass
-class Parameters:
-    DISK_GAS_1: List = field(default_factory=lambda: [1.33, None, None,True,True]) #Initial guess, minimum (-1 unset), maximum (-1 unset), fit, included
-    EXPONENTIAL_1: List = field(default_factory=lambda: [1., None, None,True,True]) #Initial guess, minimum (-1 unset), maximum (-1 unset), fit, included@dataclass
-    HERNQUIST_1: List = field(default_factory=lambda: [1., None, None,True,True]) #Initial guess, minimum (-1 unset), maximum (-1 unset), fit, included
-
-
-
-'''
-@dataclass
-class RotModConfig:
-    print_examples: bool=False
-    configuration_file: Optional[str] = None
-    general: General = General()
-    RC_Construction: Galaxy_Settings = Galaxy_Settings()
-    fitting_general: Rotmass= Rotmass()
-    fitting_parameters: Parameters = Parameters()
-'''
 @dataclass
 class ExtendConfig:
     print_examples: bool=False
@@ -85,55 +69,66 @@ def read_config(argv):
                 ['print_examples','configuration_file','general','RC_Construction'])
     cfg_input = OmegaConf.merge(cfg,short_inputconf)
    
+
+    if cfg_input.configuration_file:
+      
+        try:
+            yaml_config = OmegaConf.load(cfg_input.configuration_file)
+            short_yaml_config =  OmegaConf.masked_copy(yaml_config,\
+                    ['print_examples','configuration_file','general','RC_Construction'])
+                                                        
+    #merge yml file with defaults
+          
+        except FileNotFoundError:
+            cfg_input.configuration_file = input(f'''
+You have provided a config file ({cfg_input.configuration_file}) but it can't be found.
+If you want to provide a config file please give the correct name.
+Else press CTRL-C to abort.
+configuration_file = ''')
+    else:
+        yaml_config = {}
+        short_yaml_config = {}
+    cfg.input_config = inputconf
+    cfg.file_config = yaml_config
     if cfg_input.print_examples:
         cfg = read_fitting_config(cfg,'',print_examples=True)
-        no_example = OmegaConf.masked_copy(cfg, ['general','RC_Construction','fitting'])
         with open('ROTMOD-default.yml','w') as default_write:
             default_write.write(OmegaConf.to_yaml(cfg))
         print(f'''We have printed the file ROTMOD-default.yml in {os.getcwd()}.
 Exiting pyROTMOD.''')
         exit()
 
-    if cfg_input.configuration_file:
-        succes = False
-        while not succes:
-            try:
-                yaml_config = OmegaConf.load(cfg_input.configuration_file)
-
-                short_yaml_config =  OmegaConf.masked_copy(yaml_config,\
-                        ['print_examples','configuration_file','general','RC_Construction'])
-                                                           
-        #merge yml file with defaults
-                cfg = OmegaConf.merge(cfg,short_yaml_config)
-                succes = True
-            except FileNotFoundError:
-                cfg_input.configuration_file = input(f'''
-You have provided a config file ({cfg_input.configuration_file}) but it can't be found.
-If you want to provide a config file please give the correct name.
-Else press CTRL-C to abort.
-configuration_file = ''')
-    else:
-         yaml_config = {}
-   
 
     # read command line arguments anything list input should be set in '' e.g. pyROTMOD 'rotmass.MD=[1.4,True,True]'
 
+   
+    cfg = OmegaConf.merge(cfg,short_yaml_config)
     cfg = OmegaConf.merge(cfg,short_inputconf)
-    cfg.input_config = inputconf
-    cfg.file_config = yaml_config
+
+   
     
     return cfg
 
 
 def read_fitting_config(cfg,baryonic_components,print_examples=False):
+    halo = 'NFW'
+    try:
+        halo = cfg.file_config.fitting_general.HALO
+    except:
+        pass
+    try:
+        halo = cfg.input_config.fitting_general.HALO
+    except:
+        pass
     if print_examples:
         baryonic_components = {'DISK_GAS': [],'EXPONENTIAL_1':{},'HERNQUIST_1': []}
-    halo = cfg.file_config.fitting_general.HALO
+        cfg.fitting_general.HALO = halo
     halo_conf = f'{halo}_config'
     cfg_new = OmegaConf.structured(ExtendConfig)
     cfg_new = add_dynamic(cfg_new,baryonic_components,halo = halo_conf)
     cfg_new = create_masked_copy(cfg_new,cfg.file_config)
-    cfg_new = create_masked_copy(cfg_new,cfg.input_config)
+    cfg_new = create_masked_copy(cfg_new,cfg.input_config) 
+    cfg_new.fitting_general.HALO = halo
     return cfg_new
 
 def add_dynamic(in_dict,in_components, halo = 'NFW'):
@@ -155,24 +150,29 @@ def add_dynamic(in_dict,in_components, halo = 'NFW'):
             in_dict.fitting_parameters[ell[0]] = ell[1]
     return in_dict
 
-def create_masked_copy(cfg_out,cfg_in):
+def create_masked_copy(cfg_out,cfg_in): 
+   
     mask = []
-    for key in cfg_in.__dict__['_content']:
-        if key != 'fitting_parameters':
-            mask.append(key)
-    cfg_file = OmegaConf.masked_copy(cfg_in ,\
-                        mask)
-    with open_dict(cfg_file):
-        if 'fitting_parameters' in cfg_in.__dict__['_content']:
-            cfg_file.fitting_parameters = {}
-            for key in cfg_in.__dict__['_content']['fitting_parameters']:
-                if key in cfg_out.__dict__['_content']['fitting_parameters']:
-                    array_unchecked = cfg_in.fitting_parameters[key]
-                    array_correct = cfg_out.fitting_parameters[key]
-                    for i,element in enumerate(array_unchecked):
-                        if not isinstance(element,type(array_correct[i])):
-                            array_unchecked[i] = correct_type(array_unchecked[i],type(array_correct[i]))
-                    cfg_file.fitting_parameters[key] =  cfg_in.fitting_parameters[key]
+    
+    try:
+        for key in cfg_in.__dict__['_content']:
+            if key != 'fitting_parameters':
+                mask.append(key)
+        cfg_file = OmegaConf.masked_copy(cfg_in ,\
+                            mask)
+        with open_dict(cfg_file):
+            if 'fitting_parameters' in cfg_in.__dict__['_content']:
+                cfg_file.fitting_parameters = {}
+                for key in cfg_in.__dict__['_content']['fitting_parameters']:
+                    if key in cfg_out.__dict__['_content']['fitting_parameters']:
+                        array_unchecked = cfg_in.fitting_parameters[key]
+                        array_correct = cfg_out.fitting_parameters[key]
+                        for i,element in enumerate(array_unchecked):
+                            if not isinstance(element,type(array_correct[i])):
+                                array_unchecked[i] = correct_type(array_unchecked[i],type(array_correct[i]))
+                        cfg_file.fitting_parameters[key] =  array_unchecked
+    except AttributeError:
+        cfg_file = {}
     cfg_out = OmegaConf.merge(cfg_out,cfg_file )
     return cfg_out
 
@@ -193,5 +193,11 @@ def correct_type(var,ty):
     elif ty in [float]:
         var = float(var)
     elif ty == type(None):
-        var = None
+        if var is None:
+            pass
+        else:
+            try:
+                var = float(var)
+            except ValueError:
+                var = None
     return var    
