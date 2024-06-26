@@ -30,6 +30,10 @@ def warn_with_traceback(message, category, filename, lineno, file=None, line=Non
 
 
 def main(argv):
+    if '-v' in argv or '--version' in argv:
+        print(f"This is version {pyROTMOD.__version__} of the program.")
+        sys.exit()
+
     if '-h' in argv or '--help' in argv:
         print(''' Use pyROTMOD in this way:
 pyROTMOD configuration_file=inputfile.yml   where inputfile is a yaml config file with the desired input settings.
