@@ -48,7 +48,8 @@ def convert_dens_rc(radii, optical_profiles, gas_profile,components,\
                             debug=debug,log=log, output_dir =output_dir)
                 if components[x-1]['Type'] in ['random_disk']:
                     optical_profiles[type][0] = 'DISK_STELLAR'
-            elif components[x-1]['Type'] in ['sersic']:
+            elif components[x-1]['Type'] in ['sersic','devauc']:
+                #This should work fine for a devauc profile which is simply sersic with n= 4
                 if  0.75 < components[x-1]['sersic index'] < 1.25:
                     print_log(f'''We have detected the input to be a sersic profile.
 this one is very close to a disk so we will transform to an exponential disk. \n''',log)
@@ -203,7 +204,7 @@ def bulge_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'sersic', 'axi
 
     # let's see if our fit has a reasonable reduced chi square
 
-    if components['Type'] in ['bulge','sersic','hernquist']:
+    if components['Type'] in ['bulge','sersic','hernquist','devauc']:
         print_log(f'''We have found an hernquist profile with the following values.
 The total mass of the disk is {components['Total SB']} a central mass density {components['Central SB']} .
 The scale length is {components['scale length']} kpc and the scale height {components['scale height']} kpc.
