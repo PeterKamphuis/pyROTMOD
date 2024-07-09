@@ -31,15 +31,15 @@ class NFW_config:
     parameters = {'C': [None, None, None, True,True],\
     'R200': [None, None, None, True,True]}
   
+# Where does this come from?
 
 def MOND_CLASSIC():
     r, V,ML, a0 = symbols('r V ML a0')
     #Vt(r)=sqrt((mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb))*sqrt(1+sqrt(1+(2*r*a/(mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb)))**2))/sqrt(2))
     mond = sqrt(ML*V*abs(V)*sqrt(1+sqrt(1+(2*r*(a0*3.0856776e11)/(ML*V*abs(V)))**2))/sqrt(2)) 
-    mond_in = V/abs(V)*sqrt(ML*V**2*sqrt(1+sqrt(1+(2*r*(a0*3.0856776e11)/(ML*V**2))**2))/sqrt(2))
     #The factor 3.08e11 is to convert from cm/s**2 to km**2/(s**2*kpc)
     return mond
-
+#  We need this individual version to preserve the sign in the baryonic curves
 def MOND_CLASSIC_INDIVIDUAL():
     r, V,ML, a0 = symbols('r V ML a0')
     mond_in = V/abs(V)*sqrt(ML*V**2*sqrt(1+sqrt(1+(2*r*(a0*3.0856776e11)/(ML*V**2))**2))/sqrt(2))
