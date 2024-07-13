@@ -132,3 +132,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+#Visual code
+*.code-workspace
+pyROTMOD.code-workspace
