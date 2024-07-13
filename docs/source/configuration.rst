@@ -190,9 +190,9 @@ The list is build up from five parameters
   5. Include parameter (bool). If this item is set to false the parameter is not included in the final function to be fitted. E.g., if for MG this is False the gas disk is not added to the gas disk.
 
 For the parameters of the DM they must be included in the definition of the DM Halo and they will always be included into the final function.
-These are set dynamical and when not included in the final fitting equation they are ignored.
-Parameters for the baryonic curves should correspond to there type name with a counter (e.g. DISK_GAS, EXPONENTIAL_1,EXPONENTIAL_2, BULGE_1, HERNQUIST_1)
-For the DM halo they should correspond to the parameter being fitted
+These parameters are set dynamically and when not included in the final fitting equation they are ignored (5. is False).
+Parameters for the baryonic curves should correspond to their type name with a counter (e.g. DISK_GAS, EXPONENTIAL_1,EXPONENTIAL_2, BULGE_1, HERNQUIST_1)
+For the DM halo they should correspond to the parameter being fitted. The code can deal with multiple instance of of optical and gas disk. However, these can quickly become degenerate.
 
 **DISK_GAS**
 
