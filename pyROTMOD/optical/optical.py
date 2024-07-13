@@ -911,74 +911,75 @@ assuming it is already a readlines construct''',log)
             if len(tmp) > 1:
                 if tmp[1] == 'component':
                     read_component = True
-            if tmp[0] == '0)' and read_component:
-                current_component = tmp[1]
-                if current_component not in recognized_components:
-                    sup.print_log(f'''pyROTMOD does not know how to process {current_component} not reading it
-''',log)
-                    read_component = False
-                else:
-                    if current_component == 'sky':
-                        components[f'{current_component}'] = {'Type': current_component,
-                                                              'Background': None,
-                                                              'dx': None,
-                                                              'dy': None}
+            if read_component:
+                if tmp[0] == '0)':
+                    current_component = tmp[1]
+                    if current_component not in recognized_components:
+                        sup.print_log(f'''pyROTMOD does not know how to process {current_component} not reading it
+    ''',log)
+                        read_component = False
                     else:
-                        counter[recognized_components.index(current_component)] += 1
-                        current_name = f'{current_component}_{counter[recognized_components.index(current_component)]}'
-                        components[current_name] = {'Type':current_component,\
-                                                    'Central SB': None ,
-                                                    'Total SB': None ,
-                                                    'R effective': None ,
-                                                    'scale height':None,
-                                                    'scale length':None,
-                                                    'sersic index':None,
-                                                    'central position':None,
-                                                    'axis ratio':None,
-                                                    'PA':None,}
-                    if current_component in ['expdisk','sersic','devauc']:
-                        components[current_name]['scale height'] = 0. * unit.kpc
+                        if current_component == 'sky':
+                            components[f'{current_component}'] = {'Type': current_component,
+                                                                'Background': None,
+                                                                'dx': None,
+                                                                'dy': None}
+                        else:
+                            counter[recognized_components.index(current_component)] += 1
+                            current_name = f'{current_component}_{counter[recognized_components.index(current_component)]}'
+                            components[current_name] = {'Type':current_component,\
+                                                        'Central SB': None ,
+                                                        'Total SB': None ,
+                                                        'R effective': None ,
+                                                        'scale height':None,
+                                                        'scale length':None,
+                                                        'sersic index':None,
+                                                        'central position':None,
+                                                        'axis ratio':None,
+                                                        'PA':None,}
+                        if current_component in ['expdisk','sersic','devauc']:
+                            components[current_name]['scale height'] = 0. * unit.kpc
 
-            if tmp[0] == '1)':
-                if current_component in ['sky']:
-                    components[f'{current_component}']['Background'] = float(tmp[1])
-                else:
-                    components[current_name]['central position'] = [float(tmp[1]),float(tmp[2])]
-            if tmp[0] == '2)':
-                if current_component in ['sky']:
-                    components[f'{current_component}']['dx'] = float(tmp[1])
-            if tmp[0] == '3)' and read_component:
-                if  current_component in ['edgedisk']:
-                    components[current_name]['Central SB'] = float(tmp[1])*unit.mag/unit.arcsec**2
-                elif current_component in ['sky']:
-                    components[f'{current_component}']['dy'] = float(tmp[1])
-                else:
-                    components[current_name]['Total SB'] = float(tmp[1])*unit.mag
-            if tmp[0] == '4)' and read_component:
-                if current_component in ['sersic','devauc']:
-                    components[current_name]['R effective'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
-                    if max_radius < 5* float(tmp[1]): max_radius = 5 * float(tmp[1])
+                if tmp[0] == '1)':
+                    if current_component in ['sky']:
+                        components[f'{current_component}']['Background'] = float(tmp[1])
+                    else:
+                        components[current_name]['central position'] = [float(tmp[1]),float(tmp[2])]
+                if tmp[0] == '2)':
+                    if current_component in ['sky']:
+                        components[f'{current_component}']['dx'] = float(tmp[1])
+                if tmp[0] == '3)':
+                    if  current_component in ['edgedisk']:
+                        components[current_name]['Central SB'] = float(tmp[1])*unit.mag/unit.arcsec**2
+                    elif current_component in ['sky']:
+                        components[f'{current_component}']['dy'] = float(tmp[1])
+                    else:
+                        components[current_name]['Total SB'] = float(tmp[1])*unit.mag
+                if tmp[0] == '4)':
+                    if current_component in ['sersic','devauc']:
+                        components[current_name]['R effective'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
+                        if max_radius < 5* float(tmp[1]): max_radius = 5 * float(tmp[1])
 
-                if current_component in ['edgedisk']:
-                    components[current_name]['scale height'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
-                if current_component in ['expdisk']:
-                    components[current_name]['scale length'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
-                    components[current_name]['scale height'] = 0.*unit.arcsec
+                    if current_component in ['edgedisk']:
+                        components[current_name]['scale height'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
+                    if current_component in ['expdisk']:
+                        components[current_name]['scale length'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
+                        components[current_name]['scale height'] = 0.*unit.arcsec
 
-                    if max_radius < 10 * float(tmp[1]): max_radius = 10 * float(tmp[1])
+                        if max_radius < 10 * float(tmp[1]): max_radius = 10 * float(tmp[1])
 
 
-            if tmp[0] == '5)' and read_component and current_component in ['sersic','edgedisk','devauc']:
-                if current_component in ['sersic','devauc']:
-                    components[current_name]['sersic index'] = float(tmp[1])
-                elif current_component in ['edgedisk']:
-                    if max_radius < 10 * float(tmp[1]): max_radius = 10 * float(tmp[1])
-                    components[current_name]['scale length'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
+                if tmp[0] == '5)'  and current_component in ['sersic','edgedisk','devauc']:
+                    if current_component in ['sersic','devauc']:
+                        components[current_name]['sersic index'] = float(tmp[1])
+                    elif current_component in ['edgedisk']:
+                        if max_radius < 10 * float(tmp[1]): max_radius = 10 * float(tmp[1])
+                        components[current_name]['scale length'] = float(tmp[1])*np.mean(plate_scale)*unit.arcsec
 
-            if tmp[0] == '9)' and read_component and current_component in ['expdisk','sersic','devauc']:
-                components[current_name]['axis ratio'] = float(tmp[1])
-            if tmp[0] == '10)' and read_component:
-                components[current_name]['PA'] = float(tmp[1])*unit.degree
+                if tmp[0] == '9)' and current_component in ['expdisk','sersic','devauc']:
+                    components[current_name]['axis ratio'] = float(tmp[1])
+                if tmp[0] == '10)':
+                    components[current_name]['PA'] = float(tmp[1])*unit.degree
     
     if len(plate_scale) == 0 or len(mag_zero) == 0:
         raise BadFileError(f'Your file  is not recognized by pyROTMOD')
