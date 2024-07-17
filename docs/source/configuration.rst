@@ -100,7 +100,8 @@ RC_Construction Keywords
   *str, required, no default*
 
   The file containing the total rotation curve and the gas distribution. This can be a tirific .def file or a table in a text file. In case of the latter it should be arranged as the optical file.
-  The RADI can be different and the gas disk should be indicated with DISK_G. the observed RC as V_OBS  with V_OBS_ERR as its error.
+  The RADI can be different and the gas disk should be indicated with DISK_G_# the observed RC as V_OBS  with V_OBS_ERR as its error. In case of a tirific file every pair of even-uneven disks are combined into a single disk under the assumption the def indicates different values of the approaching and receding side that should be averaged.
+  The first pair of disks is assumed to be V_OBS. 
 
 **distance**: null
 
@@ -185,7 +186,7 @@ The list is build up from five parameters
 
   1. Initial guess (float)
   2. Lower limit (float). if set to null no lower limit is imposed
-  3. Upper limit (float). if set to null no lower limit is imposed
+  3. Upper limit (float). if set to null no upper limit is imposed
   4. Fit parameter (bool). If this item is false the initial guess is fixed in the fitting.
   5. Include parameter (bool). If this item is set to false the parameter is not included in the final function to be fitted. E.g., if for MG this is False the gas disk is not added to the gas disk.
 
@@ -194,20 +195,21 @@ These parameters are set dynamically and when not included in the final fitting 
 Parameters for the baryonic curves should correspond to their type name with a counter (e.g. DISK_GAS, EXPONENTIAL_1,EXPONENTIAL_2, BULGE_1, HERNQUIST_1)
 For the DM halo they should correspond to the parameter being fitted. The code can deal with multiple instance of of optical and gas disk. However, these can quickly become degenerate.
 
-**DISK_GAS**
+**DISK_GAS_#**
 
-  *List, optional, default = [1.4,null,null,true,true]*
+  *List, optional, default = [1.33,null,null,true,true]*
 
   The mass to light ratio for the gas disk used in the fitting. If the lower limit is unset it is the initial guess divided by 10. If the upper limit is unset is is the intial guess *20.
+  Input for multiple gas disks is allowed, the M/L for these disks is by default assumed to be different but can be set to a single parameter.
 
-**EXPONENTIAL_1**:
+**EXPONENTIAL_#**:
 
   *List, optional, default = [1.0,null,null,true,true]*
 
   The mass to light ratio for the optical exponential disk used in the fitting. If the lower limit is unset it is the initial guess divided by 10. If the upper limit is unset is is the intial guess *20.
 
 
-**HENRQUIST_1**:
+**HENRQUIST_#**:
 
   *List, optional, default = [1.0,null,null,true,true]*
 

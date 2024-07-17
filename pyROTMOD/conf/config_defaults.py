@@ -36,8 +36,8 @@ class Rotmass:
     enable: bool = True
     negative_values: bool = False
     HALO: str = 'NFW'
-    optical_lock: bool = True
-    gas_lock: bool = True
+    stellar_lock: bool = True
+    gas_lock: bool = False
     mcmc_steps: int= 2000 #Amount of steps per parameter, burn is a quarter
     results_file: str = 'Final_Results'
 

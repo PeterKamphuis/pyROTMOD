@@ -23,8 +23,8 @@ with warnings.catch_warnings():
 class InputError(Exception):
     pass
 
-def convert_dens_rc(radii, optical_profiles, gas_profile,components,\
-    distance =1.,opt_h_z = [0.,None], gas_scaleheight= [0.,None], galfit_file =False,\
+def convert_dens_rc(radii, optical_profiles, gas_profiles,components,\
+    distance =1.,opt_h_z = [0.,None], gas_scaleheights= [0.,None], galfit_file =False,\
     log= None, debug =False,output_dir='./'):
     '''This function converts the mass profiles to rotation curves'''
     kpc_radii = np.array(ensure_kpc_radii(radii,distance=distance,log=log)[2:],\
@@ -81,7 +81,6 @@ Please let us know and we'll give it a go.''',log)
             else:
                 found_RC = [None,None,None,None]
                 print_log(f'We do not know how to convert the mass density of {components[x-1]["Type"]}',log)
-            print(found_RC[2:])
             if np.any(found_RC[2:]):
                 try:
                     type =optical_profiles[type][0].split('_')
@@ -96,12 +95,12 @@ Please let us know and we'll give it a go.''',log)
                 RCs.append(optical_profiles[type][:2]+tmp(kpc_radii))
 
     ########################### and last the gas which we do not interpolate  ###################
-
-    if gas_profile[1] != 'KM/S':
-        found_RC = random_density_disk(kpc_radii,gas_profile[2:],h_z = gas_scaleheight[0],mode = gas_scaleheight[1])
-        RCs.append(['DISK_GAS', 'KM/S']+list(found_RC))
-    else:
-        RCs.append(gas_profile)
+    for i,gas_profile in enumerate(gas_profiles):
+        if gas_profile[1] != 'KM/S':
+            found_RC = random_density_disk(kpc_radii,gas_profile[2:],h_z = gas_scaleheights[i][0],mode = gas_scaleheights[i][1])
+            RCs.append([gas_profile[0],'KM/S']+list(found_RC))
+        else:
+            RCs.append(gas_profile)
 
     return RCs
 convert_dens_rc.__doc__ =f'''

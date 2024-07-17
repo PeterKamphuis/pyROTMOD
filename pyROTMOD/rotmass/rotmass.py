@@ -34,7 +34,7 @@ def build_curve(disk_var,dm_halo,Baryonic_RCs,debug=False,log=None):
     ML, V = symbols(f"ML V")
     if symbols('V') in dm_variables:
         print_log(f'''We are using a mode in which we are modifying the gravitational limits.
-We are useing the {dm_halo} formalism.''',log)
+We are using the {dm_halo} formalism.''',log)
       
         baryonic_curve = getattr(potentials, f'{dm_halo}_INDIVIDUAL')()
         baryonic_curve_add=DM_curve_sym**2
@@ -56,6 +56,7 @@ We are useing the {dm_halo} formalism.''',log)
     for component in Baryonic_RCs:
 
         fitM, fitV = symbols(f"{disk_var[component][0]} {disk_var[component][1]}")
+        print(fitM,fitV,component)
 
         current_curve = baryonic_curve_add.subs({ML: fitM, V: fitV})
         if curve_sym == None:
@@ -67,7 +68,7 @@ We are useing the {dm_halo} formalism.''',log)
         # keep a record of the values we need to enter
         replace_dict[disk_var[component][1]]=Baryonic_RCs[component]['RC']
         values_to_be_replaced.append(Baryonic_RCs[component]['RC'])
- 
+    
     curve_sym = sqrt(curve_sym)
    
     #Now let's transform these to actual functions
@@ -280,6 +281,7 @@ collected variables = {collected_variables}''' )
 def calculate_baryonic_RC(RCs = None,Baryonic_RC = None,
                         variable_settings = {'Standard': [1.,None,None,False,True]},
                         curve= None, radii= None, disk_var= None):
+   
     combined_RC = copy.deepcopy(RCs)
     if combined_RC == None:
         combined_RC = {'RADI': radii}
@@ -287,15 +289,16 @@ def calculate_baryonic_RC(RCs = None,Baryonic_RC = None,
          print(f' We are skipping  the addition of the baryonic curves due to missing info')
     else:
         for key in Baryonic_RC:
-           
+        
+        
             sets, ranges = set_variables_and_ranges(curve, variable_settings,\
                                             radii= radii, Baryonic_RC = \
                                             Baryonic_RC[key]['RC'], ML_Variable = variable_settings[key]['Variables'][0])  
-           
+        
             combined_RC[disk_var[key][1]]   = [curve['function'](*sets),[],[]]
             
             low_curve,high_curve = calculate_confidence_area(radii = radii, ranges = ranges,\
-                                                           curve = curve)
+                                                        curve = curve)
             if np.sum(low_curve) == 0.:
                 low_curve =   combined_RC[disk_var[key][1]][0]
             if np.sum(Baryonic_RC[key]['Errors']) != 0:
@@ -426,7 +429,7 @@ calculate_red_chisq.__doc__ =f'''
  NOTE:
 '''
 
-def create_disk_var(collected_RCs,optical_lock=True,gas_lock=True):
+def create_disk_var(collected_RCs,stellar_lock=True,gas_lock=True):
     disk_var = {}
     counters = {'GAS': 1, 'DISK': 1, 'BULGE': 1} 
     for RC in collected_RCs:
@@ -440,10 +443,10 @@ def create_disk_var(collected_RCs,optical_lock=True,gas_lock=True):
                 disk_var[key] = [f'Gamma_gas_{counters["GAS"]}',f'V_gas_{counters["GAS"]}']
                 counters['GAS'] += 1
             elif bare in ['HERNQUIST','BULGE']:
-                disk_var[key] = [f'Gamma_gas_{counters["BULGE"]}',f'V_bulge_{counters["BULGE"]}']
+                disk_var[key] = [f'Gamma_bulge_{counters["BULGE"]}',f'V_bulge_{counters["BULGE"]}']
                 counters['BULGE'] += 1
             if bare in ['EXPONENTIAL','SERSIC','HERNQUIST','BULGE']:
-                if optical_lock:
+                if stellar_lock:
                     disk_var[key][0]='ML_optical'
             if bare in ['DISK_GAS']:
                 if gas_lock: 
@@ -509,7 +512,7 @@ create_formula_code.__doc__ =f'''
 
 def get_baryonic_RC(radii,total_RC,derived_RCs,
                     V_total_error=[0.,0.,0.],baryonic_error= {'Empty':True},
-                    log = None, debug=False):
+                    log = None, debug=False,settings = None):
     if 'Empty' not in baryonic_error:
         baryonic_error['Empty']=False
     #We can strip the total rc and the radius from their indicators
@@ -526,6 +529,11 @@ def get_baryonic_RC(radii,total_RC,derived_RCs,
 
     RC ={}
     for x in range(len(derived_RCs)):
+        if not settings is None and derived_RCs[x][0] != 'RADI':
+            #if parameter 5 is set to false we do not want to include the rc
+            if not settings[derived_RCs[x][0]][4]:
+                continue
+            
         component = ['Empty','Empty']
         if derived_RCs[x][0] == 'RADI':
             rad_in = np.array(derived_RCs[x][2:])
@@ -936,7 +944,7 @@ def write_output_file(final_variable_fits,result_emcee,output_dir='./',\
                     if 0.001 < result_emcee.params[parameter].value < 10000.:
                         form = ">15.4f"
                     else:
-                        form = ">15.9e"
+                        form = ">15.4e"
                     variable_line = f'{parameter:>15s} {result_emcee.params[parameter].value:{form}}'
                     min = result_emcee.params[parameter].min
                     max = result_emcee.params[parameter].max
@@ -978,7 +986,7 @@ def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False, fo
         if rcs != 'RADI':
             lab = style_library[rcs]['name']
             if no != None:
-                lab = f'{lab}_{no}'
+                lab = f'{lab}$_{{_{no}}}$'
           
             ax1.plot(curves['RADI'],curves[rcs_full][0],label=lab\
                      ,lw=5,linestyle = style_library[rcs]['lines'],\
@@ -1055,16 +1063,17 @@ def rotmass_main(radii, derived_RCs, total_RC,total_RC_err,no_negative =True,out
                 results_file = 'Final_Results',log=None,debug = False, font = 'Times New Roman'):
 
     #Dictionary for translate RC and mass parameter for the baryonic disks
-    disk_var = create_disk_var(derived_RCs,optical_lock=rotmass_settings.optical_lock,\
+    disk_var = create_disk_var(derived_RCs,stellar_lock=rotmass_settings.stellar_lock,\
                                 gas_lock=rotmass_settings.gas_lock) 
   
     # First combine all parameters that need to be included in the total fit in a single dictionary
     function_variable_settings = set_fitting_parameters(rotmass_settings,rotmass_parameter_settings,disk_var)
     
-    # Then we will group the baryonic  rotation curves that are define,the error of the total_RC is added.
+    # Then we will group the baryonic  rotation curves that are defined,the error of the total_RC is added.
     # When introducing errors on the RCs of the curves we need to do that here.
     radii ,total_RC,Baryonic_RC= get_baryonic_RC(radii,total_RC,derived_RCs,\
-                                            V_total_error=total_RC_err,log=log)
+                                            V_total_error=total_RC_err,log=log,
+                                            settings=rotmass_parameter_settings)
    
 
     if debug:

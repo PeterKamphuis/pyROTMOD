@@ -203,8 +203,11 @@ This is version {version} of the program.
         cfg.RC_Construction.gas_file = input('''Please add the gas file or tirific output to be evaluated: ''')
     print_log(f'''We are using the input from {cfg.RC_Construction.gas_file} for the gaseous component.
 ''',log,debug=cfg.general.debug)
+    if cfg.RC_Construction.gas_file.split('.')[1].lower() == 'def' and \
+        cfg.RC_Construction.gas_scaleheight[1] is None:
 
-
+        cfg.RC_Construction.gas_scaleheight = [0.,'tir']
+    
     if not cfg.RC_Construction.optical_file and cfg.RC_Construction.enable:
         cfg.RC_Construction.optical_file = input('''Please add the optical or galfit file to be evaluated: ''')
     print_log(f'''We are using the input from {cfg.RC_Construction.optical_file} for the optical component.
@@ -374,19 +377,21 @@ def ensure_kpc_radii(in_radii,distance=1.,log=None):
         correct_rad[1] = 'KPC'
     return correct_rad
 
-def plot_profiles(in_radii,gas_profile,optical_profiles,distance = 1., \
+def plot_profiles(in_radii,gas_profiles,optical_profiles,distance = 1., \
                     log= None, errors = [0.],output_dir = './',input_profiles = None):
     '''This function makes a simple plot of the optical profiles'''
     radii = ensure_kpc_radii(in_radii, distance=distance)
     opt_radii = ensure_kpc_radii(optical_profiles['RADI'],distance=distance)
     max = 0.
     lower_ind = 0
-    if gas_profile[1] == 'M_SOLAR/PC^2':
-        plt.plot(radii[2:],np.array(gas_profile[2:]),label = gas_profile[0])
-        max = np.nanmax(np.array(gas_profile[2:]))
-        lower_ind = np.where(np.array(opt_radii[2:],dtype=float) > float(radii[2])/2.)[0][0]
-    else:
-        print_log(f'''The units of {gas_profile[0]} are not M_SOLAR/PC^2.
+   
+    for gas_profile in gas_profiles:
+        if gas_profile[1] == 'M_SOLAR/PC^2':
+            plt.plot(radii[2:],np.array(gas_profile[2:]),label = gas_profile[0])
+            max = np.nanmax(np.array(gas_profile[2:]))
+            lower_ind = np.where(np.array(opt_radii[2:],dtype=float) > float(radii[2])/2.)[0][0]
+        else:
+            print_log(f'''The units of {gas_profile[0]} are not M_SOLAR/PC^2.
 Not plotting this profile.
 ''',log )
     tot_opt = [0 for x in opt_radii[2:]]
@@ -658,10 +663,14 @@ def write_profiles(in_radii,gas_profile,total_rc,optical_profiles,distance = 1.,
             writel = f'{writel} \n'
             opt_file.write(writel)
     with open(f'{output_dir}Gas_Mass_Density_And_RC.txt','w') as file:
+      
         for x in range(len(radii)):
-            line = [radii[x],gas_profile[x],total_rc[x]]
+            line = [radii[x],total_rc[x]]
+         
             if errors[0] != 0.:
                 line.append(errors[x])
+            for profile in gas_profile:
+                line.append(profile[x])
             if x <= 1:
                 writel = ' '.join([f'{y:>15s}' for y in line])
             else:

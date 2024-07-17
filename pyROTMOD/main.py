@@ -101,23 +101,26 @@ The axis ratio is {x['axis ratio']}.
 
 
         ######################################### Read the gas profiles and RC ################################################
-        radii,gas_profile, total_rc,total_rc_err,scaleheights  = get_gas_profiles(cfg.RC_Construction.gas_file,log=log,debug =cfg.general.debug)
+        radii,gas_profiles, total_rc,total_rc_err,scaleheights  =\
+              get_gas_profiles(cfg.RC_Construction.gas_file,log=log,\
+                               debug =cfg.general.debug)
 
-        if gas_profile[1] == 'M_SOLAR/PC^2':
-            correct_rad = ensure_kpc_radii(radii,distance=cfg.general.distance)
-            print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(correct_rad[2:],np.array(gas_profile[2:],dtype=float)):.2e}
-    and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
-    ''' ,log,screen= True)
+        for gas_profile in gas_profiles:
+            if gas_profile[1] == 'M_SOLAR/PC^2':
+                correct_rad = ensure_kpc_radii(radii,distance=cfg.general.distance)
+                print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(correct_rad[2:],np.array(gas_profile[2:],dtype=float)):.2e}
+        and a central mass density {gas_profile[2]:.2f} M_sol/pc^2.
+        ''' ,log,screen= True)
 
-
+        
         ########################################## Make a plot with the extracted profiles ######################3
-        plot_profiles(radii, gas_profile,optical_profiles,\
+        plot_profiles(radii, gas_profiles,optical_profiles,\
             distance =float(cfg.general.distance),\
             output_dir = cfg.general.output_dir, log=log,\
             input_profiles=original_profiles)
 
         ########################################## Make a nice file with all the different components as a column ######################3
-        write_profiles(radii, gas_profile,total_rc,optical_profiles,\
+        write_profiles(radii, gas_profiles,total_rc,optical_profiles,\
             distance =float(cfg.general.distance), errors = total_rc_err ,\
             output_dir = cfg.general.output_dir, log=log)
         ######################################### Convert to Rotation curves ################################################
@@ -127,22 +130,27 @@ The axis ratio is {x['axis ratio']}.
             opt_h_z = cfg.RC_Construction.scaleheight
         if cfg.RC_Construction.gas_scaleheight[1]:
             cfg.RC_Construction.gas_scaleheight[1]=cfg.RC_Construction.gas_scaleheight[1].lower()
+        gas_hzs = []
+        for i in range(len(gas_profiles)):
+          
+            if cfg.RC_Construction.gas_scaleheight[1] == 'tir':
+                gas_hz = [np.nanmean(scaleheights[i][:2]),scaleheights[i][2]]
+            elif cfg.RC_Construction.gas_scaleheight[0] != 0:
+                gas_hz = cfg.RC_Construction.gas_scaleheight
+            else:
+                gas_hz= [0.,None]
+            gas_hzs.append(gas_hz)
+       
 
-        if cfg.RC_Construction.gas_scaleheight[1] == 'tir':
-            gas_hz = [np.nanmean(scaleheights[0,1]),scaleheights[2]]
-        elif cfg.RC_Construction.gas_scaleheight[0] != 0:
-            gas_hz = cfg.RC_Construction.gas_scaleheight
-        else:
-            gas_hz= [0.,None]
-
-        derived_RCs = convert_dens_rc(radii, optical_profiles, gas_profile,\
+        derived_RCs = convert_dens_rc(radii, optical_profiles, gas_profiles,\
                 components,distance =cfg.general.distance,log=log,
                 galfit_file = galfit_file,opt_h_z = opt_h_z,
-                gas_scaleheight=gas_hz,output_dir=cfg.general.output_dir)
+                gas_scaleheights=gas_hzs,output_dir=cfg.general.output_dir)
 
         write_header(distance=cfg.general.distance,MLratio=cfg.RC_Construction.mass_to_light_ratio,\
             opt_scaleheight=opt_h_z,gas_scaleheight=gas_hz,\
             output_dir = cfg.general.output_dir, file= cfg.general.RC_file)
+      
         write_RCs(derived_RCs,total_rc,total_rc_err, log = log, \
                     output_dir = cfg.general.output_dir, file= cfg.general.RC_file)
     else:
