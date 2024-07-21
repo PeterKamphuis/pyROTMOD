@@ -429,7 +429,7 @@ calculate_red_chisq.__doc__ =f'''
  NOTE:
 '''
 
-def create_disk_var(collected_RCs,stellar_lock=True,gas_lock=True):
+def create_disk_var(collected_RCs,single_stellar_ML=True,single_gas_ML=True):
     disk_var = {}
     counters = {'GAS': 1, 'DISK': 1, 'BULGE': 1} 
     for RC in collected_RCs:
@@ -446,10 +446,10 @@ def create_disk_var(collected_RCs,stellar_lock=True,gas_lock=True):
                 disk_var[key] = [f'Gamma_bulge_{counters["BULGE"]}',f'V_bulge_{counters["BULGE"]}']
                 counters['BULGE'] += 1
             if bare in ['EXPONENTIAL','SERSIC','HERNQUIST','BULGE']:
-                if stellar_lock:
+                if single_stellar_ML:
                     disk_var[key][0]='ML_optical'
             if bare in ['DISK_GAS']:
-                if gas_lock: 
+                if single_gas_ML: 
                     disk_var[key][0] = 'ML_gas'
     return disk_var
 
@@ -1063,8 +1063,8 @@ def rotmass_main(radii, derived_RCs, total_RC,total_RC_err,no_negative =True,out
                 results_file = 'Final_Results',log=None,debug = False, font = 'Times New Roman'):
 
     #Dictionary for translate RC and mass parameter for the baryonic disks
-    disk_var = create_disk_var(derived_RCs,stellar_lock=rotmass_settings.stellar_lock,\
-                                gas_lock=rotmass_settings.gas_lock) 
+    disk_var = create_disk_var(derived_RCs,single_stellar_ML=rotmass_settings.single_stellar_ML,\
+                                single_gas_ML=rotmass_settings.single_gas_ML) 
   
     # First combine all parameters that need to be included in the total fit in a single dictionary
     function_variable_settings = set_fitting_parameters(rotmass_settings,rotmass_parameter_settings,disk_var)

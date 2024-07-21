@@ -20,7 +20,7 @@ class General:
     font: str = "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf"
 
 @dataclass
-class Galaxy_Settings:
+class RCConstruction:
     enable: bool = True
     optical_file: Optional[str] = None
     gas_file: Optional[str] = None
@@ -32,12 +32,12 @@ class Galaxy_Settings:
     band: str='SPITZER3.6'
 
 @dataclass
-class Rotmass:
+class Fitting:
     enable: bool = True
     negative_values: bool = False
     HALO: str = 'NFW'
-    stellar_lock: bool = True
-    gas_lock: bool = False
+    single_stellar_ML: bool = True
+    single_gas_ML: bool = False
     mcmc_steps: int= 2000 #Amount of steps per parameter, burn is a quarter
     results_file: str = 'Final_Results'
 
@@ -46,8 +46,8 @@ class ExtendConfig:
     print_examples: bool=False
     configuration_file: Optional[str] = None
     general: General = General()
-    RC_Construction: Galaxy_Settings = Galaxy_Settings()
-    fitting_general: Rotmass= Rotmass() 
+    RC_Construction: RCConstruction = RCConstruction()
+    fitting_general: Fitting = Fitting() 
 
 
 @dataclass
@@ -55,10 +55,10 @@ class ShortConfig:
     print_examples: bool=False
     configuration_file: Optional[str] = None
     general: General = General()
-    RC_Construction: Galaxy_Settings = Galaxy_Settings()
+    RC_Construction: RCConstruction = RCConstruction()
     input_config: Optional[dict] = None
     file_config: Optional[dict] = None
-    fitting_general: Rotmass= Rotmass() 
+    fitting_general: Fitting = Fitting() 
 
 def read_config(argv):
     
