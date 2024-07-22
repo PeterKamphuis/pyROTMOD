@@ -26,6 +26,10 @@ class InputError(Exception):
 def convert_dens_rc(radii, optical_profiles, gas_profiles,components,\
     distance =1.,opt_h_z = [0.,None], gas_scaleheights= [0.,None], galfit_file =False,\
     log= None, debug =False,output_dir='./'):
+    #these should be dictionaries with their individual radii
+    #organized in their typical profiles
+    print(optical_profiles,gas_profiles)
+    exit()
     '''This function converts the mass profiles to rotation curves'''
     kpc_radii = np.array(ensure_kpc_radii(radii,distance=distance,log=log)[2:],\
         dtype=float)
@@ -142,7 +146,7 @@ convert_dens_rc.__doc__ =f'''
         directory for check plots
 
  OUTPUTS:
-    RCs = All RC at fixed radii that could be calculated
+    RCs = dictionary with all RCs at their native resolution and their radii
 
  OPTIONAL OUTPUTS:
 

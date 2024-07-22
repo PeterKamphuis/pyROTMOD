@@ -535,7 +535,7 @@ def get_optical_profiles(filename,distance = 0.*unit.Mpc,band = 'SPITZER3.6',exp
     except:
         pass
     galfit_file = False
-    vel_found = False
+
     # If the first line and first column is not correct we assume a Galfit file
     if not correctfile:
         components = read_galfit(input,log=log,debug=debug)
@@ -554,7 +554,7 @@ def get_optical_profiles(filename,distance = 0.*unit.Mpc,band = 'SPITZER3.6',exp
         cleaned_components = []
         for types in optical_profiles:
             optical_profiles[types] = optical_profiles[types][:2]+[float(x) for x in optical_profiles[types][2:]]
-            if types != 'RADI':
+            if types[0:4] != 'RADI':
                 if optical_profiles[types][1] in ['MAG/ARCSEC^2','MAG/ARCSEC^2']:
                     wavelength = co.bands[band]
                     pc_conv = sup.convertskyangle(1,distance.value)*1000.
@@ -598,8 +598,22 @@ def get_optical_profiles(filename,distance = 0.*unit.Mpc,band = 'SPITZER3.6',exp
         original_profiles = copy.deepcopy(optical_profiles)
         optical_profiles,cleaned_components = process_read_profile(optical_profiles,cleaned_components,\
             output_dir = output_dir, debug=debug, log=log)
+    optical_prof_organized = {}
+    all_radii = False
+    for i,type in enumerate(optical_profiles):
+        if i == 0 and type == 'RADI':
+            all_radii = True
+        if i > 0:
+            optical_prof_organized[type] = {'Profile': [x for x in optical_profiles[type][2:]],\
+                                            'Profile_Unit': optical_profiles[type][1]}
+            if all_radii:
+                optical_prof_organized[type]['Radii'] = [x for x in optical_profiles['RADI'][2:]]
+                optical_prof_organized[type]['Radii_Unit'] = optical_profiles['RADI'][1]
+            else:
+                optical_prof_organized[type]['Radii'] = [x for x in optical_profiles[i-1][2:]]
+                optical_prof_organized[type]['Radii_Unit'] = optical_profiles[i-1][1]
 
-    return optical_profiles,cleaned_components,galfit_file,vel_found, original_profiles 
+    return optical_prof_organized,cleaned_components,galfit_file, original_profiles 
 
 get_optical_profiles.__doc__ =f'''
  NAME:

@@ -396,13 +396,15 @@ Not plotting this profile.
 ''',log )
     tot_opt = [0 for x in opt_radii[2:]]
     for x in optical_profiles:
-        if x != 'RADI':
-            if optical_profiles[x][1] != 'M_SOLAR/PC^2':
-                print_log(f'''The units of {optical_profiles[x][0]} are not M_SOLAR/PC^2.
+        if optical_profiles[x]['Profile_Unit'] != 'M_SOLAR/PC^2':
+            print_log(f'''The units of {optical_profiles[x][0]} are not M_SOLAR/PC^2.
 Not plotting this profile.
 ''',log )
-                continue
-            plt.plot(opt_radii[2:],np.array(optical_profiles[x][2:]), label = optical_profiles[x][0])
+            continue
+        plt.plot(opt_radii[2:],np.array(optical_profiles[x][2:]), label = optical_profiles[x][0])
+        plt.plot(ensure_kpc_radii(optical_profiles[x]['Radi'],distance=distance,\
+                unit=optical_profiles[x]['Radi_Unit']),np.array(optical_profiles[x]['Profile']), \
+                label = x)
             if np.nanmax(np.array(optical_profiles[x][2+lower_ind:])) > max:
                 max =  np.nanmax(np.array(optical_profiles[x][2+lower_ind:]))
             if len(tot_opt) > 0 :

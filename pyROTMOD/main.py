@@ -62,7 +62,7 @@ pyROTMOD 'fitting.MD=[1.4,True,True]'
 
     if cfg.RC_Construction.enable:
         try:
-            optical_profiles,components,galfit_file,optical_vel,original_profiles = \
+            optical_profiles,components,galfit_file,original_profiles = \
                 get_optical_profiles(cfg.RC_Construction.optical_file,\
                     distance= cfg.general.distance,exposure_time=cfg.RC_Construction.exposure_time,\
                     MLRatio= cfg.RC_Construction.mass_to_light_ratio,band = cfg.RC_Construction.band,\
