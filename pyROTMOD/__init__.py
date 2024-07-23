@@ -36,9 +36,11 @@ def report_version():
         except subprocess.CalledProcessError:
             result = None
         if result != None and 'fatal' not in result:
+            print('Maybe like this')
             return __version__+'-'+result
         else:
             # we are probably in an installed version
+            print('Or like this')
             return __version__
 
 def report_branch():

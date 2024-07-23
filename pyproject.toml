@@ -42,9 +42,9 @@ dependencies = [
 Homepage = "https://github.com/PeterKamphuis/pyROTMOD"
 
 [tool.hatch.version]
-path = "pyrotmod/__init__.py"
+path = "setup.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/pyrotmod",
+    "/pyROTMOD",
 ]
