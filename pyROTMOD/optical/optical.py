@@ -725,10 +725,10 @@ def plot_profile(in_radii,density, exponential,name='generic',\
 
 
     #plt.xlim(0,6)
-    ax.set_ylabel('Density (M$_\odot$/pc$^2$)')
+    ax.set_ylabel(r'Density (M$_\odot$/pc$^2$)')
     ax.set_xlabel('Radius (kpc)')
     if red_chi:
-        ax.text(0.5,1.05,f'''Red. $\chi^{{2}}$ = {red_chi:.4f}''',rotation=0, va='bottom',ha='center', color='black',\
+        ax.text(0.5,1.05,f'''Red. $\\chi^{{2}}$ = {red_chi:.4f}''',rotation=0, va='bottom',ha='center', color='black',\
             bbox=dict(facecolor='white',edgecolor='white',pad=0.5,alpha=0.),\
             zorder=7, backgroundcolor= 'white',fontdict=dict(weight='bold',size=16),transform=ax.transAxes)
     ax.set_yscale('log')
@@ -879,18 +879,9 @@ process_read_profile.__doc__ =f'''
        sersic profiles are converted to hernquist or exponential profiles in rotmod
         but only if 0.75 < n < 1.25 (to exponential) or 3.75 < n < 4.25 (hernquist)
 '''
-def read_galfit(input,log=None,debug=False):
-    try:
-        with open(input) as file:
-            lines = file.readlines()
-    except FileNotFoundError:
-        sup.print_log(f'''READ_GALFIT: we could not find the file {input}
-assuming it is already a readlines construct''',log)
-        lines = input
-    except TypeError:
-        sup.print_log(f'''READ_GALFIT: we could not find the file {input}
-assuming it is already a readlines construct''',log)
-        lines = input  
+def read_galfit(lines,log=None,debug=False):
+
+    
     recognized_components = ['expdisk','sersic','edgedisk','sky','devauc']
     counter = [0 for x in recognized_components]
     mag_zero = []
@@ -1007,7 +998,7 @@ read_galfit.__doc__ =f'''
     optical
 
  INPUTS:
-    lines = the string instance of the opened file
+    lines = the string instance of an opened file
 
  OPTIONAL INPUTS:
     log = None

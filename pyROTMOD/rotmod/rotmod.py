@@ -536,7 +536,8 @@ exponential_parameter_RC.__doc__ =f'''
 def sechsquare(x,b):
     '''Sech square function '''
     #sech(x) = 1./cosh(x)
-    return 1./np.cosh(x/b)**2
+    return 1./np.float64(np.cosh(x/b))**2
+
 def get_rotmod_scalelength(radii,density):
     s=0.
     sx =0.0
@@ -625,8 +626,12 @@ def integrate_v(radii,density,R,rstart,h_z,step,iterations=200,mode = None ):
 
 def integrate_z(radius,x,h_z,mode):
     if h_z != 0.:
+       
         vertical_function = select_vertical(mode)
-        zdz = quad(vertical_function,0,np.inf,args=(radius,x,h_z))[0]
+        # We integrated out to 250*h_z otherwise we get overflow problems
+        # in principle it should be infinite (np.inf)
+        zdz = quad(vertical_function,0.,250.*h_z,args=(radius,x,h_z))[0]
+        
     else:
         if not (radius == x) and not radius == 0. and not x == 0. and \
                     (radius**2 + x**2)/(2.*radius*x) > 1:
