@@ -8,6 +8,7 @@ from pyROTMOD.support import get_uncounted
 import os
 import numpy as np
 import pyROTMOD.rotmass.potentials as potentials
+
 @dataclass
 class General:
     ncpu: int = 6
@@ -45,20 +46,19 @@ class Fitting:
 class ExtendConfig:
     print_examples: bool=False
     configuration_file: Optional[str] = None
-    general: General = General()
-    RC_Construction: RCConstruction = RCConstruction()
-    fitting_general: Fitting = Fitting() 
-
+    general: General = field(default_factory = General)
+    RC_Construction: RCConstruction = field(default_factory = RCConstruction)
+    fitting_general: Fitting = field(default_factory = Fitting) 
 
 @dataclass
 class ShortConfig:
     print_examples: bool=False
     configuration_file: Optional[str] = None
-    general: General = General()
-    RC_Construction: RCConstruction = RCConstruction()
+    general: General = field(default_factory = General)
+    RC_Construction: RCConstruction = field(default_factory = RCConstruction)
     input_config: Optional[dict] = None
     file_config: Optional[dict] = None
-    fitting_general: Fitting = Fitting() 
+    fitting_general: Fitting = field(default_factory = Fitting)
 
 def read_config(argv):
     
