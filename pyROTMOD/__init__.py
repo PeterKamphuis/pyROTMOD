@@ -32,7 +32,7 @@ def report_version():
         # perhaps we are in a github without tags? Cook something up if so
         try:
             result = subprocess.check_output(
-                'cd %s; git rev-parse --short HEAD' % path, shell=True, stderr=subprocess.STDOUT).rstrip().decode()
+                'cd %s; git rev-parse HEAD' % path, shell=True, stderr=subprocess.STDOUT).rstrip().decode()
         except subprocess.CalledProcessError:
             result = None
         if result != None and 'fatal' not in result:

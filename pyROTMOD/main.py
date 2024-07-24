@@ -29,7 +29,8 @@ def warn_with_traceback(message, category, filename, lineno, file=None, line=Non
     log.write(warnings.formatwarning(message, category, filename, lineno, line))
 
 
-def main(argv):
+def main():
+    argv = sys.argv[1:]
     if '-v' in argv or '--version' in argv:
         print(f"This is version {pyROTMOD.__version__} of the program.")
         sys.exit()

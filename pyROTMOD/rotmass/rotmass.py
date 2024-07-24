@@ -721,12 +721,21 @@ initial_guess.__doc__ =f'''
 
  NOTE:
 '''
+def calculate_steps_burning(steps,function_variable_settings):
+     # the steps should be number free variable times the require steps
+    free_variables  = 0.
+    for key in function_variable_settings:
+        if function_variable_settings[key]['Settings'][3]:
+            free_variables +=1 
+    
+    steps=int(steps*free_variables)
+    return steps, int(steps/4.)
 
 def mcmc_run(fit_function,radii,total_RC,function_variable_settings,original_variable_settings,\
                   out_dir = None,log_directory=None,debug=False,negative=False,log=None,steps=2000.,\
                   results_name = 'MCMC'):
-    steps=int(steps*(len(fit_function['variables'])-1))
-    burning=int(steps/4.)
+ 
+    steps,burning = calculate_steps_burning(steps,function_variable_settings)
     #First set the model
     model = lmfit.Model(fit_function['function'])
     #then set the hints
@@ -895,25 +904,26 @@ mcmc_run.__doc__ =f'''
  NOTE:
 '''
 def get_correct_label(par,no):
-    label_dictionary = {'Gamma_disk':'$\mathrm{M/L_{disk}}$',
-                         'Gamma_bulge':'$\mathrm{M/L_{bulge}}$',
-                         'Gamma_gas':'$\mathrm{M/L_{gas}}$',
-                         'ML_optical':'$\mathrm{M/L_{optical}}$',
-                         'ML_gas':'$\mathrm{M/L_{gas}}$',
-                         'RHO': '$\mathrm{\\rho_{c}\\times 10^{-3}(M_{\\odot}/pc^{3})}$',
-                         'RHO0': '$\mathrm{\\rho_{c}\\times 10^{-3}(M_{\\odot}/pc^{3})}$',
-                         'R_C': '$ \mathrm{R_{c}(kpc)}$',
-                         'C':'$\mathrm{c}$',
-                         'R200':'$ \mathrm{R_{200}(kpc)}$',
-                         'm': '$\mathrm{Axion Mass\\times 10^{-23}(eV)}$',
-                         'central': '$\mathrm{Central SBR} (M_{\\odot}/pc^{2})$',
-                         'h': '$\mathrm{Scale length} (kpc)$',
-                         'mass': '$\mathrm{Total Mass} (M_{\\odot})$',
-                         'hern_length': '$\mathrm{Hernquist length} (kpc)$',
-                         'effective_luminosity': '$\mathrm{L_{e}} (M_{\\odot})$' ,
-                         'effective_radius': '$\mathrm{R_{e}} (kpc)$' ,
-                         'n': 'Sersic Index',
-                         'a0': '$\mathrm{a_{0}\\times 10^{-8}  (cm s^{-2})}$'
+    #Need to use raw strings here to avoid problems with \
+    label_dictionary = {'Gamma_disk':r'$\mathrm{M/L_{disk}}$',
+                         'Gamma_bulge':r'$\mathrm{M/L_{bulge}}$',
+                         'Gamma_gas':r'$\mathrm{M/L_{gas}}$',
+                         'ML_optical':r'$\mathrm{M/L_{optical}}$',
+                         'ML_gas':r'$\mathrm{M/L_{gas}}$',
+                         'RHO': r'$\mathrm{\\rho_{c}\\times 10^{-3}(M_{\\odot}/pc^{3})}$',
+                         'RHO0': r'$\mathrm{\\rho_{c}\\times 10^{-3}(M_{\\odot}/pc^{3})}$',
+                         'R_C': r'$ \mathrm{R_{c}(kpc)}$',
+                         'C':r'$\mathrm{c}$',
+                         'R200':r'$ \mathrm{R_{200}(kpc)}$',
+                         'm': r'$\mathrm{Axion Mass\\times 10^{-23}(eV)}$',
+                         'central': r'$\mathrm{Central SBR} (M_{\\odot}/pc^{2})$',
+                         'h': r'$\mathrm{Scale length} (kpc)$',
+                         'mass': r'$\mathrm{Total Mass} (M_{\\odot})$',
+                         'hern_length': r'$\mathrm{Hernquist length} (kpc)$',
+                         'effective_luminosity': r'$\mathrm{L_{e}} (M_{\\odot})$' ,
+                         'effective_radius': r'$\mathrm{R_{e}} (kpc)$' ,
+                         'n': r'Sersic Index',
+                         'a0': r'$\mathrm{a_{0}\\times 10^{-8}  (cm s^{-2})}$'
                          }
     if par in label_dictionary:
         if par[:5] == 'Gamma':
@@ -1022,7 +1032,7 @@ def plot_curves(name,curves,variables=None, halo = 'NFW',interactive = False, fo
         if variables:
             red_Chi_2 = calculate_red_chisq(curves,variables)
 
-            ax2.text(1.0,1.0,f'''Red. $\chi^{{2}}$ = {red_Chi_2:.4f}''',rotation=0, va='top',ha='right', color='black',\
+            ax2.text(1.0,1.0,f'''Red. $\\chi^{{2}}$ = {red_Chi_2:.4f}''',rotation=0, va='top',ha='right', color='black',\
               bbox=dict(facecolor='white',edgecolor='white',pad=0.5,alpha=0.),\
               zorder=7, backgroundcolor= 'white',fontdict=dict(weight='bold',size=16),transform = ax2.transAxes)
 

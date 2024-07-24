@@ -1,8 +1,0 @@
-include bin/pyROTMOD
-recursive-include pyROTMOD/ *.py
-recursive-include pyROTMOD/conf *.py
-recursive-include pyROTMOD/gas *.py
-recursive-include pyROTMOD/rotmass *.py
-recursive-include pyROTMOD/rotmod *.py
-recursive-include pyROTMOD/optical *.py
-
