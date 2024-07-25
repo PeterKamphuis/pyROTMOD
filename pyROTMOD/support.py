@@ -359,59 +359,88 @@ the unit {units[i]} can not be processed.''')
 ''',log)
     return found_input
 
-def ensure_kpc_radii(in_radii,distance=1.,log=None):
+def ensure_kpc_radii(in_radii,unit = None, distance= None):
     '''Check that our list is a proper radius only list in kpc. if not try to convert.'''
-
-    if in_radii[0] != 'RADI':
-        raise InputError('This is list is not marked RADI but you are trying to use it as such.')
-    if in_radii[1] == 'KPC':
+    if unit is None:
+        raise InputError(f'We can not check the units if we have no units')
+  
+    if unit == 'KPC':
         return in_radii
-    elif in_radii[1] == 'PC':
-        correct_rad = copy.deepcopy(in_radii)
-        correct_rad[2:] = [x/1000. for x in in_radii[2:]]
-        correct_rad[1] = 'KPC'
-    elif in_radii[1] in ['ARCSEC','ARCMIN','DEGREE']:
-        correct_rad = copy.deepcopy(in_radii)
-        correct_rad[2:] = convertskyangle(np.array(correct_rad[2:],dtype=float),\
-            float(distance),unit=in_radii[1])
-        correct_rad[1] = 'KPC'
+    elif unit == 'PC':
+        correct_rad = copy.deepcopy(in_radii)/1000.
+    elif unit in ['ARCSEC','ARCMIN','DEGREE']:
+        if distance is None:
+            raise InputError(f'We can not convert {unit} to kpc without a distance')
+        correct_rad = copy.deepcopy(in_radii)  
+        correct_rad = convertskyangle(correct_rad, distance, unit=unit)
     return correct_rad
+
+
+
+def plot_individual_profile(profile,distance,max, profile_name = 'Unknown'):
+    if profile['Profile_Unit'] != 'M_SOLAR/PC^2':
+        print_log(f'''The units of {profile_name} are not M_SOLAR/PC^2.
+Not plotting this profile.
+''',log )
+        return max
+    plt.plot(ensure_kpc_radii(profile['Radii'],distance=distance,\
+                unit=profile['Radii_Unit']),profile['Profile'], \
+                label = profile_name)
+    if np.nanmax(profile['Profile']) > max:
+        max =  np.nanmax(profile['Profile'])
+    return max
+
+def calculate_total_profile(total,profile,distance = None):
+    if len(total['Profile']) ==  0.:
+            total = profile
+    else:
+        if total['Radii_Unit'] == profile['Radii_Unit'] and \
+            total['Profile_Unit'] == profile['Profile_Unit']:
+            if np.array_equal(total['Radii'],profile['Radii']):
+                total['Profile'] = np.array([x+y for x,y in \
+                    zip(total['Profile'],profile['Profile'])],type=float)
+            else:
+                #Else we interpolate to the lower resolution
+                if total['Radii'][1] < profile['Radii'][1]:
+                    add_profile  = np.interp(profile['Radii'], total['Radii'][1],total['Profile'])
+                    total['Profile'] = np.array([x+y for x,y in \
+                        zip(add_profile,profile['Profile'])],type=float)
+                    total['Radii']  = profile['Radii']
+                else:
+                    add_profile  = np.interp(total['Radii'], profile['Radii'][1],profile['Profile'])
+                    total['Profile'] = np.array([x+y for x,y in \
+                        zip(add_profile,total['Profile'])],type=float)
+        else:
+            raise InputError(f'We can not match { total['Radii_Unit'] } to {profile['Radii_Unit'] }  or  { total['Profile_Unit'] } to {profile['Profile_Unit'] } yet')
+    return total
+
+    
 
 def plot_profiles(in_radii,gas_profiles,optical_profiles,distance = 1., \
                     log= None, errors = [0.],output_dir = './',input_profiles = None):
     '''This function makes a simple plot of the optical profiles'''
     radii = ensure_kpc_radii(in_radii, distance=distance)
-    opt_radii = ensure_kpc_radii(optical_profiles['RADI'],distance=distance)
+    #print(optical_profiles)
+    #opt_radii = ensure_kpc_radii(optical_profiles['RADI'],distance=distance)
     max = 0.
-    lower_ind = 0
    
     for gas_profile in gas_profiles:
         if gas_profile[1] == 'M_SOLAR/PC^2':
             plt.plot(radii[2:],np.array(gas_profile[2:]),label = gas_profile[0])
             max = np.nanmax(np.array(gas_profile[2:]))
-            lower_ind = np.where(np.array(opt_radii[2:],dtype=float) > float(radii[2])/2.)[0][0]
         else:
             print_log(f'''The units of {gas_profile[0]} are not M_SOLAR/PC^2.
 Not plotting this profile.
 ''',log )
-    tot_opt = [0 for x in opt_radii[2:]]
+    tot_opt = {'Profile': [], 'Radii': []} 
     for x in optical_profiles:
-        if optical_profiles[x]['Profile_Unit'] != 'M_SOLAR/PC^2':
-            print_log(f'''The units of {optical_profiles[x][0]} are not M_SOLAR/PC^2.
-Not plotting this profile.
-''',log )
-            continue
-        plt.plot(opt_radii[2:],np.array(optical_profiles[x][2:]), label = optical_profiles[x][0])
-        plt.plot(ensure_kpc_radii(optical_profiles[x]['Radi'],distance=distance,\
-                unit=optical_profiles[x]['Radi_Unit']),np.array(optical_profiles[x]['Profile']), \
-                label = x)
-            if np.nanmax(np.array(optical_profiles[x][2+lower_ind:])) > max:
-                max =  np.nanmax(np.array(optical_profiles[x][2+lower_ind:]))
-            if len(tot_opt) > 0 :
-                tot_opt = [old+new for old,new in zip(tot_opt,optical_profiles[x][2:])]
-            else:
-                tot_opt =  optical_profiles[x][2:]
-    plt.plot(opt_radii[2:],np.array(tot_opt), label='Total Optical')
+        max = plot_individual_profile(optical_profiles[x],distance,max, \
+                                          profile_name=x)
+        
+        tot_opt = calculate_total_profile(tot_opt,optical_profiles[x],\
+                                          distance=distance)
+       
+    plt.plot(tot_opt['Radii'],tot_opt['Profile'], label='Total Optical')
 
     if not (input_profiles  is None):
         for x in input_profiles:
@@ -423,12 +452,12 @@ Not plotting this profile.
                     continue
                 plt.plot(opt_radii[2:],np.array( input_profiles[x][2:]), label =  input_profiles[x][0])
             
-    max = np.nanmax(tot_opt)
-    min = np.nanmin(np.array([x for x in tot_opt if x > 0.]))
+    max = np.nanmax(tot_opt['Profile'])
+    min = np.nanmin(np.array([x for x in tot_opt['Profile'] if x > 0.]))
 
     plt.ylim(min,max)
     #plt.xlim(0,6)
-    plt.ylabel('Density (M$_\odot$/pc$^2$)')
+    plt.ylabel(r'Density (M$_\odot$/pc$^2$)')
     plt.xlabel('Radius (kpc)')
     plt.yscale('log')
     plt.legend()

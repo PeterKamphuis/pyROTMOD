@@ -102,7 +102,7 @@ The axis ratio is {x['axis ratio']}.
 
 
         ######################################### Read the gas profiles and RC ################################################
-        radii,gas_profiles, total_rc,total_rc_err,scaleheights  =\
+        gas_profiles, total_rc,scaleheights  =\
               get_gas_profiles(cfg.RC_Construction.gas_file,log=log,\
                                debug =cfg.general.debug)
 

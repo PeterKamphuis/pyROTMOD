@@ -592,28 +592,16 @@ def get_optical_profiles(filename,distance = 0.*unit.Mpc,band = 'SPITZER3.6',exp
                 cleaned_components[i]['Central SB'] = cleaned_components[i]['Central SB']*MLRatio
             if cleaned_components[i]['Total SB'] != None:
                 cleaned_components[i]['Total SB'] = cleaned_components[i]['Total SB']*MLRatio
-        original_profiles = None
+        original_profiles = {}
     else:
         #if we want to read from file we want to fit
         original_profiles = copy.deepcopy(optical_profiles)
         optical_profiles,cleaned_components = process_read_profile(optical_profiles,cleaned_components,\
             output_dir = output_dir, debug=debug, log=log)
-    optical_prof_organized = {}
-    all_radii = False
-    for i,type in enumerate(optical_profiles):
-        if i == 0 and type == 'RADI':
-            all_radii = True
-        if i > 0:
-            optical_prof_organized[type] = {'Profile': [x for x in optical_profiles[type][2:]],\
-                                            'Profile_Unit': optical_profiles[type][1]}
-            if all_radii:
-                optical_prof_organized[type]['Radii'] = [x for x in optical_profiles['RADI'][2:]]
-                optical_prof_organized[type]['Radii_Unit'] = optical_profiles['RADI'][1]
-            else:
-                optical_prof_organized[type]['Radii'] = [x for x in optical_profiles[i-1][2:]]
-                optical_prof_organized[type]['Radii_Unit'] = optical_profiles[i-1][1]
-
-    return optical_prof_organized,cleaned_components,galfit_file, original_profiles 
+    optical_prof_organized = organize_profiles(optical_profiles)
+    original_prof_organized = organize_profiles(original_profiles)
+    
+    return optical_prof_organized,cleaned_components,galfit_file, original_prof_organized
 
 get_optical_profiles.__doc__ =f'''
  NAME:
@@ -652,6 +640,54 @@ get_optical_profiles.__doc__ =f'''
 
  NOTE:
 '''
+
+def organize_profiles(profiles):
+    organized = {}
+    all_radii = False
+    if 'RADI' in [x for x in profiles]:
+        all_radii = True
+    for type in profiles:
+        if type[-4:] != 'RADI':
+            organized[type] = {'Profile': np.array([x for x in\
+                                    profiles[type][2:]],dtype=float),\
+                    'Profile_Unit': profiles[type][1]}
+            if all_radii:
+                organized[type]['Radii'] = np.array([x for x in\
+                                    profiles['RADI'][2:]],dtype=float)
+                organized[type]['Radii_Unit'] = profiles['RADI'][1]
+            else:
+                organized[type]['Radii'] = np.array([x for x in\
+                                        profiles[f'{type}_RADI'][2:]],dtype=float)
+                organized[type]['Radii_Unit'] = profiles[f'{type}_RADI'][1]
+
+organize_profiles.__doc__ =f'''
+ NAME:
+    organize_profiles
+
+ PURPOSE:
+    Transform a list of profile with the old [''Name', 'Unit', profile[0:]
+    To a dictionary withe entries of name {{'Profile': profile[0:], 
+    'Profile_Unit': unit, 'Radii': individual radius, 'Radii_Unit': radius unit }}
+    This is to allow for storage of individual radii for each profile.
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    profiles = old profiles
+
+ OPTIONAL INPUTS:
+    
+ OUTPUTS:
+    dict_profiles = New dictionary
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
 def hernquist_profile(r, mass, h):
     '''
     The hernquist density profile (Eq 2, Hernquist 1990)
