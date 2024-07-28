@@ -1,7 +1,7 @@
 # -*- coding: future_fstrings -*-
 
 import numpy as np
-import pyROTMOD.constants as cons
+import pyROTMOD.support.constants as cons
 from sympy import symbols, sqrt,atan,pi,log
 from dataclasses import dataclass,field
 from typing import List

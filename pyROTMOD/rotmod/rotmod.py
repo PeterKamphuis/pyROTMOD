@@ -8,11 +8,16 @@ from scipy.stats import hypsecant
 from scipy.integrate import quad
 #from astropy import units
 from astropy import units as unit
-from pyROTMOD.support import convertskyangle,integrate_surface_density,\
-                        ensure_kpc_radii,print_log
-from pyROTMOD.optical.optical import fit_profile,exponential,hernquist_profile
-import pyROTMOD.constants as c
+from pyROTMOD.support.minor_functions import integrate_surface_density,\
+                        print_log,get_effective_radius,set_limits,\
+                        plot_profiles,write_profiles
+from pyROTMOD.optical.optical import get_optical_profiles
+from pyROTMOD.gas.gas import get_gas_profiles
+from pyROTMOD.optical.profiles import fit_profile
+from pyROTMOD.support.errors import InputError
+import pyROTMOD.support.constants as c
 import numpy as np
+import traceback
 import warnings
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -20,8 +25,81 @@ with warnings.catch_warnings():
     matplotlib.use('pdf')
     import matplotlib.pyplot as plt
 
-class InputError(Exception):
-    pass
+
+def bulge_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'sersic', 'axis ratio': None, 'scale length': None}, \
+            log = None, debug=False, output_dir = './', truncated = -1.,out_radii = None):
+    # First we need to get the total mass in the disk
+    #print(f'We are using this vertical distributions {vertical_distribution}')
+    #print(radii,density)
+
+    if components['Total SB'] == None:
+        components['Total SB'],ringarea = integrate_surface_density(radii,density)*unit.Msun
+
+    if components['R effective'] == None:
+        # if this is specified as an exponential disk without the parameters defined we fit a expoenential
+        mass,ring_area = integrate_surface_density(radii,density)
+        scale = radii[-1]
+        for i in range(1,len(radii)):
+            current_mass = np.sum(ring_area[:i]*density[:i])*unit.Msun
+            if current_mass < components['Total SB']/2.:
+                components['scale length'] = radii[i]/1.8153
+                break
+    else:
+        components['scale length']  = float(components['R effective'].value/1.8153)
+
+    #try:
+    #if components['Type'] == 'sersic':
+    #    result,profile,components = fit_profile(radii,optical_profiles[type][2:],\
+    #            cleaned_components[i-1],function='HERNQUIST_1', output_dir = output_dir\
+    #            ,debug = debug, log = log)
+
+    # let's see if our fit has a reasonable reduced chi square
+
+    if components['Type'] in ['bulge','sersic','hernquist','devauc']:
+        print_log(f'''We have found an hernquist profile with the following values.
+The total mass of the disk is {components['Total SB']} a central mass density {components['Central SB']} .
+The scale length is {components['scale length']} kpc and the scale height {components['scale height']} kpc.
+The axis ratio is {components['axis ratio']}.
+''' ,log,debug=debug)
+        if out_radii[0] != None:
+            RC_radii =out_radii
+        else:
+            RC_radii = radii
+        RC = hernquist_parameter_RC(RC_radii,components,log = log, \
+                    truncated = truncated )
+        RC = [f'HERNQUIST','KM/S']+list(RC)
+
+    else:
+        raise InputError(f'We have not yet implemented the disk modelling of {components["Type"]}.')
+
+    return RC
+
+def bulge_RC_old(radii,opt_rad,density,debug=False,log=None):
+    density =np.array(density)
+    density[np.where(density < 0.)] = 0.
+    mass,effective_radius=get_effective_radius(opt_rad,density,debug=debug,log=log)
+    hern_scale = float(effective_radius)/1.8153  #Equation 38 in Hernquist 1990
+    ##B anc are to x ratio of the profile i.e. one means spherical
+    bulge_potential = THP(amp=2.*float(mass)*unit.Msun,a= hern_scale*unit.kpc,b= 1.,c = 1.)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        RC = [bulge_potential.vcirc(x*unit.kpc) for x in radii]
+
+    if np.isnan(RC[0]) and radii[0] == 0:
+        RC[0] = 0.
+    if RC[0] <= 0.:
+        RC[0] = 0.
+        # take from the density profile
+    return RC
+
+def combined_rad_sech_square(z,x,y,h_z):
+    return interg_function(z,x,y)*norm_sechsquare(z,h_z)
+
+def combined_rad_exp(z,x,y,h_z):
+    return interg_function(z,x,y)*norm_exponential(z,h_z)
+
+def combined_rad_sech_simple(z,x,y,h_z):
+    return interg_function(z,x,y)*simple_sech(z,h_z)
 
 def convert_dens_rc(radii, optical_profiles, gas_profiles,components,\
     distance =1.,opt_h_z = [0.,None], gas_scaleheights= [0.,None], galfit_file =False,\
@@ -178,145 +256,6 @@ convert_dens_rc.__doc__ =f'''
 
 
 '''
-def bulge_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'sersic', 'axis ratio': None, 'scale length': None}, \
-            log = None, debug=False, output_dir = './', truncated = -1.,out_radii = None):
-    # First we need to get the total mass in the disk
-    #print(f'We are using this vertical distributions {vertical_distribution}')
-    #print(radii,density)
-
-    if components['Total SB'] == None:
-        components['Total SB'] = integrate_surface_density(radii,density)*unit.Msun
-
-    if components['R effective'] == None:
-        # if this is specified as an exponential disk without the parameters defined we fit a expoenential
-        ring_area = integrate_surface_density(radii,density,calc_ring_area=True)
-        scale = radii[-1]
-        for i in range(1,len(radii)):
-            current_mass = np.sum(ring_area[:i]*density[:i])*unit.Msun
-            if current_mass < components['Total SB']/2.:
-                components['scale length'] = radii[i]/1.8153
-                break
-    else:
-        components['scale length']  = float(components['R effective'].value/1.8153)
-
-    #try:
-    #if components['Type'] == 'sersic':
-    #    result,profile,components = fit_profile(radii,optical_profiles[type][2:],\
-    #            cleaned_components[i-1],function='HERNQUIST_1', output_dir = output_dir\
-    #            ,debug = debug, log = log)
-
-    # let's see if our fit has a reasonable reduced chi square
-
-    if components['Type'] in ['bulge','sersic','hernquist','devauc']:
-        print_log(f'''We have found an hernquist profile with the following values.
-The total mass of the disk is {components['Total SB']} a central mass density {components['Central SB']} .
-The scale length is {components['scale length']} kpc and the scale height {components['scale height']} kpc.
-The axis ratio is {components['axis ratio']}.
-''' ,log,debug=debug)
-        if out_radii[0] != None:
-            RC_radii =out_radii
-        else:
-            RC_radii = radii
-        RC = hernquist_parameter_RC(RC_radii,components,log = log, \
-                    truncated = truncated )
-        RC = [f'HERNQUIST','KM/S']+list(RC)
-
-    else:
-        raise InputError(f'We have not yet implemented the disk modelling of {components["Type"]}.')
-
-    return RC
-
-
-def bulge_RC_old(radii,opt_rad,density,debug=False,log=None):
-    density =np.array(density)
-    density[np.where(density < 0.)] = 0.
-    mass,effective_radius=get_effective_radius(opt_rad,density,debug=debug,log=log)
-    hern_scale = float(effective_radius)/1.8153  #Equation 38 in Hernquist 1990
-    ##B anc are to x ratio of the profile i.e. one means spherical
-    bulge_potential = THP(amp=2.*float(mass)*unit.Msun,a= hern_scale*unit.kpc,b= 1.,c = 1.)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        RC = [bulge_potential.vcirc(x*unit.kpc) for x in radii]
-
-    if np.isnan(RC[0]) and radii[0] == 0:
-        RC[0] = 0.
-    if RC[0] <= 0.:
-        RC[0] = 0.
-        # take from the density profile
-    return RC
-
-def hernquist_parameter_RC(radii,parameters, truncated =-1.,log= False, debug=False):
-    '''This assumes a Hernquist potential where the scale length should correspond to hernquist scale length'''
-    #print(f'This is the total mass in the parameterized exponential disk {float(parameters[1]):.2e}') 
-    parameters['scale length'] = None
-    if parameters['scale length'] is None:
-        #This is a guess really
-        central_dens = parameters['Central SB']* 1./(1*unit.pc)
-        #I don't understand why astropy is not convvert the pc **3 to pc
-        parameters['scale length'] = (parameters['Total SB']/(2.*np.pi*central_dens))**1/3*1./(unit.pc**2)
-     
-
-    if parameters['axis ratio']:
-        axis_ratio = parameters['axis ratio']
-    else:
-        if parameters['scale height'] != None:
-            axis_ratio = parameters['scale height']/parameters['scale length']
-            axis_ratio = axis_ratio.value
-        else:
-            axis_ratio =1.
-     
-    #The two is specified in https://docs.galpy.org/en/latest/reference/potentialhernquist.html?highlight=hernquist
-    #It is assumed this hold with the the triaxial potential as well.
-    bulge_potential = THP(amp=2.*parameters['Total SB'],a= parameters['scale length'] ,b= 1.,c = axis_ratio)
-    #bulge_potential = THP(amp=2.*parameters['Total SB'],a= parameters['scale length'])
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        RC = [float(bulge_potential.vcirc(x*unit.kpc)) for x in radii]
-    if truncated > 0.:
-        ind =  np.where(radii > truncated)
-        RC[ind] = np.sqrt(c.Gsol*float(parameters['Total SB'])/(radii[ind]*1000.*c.pc/(100.*1000.)))
-    if np.isnan(RC[0]) and radii[0] == 0:
-        RC[0] = 0.
-    if RC[0] <= 0.:
-        RC[0] = 0.
-    return RC
-
-hernquist_parameter_RC.__doc__ =f'''
- NAME:
-    hernquist_parameter__RC
-
- PURPOSE:
-    match the parameterized profile to the potential from galpy
-
- CATEGORY:
-    rotation modelling
-
- INPUTS:
-    radii = radii at which to evaluate the profile to obtain rotaional velocities
-            in (km/s)
-    parameters = dictionary with the required input -->
-                corresponds to the components dictionary. In order to avoid errors
-                the values in the dictionary are quantities. i.e with astropy units
- OPTIONAL INPUTS:
-
-    truncated =-1.
-        location of trucation of the disk
-
-    log= None,
-        Run log
-    debug =False,
-        trigger for enhanced verbosity and plotting
-
-
- OUTPUTS:
-    Rotation curve for the specified bulge at the location of the RCs
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-    Unspecified
-
- NOTE:
-'''
 
 
 def disk_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'expdisk', 'scale height': None, 'scale length': None}, \
@@ -336,7 +275,7 @@ def disk_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'expdisk', 'sca
 
     if components['Total SB'] == None:
     #print(exp_profile)
-        components['Total SB'] = integrate_surface_density(radii,exp_profile)*unit.Msun
+        components['Total SB'],ringarea = integrate_surface_density(radii,exp_profile)*unit.Msun
     sech =False
     if components['scale height'] == None:
         components['scale height'] = h_z[0]*unit.kpc
@@ -413,64 +352,6 @@ disk_RC.__doc__ =f'''
 '''
 
 
-def get_effective_radius(radii,density,debug=False,log= None):
-    #The effective radius is where the integrated profile reaches half of the total
-
-    ringarea= [0 if radii[0] == 0 else np.pi*((radii[0]+radii[1])/2.)**2]
-    ringarea = np.hstack((ringarea,
-                         [np.pi*(((y+z)/2.)**2-((y+x)/2.)**2) for x,y,z in zip(radii,radii[1:],radii[2:])],
-                         [np.pi*((radii[-1]+0.5*(radii[-1]-radii[-2]))**2-((radii[-1]+radii[-2])/2.)**2)]
-                         ))
-    ringarea = ringarea*1000.**2
-
-    mass = np.sum([x*y for x,y in zip(ringarea,density)])
-
-    Cuma_prof = []
-    for i,rad in enumerate(radii):
-        if i == 0:
-            Cuma_prof.append(ringarea[i]*density[i])
-        else:
-            new = Cuma_prof[-1]+ringarea[i]*density[i]
-            Cuma_prof.append(new)
-    #now to get the half of the total mass.
-    if Cuma_prof[0] > mass/2.:
-        print_log(f'''Your effective radius of the bulge is smaller than the first ring.
-You should improve the resolution of the bulge profile.''',log)
-        out_rad = radii[0]
-    else:
-        out_rad = radii[np.where(Cuma_prof<mass/2.)[-1][-1]]
-
-    return mass,out_rad
-
-
-
-
-def sersic_parameter_RC(radii,parameters,sech=True):
-    # There is no parameterized version for a potential of all sersic indices as there is no deprojected surface density profile
-    # However for n = 4 we can use the hernquist profile, and n =1 the exponential disk, else we need to go through the parameterization of a deprojected profile of Baes & Gentile 2010
-
-    if 0.75 < float(parameters['sersic index']) < 1.25:
-        # assume this to be close enough to a infinitely thin exponential
-        hr =  float(parameters[3])/1.678
-        exp_disk_potential = EP(amp=float(parameters[2])*unit.Msun/unit.pc**2,hr=hr*unit.kpc)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            RC = exp_disk_potential.vcirc(radii*unit.kpc)
-    elif 3.75 < float(parameters['sersic index']) < 4.25:
-        # take this to be a bulge and we use a hernequist potential
-        hern_scale = float(parameters[3])/1.8153  #Equation 38 in Hernquist 1990
-        bulge_potential = THP(amp=2.*float(parameters[1])*unit.Msun,a= hern_scale*unit.kpc,b= 1.,c = float(parameters[5]))
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            RC = [bulge_potential.vcirc(x*unit.kpc) for x in radii]
-    else:
-        print("This sersic  profile cannot be parameterized.")
-    if np.isnan(RC[0]) and radii[0] == 0:
-        RC[0] = 0.
-    if RC[0] <= 0.:
-        RC[0] = 0.
-        # take from the density profile
-    return RC
 
 def exponential_parameter_RC(radii,parameters, sech =False, truncated =-1.,log= False, debug=False):
     #print(f'This is the total mass in the parameterized exponential disk {float(parameters[1]):.2e}')
@@ -537,10 +418,7 @@ exponential_parameter_RC.__doc__ =f'''
  NOTE:
 '''
 
-def sechsquare(x,b):
-    '''Sech square function '''
-    #sech(x) = 1./cosh(x)
-    return 1./np.float64(np.cosh(x/b))**2
+
 
 def get_rotmod_scalelength(radii,density):
     s=0.
@@ -567,6 +445,196 @@ def get_rotmod_scalelength(radii,density):
     dens = np.exp((sy*sxx-sx*sxy)/det)
     return h,dens
 
+def hernquist_parameter_RC(radii,parameters, truncated =-1.,log= False, debug=False):
+    '''This assumes a Hernquist potential where the scale length should correspond to hernquist scale length'''
+    #print(f'This is the total mass in the parameterized exponential disk {float(parameters[1]):.2e}') 
+    parameters['scale length'] = None
+    if parameters['scale length'] is None:
+        #This is a guess really
+        central_dens = parameters['Central SB']* 1./(1*unit.pc)
+        #I don't understand why astropy is not convvert the pc **3 to pc
+        parameters['scale length'] = (parameters['Total SB']/(2.*np.pi*central_dens))**1/3*1./(unit.pc**2)
+     
+
+    if parameters['axis ratio']:
+        axis_ratio = parameters['axis ratio']
+    else:
+        if parameters['scale height'] != None:
+            axis_ratio = parameters['scale height']/parameters['scale length']
+            axis_ratio = axis_ratio.value
+        else:
+            axis_ratio =1.
+     
+    #The two is specified in https://docs.galpy.org/en/latest/reference/potentialhernquist.html?highlight=hernquist
+    #It is assumed this hold with the the triaxial potential as well.
+    bulge_potential = THP(amp=2.*parameters['Total SB'],a= parameters['scale length'] ,b= 1.,c = axis_ratio)
+    #bulge_potential = THP(amp=2.*parameters['Total SB'],a= parameters['scale length'])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        RC = [float(bulge_potential.vcirc(x*unit.kpc)) for x in radii]
+    if truncated > 0.:
+        ind =  np.where(radii > truncated)
+        RC[ind] = np.sqrt(c.Gsol*float(parameters['Total SB'])/(radii[ind]*1000.*c.pc/(100.*1000.)))
+    if np.isnan(RC[0]) and radii[0] == 0:
+        RC[0] = 0.
+    if RC[0] <= 0.:
+        RC[0] = 0.
+    return RC
+
+hernquist_parameter_RC.__doc__ =f'''
+ NAME:
+    hernquist_parameter__RC
+
+ PURPOSE:
+    match the parameterized profile to the potential from galpy
+
+ CATEGORY:
+    rotation modelling
+
+ INPUTS:
+    radii = radii at which to evaluate the profile to obtain rotaional velocities
+            in (km/s)
+    parameters = dictionary with the required input -->
+                corresponds to the components dictionary. In order to avoid errors
+                the values in the dictionary are quantities. i.e with astropy units
+ OPTIONAL INPUTS:
+
+    truncated =-1.
+        location of trucation of the disk
+
+    log= None,
+        Run log
+    debug =False,
+        trigger for enhanced verbosity and plotting
+
+
+ OUTPUTS:
+    Rotation curve for the specified bulge at the location of the RCs
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
+
+#this function is a carbon copy of the function in GIPSY's rotmod (Begeman 1989, vd Hulst 1992)
+# Function to integrate from Cassertano 1983
+def interg_function(z,x,y):
+    xxx = (x**2 + y**2 + z**2)/(2.*x*y)
+    rrr = (xxx**2-1.)
+    ppp = 1.0/(xxx+np.sqrt(rrr))
+    fm = 1.-ppp**2
+    el1 = ( 1.3862944 + fm * ( 0.1119723 + fm * 0.0725296 ) ) - \
+          ( 0.5 + fm * ( 0.1213478 + fm * 0.0288729 ) ) * np.log( fm )
+    el2 = ( 1.0 + fm * ( 0.4630151 + fm * 0.1077812 ) ) - \
+          ( fm * ( 0.2452727 + fm * 0.0412496 ) ) * np.log( fm )
+    r = ( ( 1.0 - xxx * y / x ) * el2 / ( rrr ) + \
+        ( y / x - ppp ) * el1 / np.sqrt( rrr ) ) /np.pi
+    return r * np.sqrt( x / ( y * ppp ) )
+
+def integrate_v(radii,density,R,rstart,h_z,step,iterations=200,mode = None ):
+    # we cannot actually use quad or some such as the density profile is not a function but user supplied
+
+    vsquared = 0.
+    eval_radii = [rstart + step * i for i in range(iterations)]
+    eval_density = np.interp(np.array(eval_radii),np.array(radii),np.array(density))
+    weights = [4- 2*((i+1)%2) for i in range(iterations)]
+    weights[0], weights[-1] = 1., 1.
+    weights = np.array(weights,dtype=float)*step
+    # ndens = the number of integrations
+    for i in range(iterations):
+        if 0 < eval_radii[i] < radii[len(density)-1] and eval_density[i] > 0 and R > 0.:
+            zdz = integrate_z(R, eval_radii[i], h_z,mode)
+            vsquared += 2.* np.pi*c.Grotmod/3. *zdz*eval_density[i]*weights[i]
+    return vsquared
+
+def integrate_z(radius,x,h_z,mode):
+    if h_z != 0.:
+       
+        vertical_function = select_vertical(mode)
+        # We integrated out to 250*h_z otherwise we get overflow problems
+        # in principle it should be infinite (np.inf)
+        zdz = quad(vertical_function,0.,250.*h_z,args=(radius,x,h_z))[0]
+        
+    else:
+        if not (radius == x) and not radius == 0. and not x == 0. and \
+                    (radius**2 + x**2)/(2.*radius*x) > 1:
+                    zdz = interg_function(h_z,radius, x)
+        else:
+            zdz = 0.
+    return zdz
+
+def norm_exponential(radii,h):
+    return np.exp(-1.*radii/h)/h
+def norm_sechsquare(radii,h):
+    return 1./(np.cosh(radii/h)**2*h)
+
+'''This functions is the global function that creates and reads the RCs if the are not all read from file.
+Basically if the RC_Construction is enabled this function is called.'''
+def obtain_RCs(cfg,log=None):
+    #=================start with the optical profiles -----------------------
+    try:
+        optical_profiles,galfit_file = get_optical_profiles(cfg,log=log)
+    except Exception as e:
+        print_log(f" We could not obtain the optical components and profiles because of {e}",log,debug=cfg.general.debug,screen=False)
+        traceback.print_exc()
+        raise InputError(f'We failed to retrieved the optical components from {cfg.RC_Construction.optical_file}')
+
+
+    ######################################### Read the gas profiles and RC ################################################
+    gas_profiles, total_rc  =\
+        get_gas_profiles(cfg,log=log)
+   
+   
+    for profile in gas_profiles:
+        print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(gas_profiles[profile].radii.value,gas_profiles[profile].values.value)[0]:.2e}
+and a central mass density {gas_profiles[profile].values[0]:.2f}.
+''' ,log,screen= True)
+
+  
+    ########################################## Make a plot with the extracted profiles ######################3
+    plot_profiles(gas_profiles,optical_profiles,\
+        output_dir = cfg.general.output_dir, log=log)
+   
+
+    ########################################## Make a nice file with all the different components as a column ######################3
+    write_profiles(gas_profiles,total_rc,optical_profiles,\
+        output_dir = cfg.general.output_dir, log=log)
+    exit()
+    ######################################### Convert to Rotation curves ################################################
+    if cfg.RC_Construction.scaleheight[0] == 0.:
+        opt_h_z = [cfg.RC_Construction.scaleheight[0],None]
+    else:
+        opt_h_z = cfg.RC_Construction.scaleheight
+    if cfg.RC_Construction.gas_scaleheight[1]:
+        cfg.RC_Construction.gas_scaleheight[1]=cfg.RC_Construction.gas_scaleheight[1].lower()
+    gas_hzs = []
+    for i in range(len(gas_profiles)):
+    
+        if cfg.RC_Construction.gas_scaleheight[1] == 'tir':
+            gas_hz = [np.nanmean(scaleheights[i][:2]),scaleheights[i][2]]
+        elif cfg.RC_Construction.gas_scaleheight[0] != 0:
+            gas_hz = cfg.RC_Construction.gas_scaleheight
+        else:
+            gas_hz= [0.,None]
+        gas_hzs.append(gas_hz)
+
+
+    derived_RCs = convert_dens_rc(radii, optical_profiles, gas_profiles,\
+            components,distance =cfg.general.distance,log=log,
+            galfit_file = galfit_file,opt_h_z = opt_h_z,
+            gas_scaleheights=gas_hzs,output_dir=cfg.general.output_dir)
+
+    write_header(distance=cfg.general.distance,MLratio=cfg.RC_Construction.mass_to_light_ratio,\
+        opt_scaleheight=opt_h_z,gas_scaleheight=gas_hz,\
+        output_dir = cfg.general.output_dir, file= cfg.general.RC_file)
+
+    write_RCs(derived_RCs,total_rc,total_rc_err, log = log, \
+                output_dir = cfg.general.output_dir, file= cfg.general.RC_file)
+
+    return derived_RCs, total_RCs
 
 def random_density_disk(radii,density,h_z = 0.,mode = None, log= None):
     print_log(f'''We are calculating the random disk with:
@@ -611,70 +679,11 @@ h_z = {h_z} and vertical mode = {mode}
             RC.append(np.sqrt(vsquared))
     return RC
 
+def sechsquare(x,b):
+    '''Sech square function '''
+    #sech(x) = 1./cosh(x)
+    return 1./np.float64(np.cosh(x/b))**2
 
-def integrate_v(radii,density,R,rstart,h_z,step,iterations=200,mode = None ):
-    # we cannot actually use quad or some such as the density profile is not a function but user supplied
-
-    vsquared = 0.
-    eval_radii = [rstart + step * i for i in range(iterations)]
-    eval_density = np.interp(np.array(eval_radii),np.array(radii),np.array(density))
-    weights = [4- 2*((i+1)%2) for i in range(iterations)]
-    weights[0], weights[-1] = 1., 1.
-    weights = np.array(weights,dtype=float)*step
-    # ndens = the number of integrations
-    for i in range(iterations):
-        if 0 < eval_radii[i] < radii[len(density)-1] and eval_density[i] > 0 and R > 0.:
-            zdz = integrate_z(R, eval_radii[i], h_z,mode)
-            vsquared += 2.* np.pi*c.Grotmod/3. *zdz*eval_density[i]*weights[i]
-    return vsquared
-
-def integrate_z(radius,x,h_z,mode):
-    if h_z != 0.:
-       
-        vertical_function = select_vertical(mode)
-        # We integrated out to 250*h_z otherwise we get overflow problems
-        # in principle it should be infinite (np.inf)
-        zdz = quad(vertical_function,0.,250.*h_z,args=(radius,x,h_z))[0]
-        
-    else:
-        if not (radius == x) and not radius == 0. and not x == 0. and \
-                    (radius**2 + x**2)/(2.*radius*x) > 1:
-                    zdz = interg_function(h_z,radius, x)
-        else:
-            zdz = 0.
-    return zdz
-
-#this function is a carbon copy of the function in GIPSY's rotmod (Begeman 1989, vd Hulst 1992)
-# Function to integrate from Cassertano 1983
-def interg_function(z,x,y):
-    xxx = (x**2 + y**2 + z**2)/(2.*x*y)
-    rrr = (xxx**2-1.)
-    ppp = 1.0/(xxx+np.sqrt(rrr))
-    fm = 1.-ppp**2
-    el1 = ( 1.3862944 + fm * ( 0.1119723 + fm * 0.0725296 ) ) - \
-          ( 0.5 + fm * ( 0.1213478 + fm * 0.0288729 ) ) * np.log( fm )
-    el2 = ( 1.0 + fm * ( 0.4630151 + fm * 0.1077812 ) ) - \
-          ( fm * ( 0.2452727 + fm * 0.0412496 ) ) * np.log( fm )
-    r = ( ( 1.0 - xxx * y / x ) * el2 / ( rrr ) + \
-        ( y / x - ppp ) * el1 / np.sqrt( rrr ) ) /np.pi
-    return r * np.sqrt( x / ( y * ppp ) )
-
-def selected_vertical_dist(mode):
-    if mode == 'sech-sq':
-        return norm_sechsquare
-    elif mode == 'exp':
-        return norm_exponential
-    elif mode == 'sech-simple':
-        return simple_sech
-    else:
-        return None
-
-def combined_rad_sech_square(z,x,y,h_z):
-    return interg_function(z,x,y)*norm_sechsquare(z,h_z)
-def combined_rad_exp(z,x,y,h_z):
-    return interg_function(z,x,y)*norm_exponential(z,h_z)
-def combined_rad_sech_simple(z,x,y,h_z):
-    return interg_function(z,x,y)*simple_sech(z,h_z)
 # Any vertical function goes as long a integral 0 --> inf (vert_func*dz) = 1.
 def select_vertical(mode):
     if mode == 'sech-sq':
@@ -689,44 +698,114 @@ def select_vertical(mode):
         else:
             return None
 
-def norm_exponential(radii,h):
-    return np.exp(-1.*radii/h)/h
-def norm_sechsquare(radii,h):
-    return 1./(np.cosh(radii/h)**2*h)
+def selected_vertical_dist(mode):
+    if mode == 'sech-sq':
+        return norm_sechsquare
+    elif mode == 'exp':
+        return norm_exponential
+    elif mode == 'sech-simple':
+        return simple_sech
+    else:
+        return None
+
+def sersic_parameter_RC(radii,parameters,sech=True):
+    # There is no parameterized version for a potential of all sersic indices as there is no deprojected surface density profile
+    # However for n = 4 we can use the hernquist profile, and n =1 the exponential disk, else we need to go through the parameterization of a deprojected profile of Baes & Gentile 2010
+
+    if 0.75 < float(parameters['sersic index']) < 1.25:
+        # assume this to be close enough to a infinitely thin exponential
+        hr =  float(parameters[3])/1.678
+        exp_disk_potential = EP(amp=float(parameters[2])*unit.Msun/unit.pc**2,hr=hr*unit.kpc)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            RC = exp_disk_potential.vcirc(radii*unit.kpc)
+    elif 3.75 < float(parameters['sersic index']) < 4.25:
+        # take this to be a bulge and we use a hernequist potential
+        hern_scale = float(parameters[3])/1.8153  #Equation 38 in Hernquist 1990
+        bulge_potential = THP(amp=2.*float(parameters[1])*unit.Msun,a= hern_scale*unit.kpc,b= 1.,c = float(parameters[5]))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            RC = [bulge_potential.vcirc(x*unit.kpc) for x in radii]
+    else:
+        print("This sersic  profile cannot be parameterized.")
+    if np.isnan(RC[0]) and radii[0] == 0:
+        RC[0] = 0.
+    if RC[0] <= 0.:
+        RC[0] = 0.
+        # take from the density profile
+    return RC
+
 def simple_sech(radii,h):
     return 2./h/np.pi/np.cosh(radii/h)
 
-def set_limits(value,minv,maxv,debug = False):
-    if value < minv:
-        return minv
-    elif value > maxv:
-        return maxv
-    else:
-        return value
+def read_RCs(dir= './', file= 'You_Should_Set_A_File_RC.txt'):
+    with open(f'{dir}{file}','r') as file:
+        lines = file.readlines()
 
-set_limits.__doc__ =f'''
+    RCs = []
+
+    count = 0
+    start = False
+    while not start:
+        if lines[count][0] != '#':
+            start =True
+        else:
+            count += 1
+
+    for i in range(count,len(lines)):
+        values = [x.strip() for x in lines[i].split()]
+
+        for x in range(len(values)):
+            if i == count:
+                RCs.append([values[x]])
+                if values[x] == 'V_OBS':
+                    totalind = x
+                if values[x] == 'V_OBS_ERR':
+                    errind = x
+            elif i == count+1:
+                RCs[x].append(values[x])
+            else:
+                RCs[x].append(float(values[x]))
+    totalrc = RCs[totalind]
+    del RCs[totalind]
+    if totalind < errind:
+        errind -= 1
+    err_rc = RCs[errind]
+    del RCs[errind]
+    return RCs,totalrc,err_rc
+    #           RCs
+
+read_RCs.__doc__ =f'''
  NAME:
-    set_limits
+    read_RCs
  PURPOSE:
-    Make sure Value is between min and max else set to min when smaller or max when larger.
+    Read the RCs from a file. The file has to adhere to the pyROTMOD output format
  CATEGORY:
     support_functions
 
  INPUTS:
-    value = value to evaluate
-    minv = minimum acceptable value
-    maxv = maximum allowed value
+    di    directory
+    RCs = Dictionary with derived RCs
+    total_rc = The observed RC
+    rc_err = Error on the observed RC
 
  OPTIONAL INPUTS:
-    debug = False
+    dir= './'
+
+    Directory where  the file file is locate
+
+    file= 'You_Should_Set_A_File_RC.txt'
+
+    file name
 
  OUTPUTS:
-    the limited Value
 
  OPTIONAL OUTPUTS:
 
  PROCEDURES CALLED:
-    Unspecified
 
  NOTE:
+
 '''
+
+

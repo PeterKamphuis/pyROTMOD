@@ -4,7 +4,7 @@ from dataclasses import dataclass,field
 from omegaconf import OmegaConf,open_dict,MissingMandatoryValue,ListConfig, MISSING
 from typing import List,Optional
 from datetime import datetime
-from pyROTMOD.support import get_uncounted
+from pyROTMOD.support.minor_functions import get_uncounted
 import os
 import numpy as np
 import pyROTMOD.rotmass.potentials as potentials
@@ -31,6 +31,7 @@ class RCConstruction:
     exposure_time: float = 1.
     mass_to_light_ratio: float = 1.0
     band: str='SPITZER3.6'
+    gas_band: str = '21cm'
 
 @dataclass
 class Fitting:

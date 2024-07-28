@@ -3,14 +3,15 @@
 
 import numpy as np
 import warnings
-import pyROTMOD.constants as cons
+import pyROTMOD.support.constants as cons
+from pyROTMOD.support.errors import InputError,RunTimeError,InitialGuessWarning
 import copy
 from types import FunctionType
 import lmfit
 import corner
 import pyROTMOD.rotmass.potentials as potentials
-import pyROTMOD.constants as cons
-from pyROTMOD.support import print_log,get_uncounted
+import pyROTMOD.support.constants as cons
+from pyROTMOD.support.minor_functions import print_log,get_uncounted
 from sympy import symbols, sqrt,atan,pi,log,Abs,lambdify
 from scipy.optimize import differential_evolution,curve_fit,OptimizeWarning
 with warnings.catch_warnings():
@@ -19,12 +20,6 @@ with warnings.catch_warnings():
     matplotlib.use('pdf')
     import matplotlib.pyplot as plt
 
-class InitialGuessWarning(Exception):
-    pass
-class InputError(Exception):
-    pass
-class RunTimeError(Exception):
-    pass
 
 def build_curve(disk_var,dm_halo,Baryonic_RCs,debug=False,log=None):
     # First get the DM function in sympy format
@@ -1067,7 +1062,7 @@ plot_curves.__doc__ =f'''
  NOTE:
 '''
 
-def rotmass_main(radii, derived_RCs, total_RC,total_RC_err,no_negative =True,out_dir = None,\
+def rotmass_main(derived_RCs, total_RC,no_negative =True,out_dir = None,\
                 interactive = False,rotmass_settings = None,log_directory=None,\
                 rotmass_parameter_settings = None,\
                 results_file = 'Final_Results',log=None,debug = False, font = 'Times New Roman'):
