@@ -602,31 +602,12 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
     ########################################## Make a nice file with all the different components as a column ######################3
     write_profiles(gas_profiles,total_rc,optical_profiles,\
         output_dir = cfg.general.output_dir, log=log)
-    exit()
+ 
     ######################################### Convert to Rotation curves ################################################
-    if cfg.RC_Construction.scaleheight[0] == 0.:
-        opt_h_z = [cfg.RC_Construction.scaleheight[0],None]
-    else:
-        opt_h_z = cfg.RC_Construction.scaleheight
-    if cfg.RC_Construction.gas_scaleheight[1]:
-        cfg.RC_Construction.gas_scaleheight[1]=cfg.RC_Construction.gas_scaleheight[1].lower()
-    gas_hzs = []
-    for i in range(len(gas_profiles)):
-    
-        if cfg.RC_Construction.gas_scaleheight[1] == 'tir':
-            gas_hz = [np.nanmean(scaleheights[i][:2]),scaleheights[i][2]]
-        elif cfg.RC_Construction.gas_scaleheight[0] != 0:
-            gas_hz = cfg.RC_Construction.gas_scaleheight
-        else:
-            gas_hz= [0.,None]
-        gas_hzs.append(gas_hz)
 
-
-    derived_RCs = convert_dens_rc(radii, optical_profiles, gas_profiles,\
-            components,distance =cfg.general.distance,log=log,
-            galfit_file = galfit_file,opt_h_z = opt_h_z,
-            gas_scaleheights=gas_hzs,output_dir=cfg.general.output_dir)
-
+    derived_RCs = convert_dens_rc(optical_profiles, gas_profiles, cfg=cfg,\
+            output_dir=cfg.general.output_dir)
+    exit()
     write_header(distance=cfg.general.distance,MLratio=cfg.RC_Construction.mass_to_light_ratio,\
         opt_scaleheight=opt_h_z,gas_scaleheight=gas_hz,\
         output_dir = cfg.general.output_dir, file= cfg.general.RC_file)

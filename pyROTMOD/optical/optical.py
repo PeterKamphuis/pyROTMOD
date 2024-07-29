@@ -3,7 +3,7 @@
 import numpy as np
 import warnings
 
-from pyROTMOD.support.minor_functions import print_log
+from pyROTMOD.support.minor_functions import print_log,translate_string_to_unit
 from pyROTMOD.support.major_functions import read_columns
 
 from pyROTMOD.support.errors import InputError, BadFileError
@@ -67,6 +67,16 @@ def get_optical_profiles(cfg,log=None):
         optical_profiles[name].band = cfg.RC_Construction.band
         optical_profiles[name].distance = distance
         optical_profiles[name].MLratio = MLRatio  
+        optical_profiles[name].component = 'stars' 
+        if optical_profiles[name].height == None:
+            optical_profiles[name].height = cfg.RC_Construction.scaleheight[0]\
+                *translate_string_to_unit(cfg.RC_Construction.scaleheight[2])
+            optical_profiles[name].height_unit = cfg.RC_Construction.scaleheight[2]
+            optical_profiles[name].height_error = cfg.RC_Construction.scaleheight[1]\
+                *translate_string_to_unit(cfg.RC_Construction.scaleheight[2])
+        if optical_profiles[name].height_type == None:
+            optical_profiles[name].height_type = cfg.RC_Construction.scaleheight[3]
+
         if galfit_file:
             optical_profiles[name].create_profile()
         else:
@@ -395,9 +405,9 @@ def read_galfit(lines,log=None,debug=False):
                         components[current_name] = Density_Profile(\
                             type=current_component,name=current_name)
                                   
-                        if current_component in ['expdisk','sersic','devauc']:
-                            components[current_name].scale_height = 0. * unit.kpc
-                            components[current_name].scale_height_type = 'inf_thin'
+                        #if current_component in ['expdisk','sersic','devauc']:
+                        #    components[current_name].scale_height = 0. * unit.kpc
+                        #    components[current_name].scale_height_type = 'inf_thin'
                 if current_component in ['sky']:
                     if tmp[0] == '1)':
                         components[current_name].background = float(tmp[1])     
@@ -428,7 +438,7 @@ def read_galfit(lines,log=None,debug=False):
                         if current_component in ['expdisk']:
                             components[current_name].scale_length = float(tmp[1])\
                                 *np.mean(plate_scale)*unit.arcsec
-                            components[current_name].scale_height = 0.*unit.arcsec
+                            #components[current_name].scale_height = 0.*unit.arcsec
                             if max_radius < 10 * float(tmp[1]): 
                                 max_radius = 10 * float(tmp[1])
                     elif tmp[0] == '5)'  and\

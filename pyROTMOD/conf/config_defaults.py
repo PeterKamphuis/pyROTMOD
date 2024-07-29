@@ -25,8 +25,14 @@ class RCConstruction:
     enable: bool = True
     optical_file: Optional[str] = None
     gas_file: Optional[str] = None
-    scaleheight: List = field(default_factory=lambda: [0., None]) #If 0 use infinitely thin disks, if vertical mode is none as wel #vertical options are  ['exp', 'sech-sq','sech'] These do not apply to parametrized functions.
-    gas_scaleheight: List = field(default_factory=lambda: [0., None]) #If 0 use infinitely thin disks, if vertical mode is none as wel #vertical options are  ['exp', 'sech-sq',''sech-simple'] set secon value to 'tir' to use tirific values
+    #Scale height for the optical profiles provided as  [value, error, unit, type]
+    #If value = 0 or or type = None use infinitely thin disks (inf_thin),
+    #Other type options are ['exp', 'sech-sq','sech', 'constant', 'lorentzian']. If a galfit fit provides a scale height this takes precedence
+    # 0 for a bulge profile will be a spherical bulge
+    # units can be 'PC', "KPC', "ARCSEC', 'ARCMIN', 'DEGREE'
+    scaleheight: List = field(default_factory=lambda: [0., None, 'KPC', 'inf_thin']) 
+    # Same for gas, if read from def file this takes precedence
+    gas_scaleheight: List = field(default_factory=lambda: [0., None,  'KPC', 'inf_thin']) 
     axis_ratio: float = 1.
     exposure_time: float = 1.
     mass_to_light_ratio: float = 1.0

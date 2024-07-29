@@ -1,7 +1,8 @@
 # -*- coding: future_fstrings -*-
 import numpy as np
 from pyROTMOD.support.major_functions import read_columns
-from pyROTMOD.support.minor_functions import print_log, propagate_mean_error
+from pyROTMOD.support.minor_functions import print_log, propagate_mean_error,\
+    translate_string_to_unit
 
 from pyROTMOD.support.errors import InputError
 from pyROTMOD.support.classes import Density_Profile,Rotation_Curve
@@ -118,8 +119,8 @@ def get_individual_tirific_disk(disk,filename,log=None, debug =False):
     
     value_dictionary = load_tirific(filename, Variables=Variables, dict=True)  
   
-    sbr.height = np.mean(value_dictionary[f'Z0{ext1}']+value_dictionary[f'Z0{ext2}'])
-    
+    sbr.height = np.mean(value_dictionary[f'Z0{ext1}']+value_dictionary[f'Z0{ext2}'])*unit.arcsec
+    sbr.height_unit = unit.arcsec
     if np.sum(value_dictionary[f'Z0{ext1}_ERR']+value_dictionary[f'Z0{ext2}_ERR']) != 0.:
     
         sbr.height_error = np.mean(value_dictionary[f'Z0{ext1}_ERR']+\
@@ -206,17 +207,28 @@ def get_gas_profiles(cfg,log=None, debug =False):
         for type in all_profiles:
             if type in ['V_OBS','V_ROT']:
                 RC = all_profiles[type]
-            else:
-                gas_density[type] =  all_profiles[type]
-                gas_density[type].height = 0.
-                gas_density[type].height_type = 'inf_thin'
+            #else:
+            #    gas_density[type] =  all_profiles[type]
+            #    gas_density[type].height = 0.
+            #    gas_density[type].height_type = 'inf_thin'
 
     RC.distance = cfg.general.distance * unit.Mpc
-    RC.band = cfg.RC_Construction.band    
+    RC.band = cfg.RC_Construction.band   
+    RC.component = 'All' 
     RC.check_profile()
     for name in gas_density:
+        gas_density[name].component = 'gas'
         gas_density[name].band = cfg.RC_Construction.gas_band  
         gas_density[name].distance = cfg.general.distance * unit.Mpc
+        if  gas_density[name].height == None:
+            gas_density[name].height = cfg.RC_Construction.gas_scaleheight[0]\
+                *translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
+            gas_density[name].height_unit = translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
+            gas_density[name].height_error = cfg.RC_Construction.gas_scaleheight[1]\
+                *translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
+        if gas_density[name].height_type == None:
+            gas_density[name].height_type = cfg.RC_Construction.gas_scaleheight[3]
+
         gas_density[name].check_profile()  
    
     return gas_density, RC

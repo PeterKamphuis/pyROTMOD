@@ -47,10 +47,11 @@ class Density_Profile(Component):
                   unit = None, radii_unit = None, type = None, height = None,\
                   height_unit = None, height_type = None, band = None, \
                   height_error =None ,name =None, MLratio= None, 
-                  distance = None ):
+                  distance = None,component = None ):
             super().__init__(type = type,name = name)
             self.values = values
             self.radii = radii
+            self.component = component # stars, gas or DM
             self.errors = errors  
             self.unit = unit  
             self.band = band
@@ -140,11 +141,12 @@ class Rotation_Curve:
       allowed_radii_unit = ['ARCSEC','ARCMIN','DEGREE','KPC','PC']
       def __init__(self, values = None, errors = None, radii = None, band=None,\
                   unit = None, radii_unit = None,type = None, name= None,\
-                  distance = None):
+                  distance = None, component= None):
             self.type = type
             self.band = band
             self.distance = distance
             self.name = name
+            self.component = component # stars, gas or DM or All
             self.values = values
             self.radii = radii
             self.errors = errors  
