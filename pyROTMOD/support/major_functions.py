@@ -18,7 +18,7 @@ from pyROTMOD.support.errors import InputError
 from pyROTMOD.support.classes import Density_Profile, Rotation_Curve
 from pyROTMOD.support.minor_functions import print_log, convertskyangle,\
     translate_string_to_unit
-from pyROTMOD.optical.conversions import mag_to_lum
+#from pyROTMOD.optical.conversions import mag_to_lum
 
 
 

@@ -5,7 +5,7 @@ import warnings
 
 from pyROTMOD.support.minor_functions import print_log,translate_string_to_unit
 from pyROTMOD.support.major_functions import read_columns
-
+from pyROTMOD.optical.conversions import mag_to_lum
 from pyROTMOD.support.errors import InputError, BadFileError
 from pyROTMOD.support.classes import Density_Profile
 
@@ -68,16 +68,25 @@ def get_optical_profiles(cfg,log=None):
         optical_profiles[name].distance = distance
         optical_profiles[name].MLratio = MLRatio  
         optical_profiles[name].component = 'stars' 
+     
         if optical_profiles[name].height == None:
             optical_profiles[name].height = cfg.RC_Construction.scaleheight[0]\
                 *translate_string_to_unit(cfg.RC_Construction.scaleheight[2])
-            optical_profiles[name].height_unit = cfg.RC_Construction.scaleheight[2]
-            optical_profiles[name].height_error = cfg.RC_Construction.scaleheight[1]\
-                *translate_string_to_unit(cfg.RC_Construction.scaleheight[2])
+            #optical_profiles[name].height_unit = cfg.RC_Construction.scaleheight[2]
+            if not cfg.RC_Construction.scaleheight[1] is None:
+                optical_profiles[name].height_error = cfg.RC_Construction.scaleheight[1]\
+                    *translate_string_to_unit(cfg.RC_Construction.scaleheight[2])
         if optical_profiles[name].height_type == None:
             optical_profiles[name].height_type = cfg.RC_Construction.scaleheight[3]
 
         if galfit_file:
+    
+            #for the expdisk profiles  we apparently need to deproject the totalSB
+            if  optical_profiles[name].type in ['expdisk']:
+                IntLum = mag_to_lum(optical_profiles[name].total_SB, \
+                                    band =optical_profiles[name].band , distance=distance)
+                 # and transform to a face on total magnitude (where does this come from?)
+                optical_profiles[name].total_SB =  IntLum/optical_profiles[name].axis_ratio 
             optical_profiles[name].create_profile()
         else:
             optical_profiles[name].calculate_components()
@@ -102,7 +111,7 @@ def get_optical_profiles(cfg,log=None):
             print_log(f'''We have found a {optical_profiles[name].type} component with the following values.
 ''',log,debug=cfg.general.debug)
         print_log(f'''The total mass of the disk is {optical_profiles[name].total_SB}   a central mass density {optical_profiles[name].central_SB}  with a M/L {optical_profiles[name].MLratio}.
-The scale length is {optical_profiles[name].scale_length}  and the scale height {optical_profiles[name].scale_height}.
+The scale length is {optical_profiles[name].scale_length}  and the scale height {optical_profiles[name].height}.
 The axis ratio is {optical_profiles[name].axis_ratio}.
 ''' ,log,debug=cfg.general.debug)
 
@@ -195,7 +204,7 @@ organize_profiles.__doc__ =f'''
 '''
 
 
-def plot_profile(in_radii,density, exponential,name='generic',\
+def old_plot_profile(in_radii,density, exponential,name='generic',\
                     output_dir='./',red_chi = None, count = '1'):
     '''This function makes a simple plot of the optical profiles'''
     figure = plt.figure(figsize=(10,7.5) , dpi=300, facecolor='w', edgecolor='k')
@@ -218,7 +227,7 @@ def plot_profile(in_radii,density, exponential,name='generic',\
     plt.savefig(f'{output_dir}/{name}_Profiles.png')
     plt.close()
 
-plot_profile.__doc__ =f'''
+old_plot_profile.__doc__ =f'''
  NAME:
      plot_profile(in_radii,density, exponential,name='generic',\
                         output_dir='./',red_chi = None,bulge =False, count = 1):
@@ -410,15 +419,15 @@ def read_galfit(lines,log=None,debug=False):
                         #    components[current_name].scale_height_type = 'inf_thin'
                 if current_component in ['sky']:
                     if tmp[0] == '1)':
-                        components[current_name].background = float(tmp[1])     
+                        components[current_name].background = float(tmp[1])    
                     elif tmp[0] == '2)':
-                        components[current_name].dx = float(tmp[1])
+                        components[current_name].dx = float(tmp[1])*unit.pix
                     elif tmp[0] == '3)':
-                        components[current_name].dy = float(tmp[1])
+                        components[current_name].dy = float(tmp[1])*unit.pix
                 else:
                     if tmp[0] == '1)':
                         components[current_name].central_position =\
-                              [float(tmp[1]),float(tmp[2])]  
+                              [float(tmp[1]),float(tmp[2])]*unit.pix  
                     elif tmp[0] == '3)':
                         if  current_component in ['edgedisk']:
                             components[current_name].central_SB = float(tmp[1])\
@@ -459,10 +468,13 @@ def read_galfit(lines,log=None,debug=False):
         raise BadFileError(f'Your file  is not recognized by pyROTMOD')
     
     for d in components:
+        # add radii
         components[d].radii= np.linspace(0,max_radius,int(max_radius/2.))*\
             np.mean(plate_scale)*unit.arcsec # in arcsec
         components[d].radii_unit = unit.arcsec
-        
+
+
+
     galfit_info = {}
     galfit_info['radii'] = np.linspace(0,max_radius,int(max_radius/2.))*\
         np.mean(plate_scale)*unit.arcsec # in arcsec

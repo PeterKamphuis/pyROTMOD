@@ -21,7 +21,7 @@ with warnings.catch_warnings():
 from astropy import units as u
 from omegaconf import OmegaConf,ListConfig
 from datetime import datetime
-from pyROTMOD.support.errors import InputError,SupportRunError
+from pyROTMOD.support.errors import UnitError
 
 
 def add_font(file):
@@ -56,14 +56,14 @@ pyROTMOD 'fitting.MD=[1.4,True,True]'
 
 #Check wether a variable is a unit quantity and if not multiply with the supplied unit
 # unlees is none
-def check_quantity(value,unit = None):
+def check_quantity(value):
     if not isinstance(value,u.quantity.Quantity):
         if isiterable(value):
         #if it is an iterable we make sure it it is an numpy array
             if not isinstance(value,np.array) and not value is None:
                 value = np.array(value,dtype=float)
         if not value is None:
-            value = value * unit
+            raise UnitError(f'This value {value} is unitless it shouldnt  be')
     return value
   
 
@@ -138,9 +138,11 @@ def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', \
     {'':8s}Angle = {angle}
     {'':8s}Distance = {distance}
 ''',None,debug =True)
+       
     try:
         _ = (e for e in angle)
     except TypeError:
+       
         angle = [angle]
 
         # if physical is true default unit is kpc
@@ -189,8 +191,12 @@ def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', \
         kpc = (radians * (360. / (2. * np.pi))) * 3600.
         if quantity:
             kpc = kpc*u.arcsec
-    if len(kpc) == 1 and not quantity:
-        kpc = float(kpc[0])
+    if len(kpc) == 1:
+        if not quantity:
+            kpc = float(kpc[0])
+        else:
+            kpc = float(kpc[0].value)*kpc.unit
+
     return kpc
 
 def check_input(cfg):
@@ -415,7 +421,6 @@ def old_ensure_kpc_radii(in_radii,unit = None, distance= None):
 
 
 def plot_individual_profile(profile,max,log = None):
-    
     if profile.unit != u.Msun/u.pc**2:
         print_log(f'''The units of {profile.name} are not M_SOLAR/PC^2.
 Not plotting this profile.
@@ -476,8 +481,10 @@ Not plotting this profile.
     #This is only used here so do not make it a Density Profile        
     tot_opt ={'Profile': [],'Radii': []}
     for x in optical_profiles:
-        max,succes = plot_individual_profile(optical_profiles[x],max)
-      
+        if optical_profiles[x].name.split('_')[0] != 'SKY':
+            max,succes = plot_individual_profile(optical_profiles[x],max)
+        else:
+            succes=False
         if succes:
             tot_opt = calculate_total_profile(tot_opt,optical_profiles[x])
        
@@ -545,9 +552,9 @@ print_log.__doc__ =f'''
 '''
 
 def propagate_mean_error(errors):
-    n = len(values)
-    combined = np.sum(errors)
-    sigma = combined/n
+    n = len(errors)
+    combined = np.sum([(x/n)**2 for x in errors])
+    sigma = np.sqrt(combined)
     return sigma
 
 def set_limits(value,minv,maxv,debug = False):

@@ -14,7 +14,8 @@ from pyROTMOD.support.minor_functions import integrate_surface_density,\
 from pyROTMOD.optical.optical import get_optical_profiles
 from pyROTMOD.gas.gas import get_gas_profiles
 from pyROTMOD.optical.profiles import fit_profile
-from pyROTMOD.support.errors import InputError
+from pyROTMOD.support.errors import InputError, UnitError
+from pyROTMOD.support.classes import Rotation_Curve, Density_Profile
 import pyROTMOD.support.constants as c
 import numpy as np
 import traceback
@@ -101,46 +102,48 @@ def combined_rad_exp(z,x,y,h_z):
 def combined_rad_sech_simple(z,x,y,h_z):
     return interg_function(z,x,y)*simple_sech(z,h_z)
 
-def convert_dens_rc(radii, optical_profiles, gas_profiles,components,\
-    distance =1.,opt_h_z = [0.,None], gas_scaleheights= [0.,None], galfit_file =False,\
+def convert_dens_rc( optical_profiles, gas_profiles, cfg = None,\
     log= None, debug =False,output_dir='./'):
     #these should be dictionaries with their individual radii
     #organized in their typical profiles
-    print(optical_profiles,gas_profiles)
-    exit()
+    
     '''This function converts the mass profiles to rotation curves'''
-    kpc_radii = np.array(ensure_kpc_radii(radii,distance=distance,log=log)[2:],\
-        dtype=float)
-    optical_radii = np.array(ensure_kpc_radii(optical_profiles['RADI'],\
-        distance=distance,log=log)[2:],dtype=float)
-    RCs = [ensure_kpc_radii(radii,distance=distance,log=log)]
+   
+    RCs = {}
+    profiles = {}
+    #combine the gas and optical
+    for name in optical_profiles:
+        profiles[f'{name}_opt'] = optical_profiles[name]
+    for name in gas_profiles:
+        profiles[f'{name}_gas'] = gas_profiles[name]
 
     ########################### First we convert the optical values and produce a RC at locations of the gas ###################
-    for x,type in enumerate(optical_profiles):
-        if optical_profiles[type][0] != 'RADI' and optical_profiles[type][1] != 'KM/S':
-            #create an interpolated profile of in profile
-            #tmp = CubicSpline(optical_radii,np.array(optical_profiles[type][2:]),extrapolate=True)
-            #if components[x-1]['Type'] == 'infinite_disk':
-            #    print_log(f'We have detected the input to be a random density profile hence we extrapolate from that to get the rotation curve',log)
-            #    found_RC= random_density_disk(kpc_radii,tmp(kpc_radii),h_z = opt_h_z[0],mode = opt_h_z[1], log=log)
-            if components[x-1]['Type'] in ['expdisk','edgedisk','random_disk']:
-                print_log(f'We have detected the input to be an disk',log)
-                found_RC = disk_RC(optical_radii,np.array(optical_profiles[type][2:]),out_radii=kpc_radii,\
-                            h_z=opt_h_z,components = components[x-1],\
-                            debug=debug,log=log, output_dir =output_dir)
-                if components[x-1]['Type'] in ['random_disk']:
-                    optical_profiles[type][0] = 'DISK_STELLAR'
-            elif components[x-1]['Type'] in ['sersic','devauc']:
+    for name in profiles:
+        #if it is already a Rotation Curve we do not need to Converts
+        if isinstance(profiles[name], Rotation_Curve):
+            RCs[name] = profiles[name]
+            continue
+        #Initiate a new Rotation_Curve with the info of the density profile
+        RCs[name] = Rotation_Curve(name=name, distance = profiles[name].distance,\
+            band= profiles[name].band, type=profiles[name].type,\
+            component=profiles[name].component )
+        
+        if profiles[name].type in ['expdisk','edgedisk']:
+            print_log(f'We have detected the input to be an disk',log)
+            exponential_RC(profiles[name],  RCs[name], log= log,debug=debug)
+        elif profiles[name].type in ['random_disk']: 
+            print_log(f'This is a random density disk',log)
+            random_RC(profiles[name], RCs[name], log= log,debug=debug) 
+        elif profiles[name].type in ['sersic','devauc']:
                 #This should work fine for a devauc profile which is simply sersic with n= 4
-                if  0.75 < components[x-1]['sersic index'] < 1.25:
+                if  0.75 <profiles[name].sersic index < 1.25:
                     print_log(f'''We have detected the input to be a sersic profile.
 this one is very close to a disk so we will transform to an exponential disk. \n''',log)
-                    found_RC = disk_RC(optical_radii,np.array(optical_profiles[type][2:]),out_radii=kpc_radii,\
-                            h_z=opt_h_z,components = components[x-1],\
-                            debug=debug,log=log, output_dir =output_dir)
+                    exponential_RC(profiles[name],  RCs[name], log= log,debug=debug)
                 elif 3.75 < components[x-1]['sersic index'] < 4.25:
                     print_log(f'''We have detected the input to be a sersic profile.
 this one is very close to a bulge so we will transform to a hernquist profile. \n''',log)
+                    print('werher')
                     found_RC = bulge_RC(optical_radii,np.array(optical_profiles[type][2:]),out_radii=kpc_radii,\
                             h_z=opt_h_z,components = components[x-1],\
                             debug=debug,log=log, output_dir =output_dir)
@@ -151,7 +154,7 @@ This is not something that pyROTMOD can deal with yet. If you know of a good pyt
 Please let us know and we'll give it a go.''',log)
                     raise InputError('We have detected the input to be a density profile for a sersic profile. pyROTMOD cannot yet process this.')
 
-            elif components[x-1]['Type'] in ['random_bulge','hernquist']:
+        elif components[x-1]['Type'] in ['random_bulge','hernquist']:
                 #if not galfit_file:
                 #    found_RC = bulge_RC(kpc_radii,optical_radii,np.array(o))
                 #    print_log(f'We have detected the input to be a density profile for a bulge that is too complicated for us',log)
@@ -160,10 +163,10 @@ Please let us know and we'll give it a go.''',log)
                 found_RC = bulge_RC(optical_radii,np.array(optical_profiles[type][2:]),out_radii=kpc_radii,\
                         h_z=opt_h_z,components = components[x-1],\
                         debug=debug,log=log, output_dir =output_dir)
-            else:
+        else:
                 found_RC = [None,None,None,None]
                 print_log(f'We do not know how to convert the mass density of {components[x-1]["Type"]}',log)
-            if np.any(found_RC[2:]):
+        if np.any(found_RC[2:]):
                 try:
                     type =optical_profiles[type][0].split('_')
                     found_RC[0] = f'''{found_RC[0]}_{'_'.join(type[1:])}'''
@@ -171,11 +174,7 @@ Please let us know and we'll give it a go.''',log)
                     pass
 
                 RCs.append(found_RC)
-        else:
-            if type != 'RADI':
-                tmp = CubicSpline(optical_radii,np.array(optical_profiles[type][2:]),extrapolate=True)
-                RCs.append(optical_profiles[type][:2]+tmp(kpc_radii))
-
+     
     ########################### and last the gas which we do not interpolate  ###################
     for i,gas_profile in enumerate(gas_profiles):
         if gas_profile[1] != 'KM/S':
@@ -258,11 +257,13 @@ convert_dens_rc.__doc__ =f'''
 '''
 
 
-def disk_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'expdisk', 'scale height': None, 'scale length': None}, \
-            log = None, debug=False, output_dir = './', truncated = -1.,out_radii = None):
-    # First we need to get the total mass in the disk
-    #print(f'We are using this vertical distributions {vertical_distribution}')
-    #print(radii,density)
+def old_disk_RC(Density_In,RC_Out):
+
+#disk_RC(radii,density,h_z = [0.,'exp'],components = {'Type': 'expdisk', 'scale height': None, 'scale length': None}, \
+#            log = None, debug=False, output_dir = './', truncated = -1.,out_radii = None):
+    
+
+    #For now if we have 
     if components['Type'] == 'sersic':
         fit_profile(radii,density,components,function='EXPONENTIAL')
 
@@ -307,7 +308,105 @@ The axis ratio is {components['axis ratio']}.
         raise InputError(f'We have not yet implemented the disk modelling of {components["Type"]}.')
 
     return RC
-disk_RC.__doc__ =f'''
+old_disk_RC.__doc__ =f'''
+ NAME:
+    disk_RC
+
+ PURPOSE:
+    parametrize the density profile by fitting a single gaussian if no parameters
+     are supplied and return the correspondin RC
+
+ CATEGORY:
+    rotation modelling
+
+ INPUTS:
+    radii = radii at which to evaluate the profile to obtain rotaional velocities
+            in (km/s)
+    density = mass surface density profile at location of radii, ignored if components[1] != 0.
+
+ OPTIONAL INPUTS:
+    h_z = [0.,'exp']
+        optical scale height for the disk under consideration and the vertical mode
+        Ignored if the components['scale height'] is not none
+
+    components = {{'Type': 'expdisk', scale height': None, 'scale length': None}}
+        dictionary with parameterization of the disk.
+        if scale ehight is None the optical scale height is used,
+        if scale length is none the density distribution is fitted with a single exponentional
+
+    log= None,
+        Run log
+    debug =False,
+        trigger for enhanced verbosity and plotting
+    output_dir='./'
+        directory for check plots
+
+
+ OUTPUTS:
+    Rotation curve for the specified disk at location of RCs
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
+def random_RC(Density_In,RC_Out,log=None,debug=None):
+    print_log(f'''We are fitting a random density distribution disk following Cassertano 1983.
+''',log,debug=debug)
+     
+    sech = check_height(Density_In)
+   
+    #If the RC has already radii we assume we want it on that radii
+    RC_radii,RC_unit = check_radius(Density_In,RC_Out)
+
+    RC = random_density_disk(RC_radii,Density_In, log=log, debug=debug)
+    RC_Out.radii = RC_radii*RC_unit
+    RC_Out.values = RC*unit.km/unit.s
+    
+
+def check_radius(Density_In,RC_Out):
+    '''Check which radii we want to use for our output RC'''
+      #If the RC has already radii we assume we want it on that radii
+    if RC_Out.radii != None:
+        RC_radii = RC_Out.radii
+    else:
+        RC_radii = Density_In.radii
+    # Make sure it is in kpc
+
+    if RC_radii.unit != unit.kpc:
+        raise InputError(f'These radii are not in kpc, they should be by now')
+    RC_unit = RC_radii.unit
+    RC_radii = RC_radii.value
+    return RC_radii,RC_unit
+
+def check_height(Density_In):
+    '''Check the type of the vertical distributio'''
+    if not Density_In.height_type in  ['sech','exp'] and Density_In.height != 0.:
+        raise InputError(f'We cannot have {Density_In.height_type} with a thick exponential disk. Use a different disk or pick exp or sech')
+    sech = False
+    if Density_In.height_type == 'sech':
+        sech = True
+    return sech
+
+def exponential_RC(Density_In,RC_Out,log=None,debug=None,truncated = -1.):
+    # All the checks on the components should be done previously so if we are missing something
+    # this should just fail
+    sech = check_height(Density_In)
+    #If the RC has already radii we assume we want it on that radii
+    RC_radii,RC_unit = check_radius(Density_In,RC_Out)
+    print_log(f'''We have found an exponential disk with the following values.
+The total mass of the disk is {Density_In.total_SB} a central mass density {Density_In.central_SB} .
+The scale length is {Density_In.scale_length} and the scale height {Density_In.height}.
+The axis ratio is {Density_In.axis_ratio}.
+''' ,log,debug=debug)
+    RC = exponential_parameter_RC(RC_radii,Density_In,log = log,sech = sech, \
+                    truncated = truncated )
+    RC_Out.radii = RC_radii*RC_unit
+    RC_Out.values = RC*unit.km/unit.s
+     
+exponential_RC.__doc__ =f'''
  NAME:
     disk_RC
 
@@ -352,27 +451,25 @@ disk_RC.__doc__ =f'''
 '''
 
 
-
 def exponential_parameter_RC(radii,parameters, sech =False, truncated =-1.,log= False, debug=False):
     #print(f'This is the total mass in the parameterized exponential disk {float(parameters[1]):.2e}')
-    if parameters['scale height'] == None:
-        parameters['scale height'] = 0.*unit.kpc
-    if parameters['scale height'].value > 0.:
+  
+    if parameters.height_type != 'inf_thin':
         #This is not very exact for getting a 3D density
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            area = 2.*quad(sechsquare,0,np.inf,args=(parameters['scale height'].value))[0]*unit.pc
-        central = parameters['Central SB']/(1000.*area)
+            area = 2.*quad(sechsquare,0,np.inf,args=parameters.height.value)[0]*unit.pc
+        central = parameters.central_SB/(1000.*area)
 
-        exp_disk_potential = MNP(amp=central,hr=parameters['scale length'],hz=parameters['scale height'],sech=sech)
+        exp_disk_potential = MNP(amp=central,hr=parameters.scale_length,hz=parameters.height,sech=sech)
     else:
-        exp_disk_potential = EP(amp=parameters['Central SB'],hr=parameters['scale length'])
+        exp_disk_potential = EP(amp=parameters.central_SB,hr=parameters.scale_length)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         RC = exp_disk_potential.vcirc(radii*unit.kpc)
     if truncated > 0.:
         ind =  np.where(radii > truncated)
-        RC[ind] = np.sqrt(c.Gsol*float(parameters['Total SB'])/(radii[ind]*1000.*c.pc/(100.*1000.)))
+        RC[ind] = np.sqrt(c.Gsol*float(parameters.total_SB)/(radii[ind]*1000.*c.pc/(100.*1000.)))
     if np.isnan(RC[0]) and radii[0] == 0:
         RC[0] = 0.
     if RC[0] <= 0.:
@@ -617,15 +714,19 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
 
     return derived_RCs, total_RCs
 
-def random_density_disk(radii,density,h_z = 0.,mode = None, log= None):
+def random_density_disk(radii,density_profile, log= None):
     print_log(f'''We are calculating the random disk with:
-h_z = {h_z} and vertical mode = {mode}
+h_z = {density_profile.height} and vertical mode = {density_profile.height_type}
 ''',log)
-    density = np.array(density) *1e6 # Apparently this is done in M-solar/kpc^2
+    density = np.array(density_profile.values.value) *1e6 # Apparently this is done in M-solar/kpc^2
     rcut = radii[-1]
     delta = 0.2
     ntimes =50.
-    h_r,dens0 = get_rotmod_scalelength(radii,density)
+    mode = density_profile.height_type
+    if density_profile.height.unit != unit.kpc:
+        raise UnitError(f'The scale height is not in kpc, it should be by now.')
+    h_z = density_profile.height.value
+    h_r = get_rotmod_scalelength(radii,density)
     #print(h_r,dens0)
     RC = []
     h_z1 = set_limits(h_z,0.1*h_r,0.3*h_r)
@@ -679,6 +780,7 @@ def select_vertical(mode):
         else:
             return None
 
+#This appears to be unused
 def selected_vertical_dist(mode):
     if mode == 'sech-sq':
         return norm_sechsquare

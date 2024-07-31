@@ -224,8 +224,9 @@ def get_gas_profiles(cfg,log=None, debug =False):
             gas_density[name].height = cfg.RC_Construction.gas_scaleheight[0]\
                 *translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
             gas_density[name].height_unit = translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
-            gas_density[name].height_error = cfg.RC_Construction.gas_scaleheight[1]\
-                *translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
+            if not cfg.RC_Construction.scaleheight[1] is None:
+                gas_density[name].height_error = cfg.RC_Construction.gas_scaleheight[1]\
+                    *translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
         if gas_density[name].height_type == None:
             gas_density[name].height_type = cfg.RC_Construction.gas_scaleheight[3]
 

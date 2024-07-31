@@ -13,6 +13,8 @@ class SupportRunError(Exception):
     pass
 class UnknownUnit(Exception):
     pass
+class UnitError(Exception):
+    pass
 class RunTimeError(Exception):
     pass
 class SupportRunError(Exception):

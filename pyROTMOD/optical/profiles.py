@@ -1,6 +1,6 @@
 # -*- coding: future_fstrings -*-
 from pyROTMOD.rotmass.rotmass import initial_guess,mcmc_run
-from pyROTMOD.support.errors import InputError
+from pyROTMOD.support.errors import InputError,UnitError
 from pyROTMOD.optical.conversions import mag_to_lum
 from pyROTMOD.support.minor_functions import convertskyangle,integrate_surface_density,\
     print_log, get_effective_radius
@@ -10,6 +10,42 @@ import numpy as np
 import warnings
 import copy
 import inspect
+
+
+
+def calculate_central_SB(components):
+
+    if components.radii[0] == 0. and not components.values is None:
+        components.central_SB = components.values[0]
+    else: 
+        if components.type == 'expdisk':
+            if not None in [components.total_SB,components.scale_length]:
+             
+                # this assumes perfect ellipses for now and no deviations are allowed
+
+                components.central_SB = components.total_SB/(2.*np.pi*\
+                                        components.scale_length.to(unit.pc)**2)
+              
+        elif components.type == 'sersic':
+       
+            if not None in [components.total_SB ,components.R_effective,\
+                            components.sersic_index,components.axis_ratio]: 
+              
+                effective_luminosity,kappa = calculate_L_effective(components)
+                components.central_SB = effective_luminosity*\
+                    np.exp(-1.*kappa*(((0.*unit.kpc)/components.R_effective)**\
+                    (1./components.sersic_index)-1))
+    return components.central_SB
+  
+def calculate_L_effective(components):
+    '''The sersic profile is based on Sig_eff'''
+    kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
+    effective_luminosity = components.total_SB/(2.*np.pi*(components.R_effective.to(unit.pc))**2*\
+                            np.exp(kappa)*components.sersic_index*\
+                            kappa**(-2*components.sersic_index)*\
+                            components.axis_ratio*gamma(2.*components.sersic_index)) #L_solar/pc^2
+    return effective_luminosity,kappa
+
 
 def determine_profiles_to_fit(type):
     if type == 'DENSITY':
@@ -22,31 +58,17 @@ def determine_profiles_to_fit(type):
         evaluate = [type]
     return evaluate
 # This is untested for now
-def edge_luminosity(components,radii = None,exposure_time = 1.,band = 'WISE3.4'\
-                    ,distance=0.*unit.Mpc ):
+def edge_luminosity(components,radii = None):
    
     if radii is None:
         radii = components.radii
-    #mu_0 (mag/arcsec) = -2.5*log(sig_0/(t_exp*dx*dy))+mag_zpt
-    #this has to be in L_solar/pc^2 but our value comes in mag/arcsec^2
-    if radii.unit != unit.kpc:
-        radii = convertskyangle(radii,distance,quantity=True)
-    central_luminosity = mag_to_lum(components.central_SB,band = band, distance=distance)
-
-    #Need to integrate the luminosity of the model and put it in component[1] still
-    components.central_SB = central_luminosity
-    if components.scale_length.unit != unit.kpc:
-        components.scale_length = convertskyangle(components.scale_length,\
-                                                  distance,quantity=True)
-    if components.scale_height.unit != unit.kpc:
-        components.scale_height = convertskyangle(components.scale_height,\
-                                                  distance,quantity=True)
+ 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        lum_profile = central_luminosity*np.array([float(x/components.scale_length) for x in radii],dtype=float)\
+        lum_profile = components.central_SB*np.array([float(x/components.scale_length) for x in radii],dtype=float)\
             *k1(np.array([float(x/components.scale_length) for x in radii],dtype=float))
         if np.isnan(lum_profile[0]):
-            lum_profile[0] = central_luminosity
+            lum_profile[0] = components.central_SB
 
     # this assumes perfect ellipses for now and no deviations are allowed
     return lum_profile
@@ -90,24 +112,15 @@ def exponential(r,central,h):
     return central*np.exp(-1.*r/h)
 
 
-def exponential_luminosity(components,radii = None,band = 'WISE3.4',distance= 0.*unit.Mpc):
+def exponential_luminosity(components,radii = None):
     #lum_components = copy.deepcopy(components)
     #Ftot = 2πrs2Σ0q
     if radii is None:
         radii = components.radii
-    IntLum = mag_to_lum(components.total_SB,band = band, distance=distance)
-   
-    # and transform to a face on total magnitude (where does this come from?)
-    components.total_SB = IntLum/components.axis_ratio
-    # convert the scale length to kpc
-    components.scale_length = convertskyangle(components.scale_length,distance, quantity=True)
-    # this assumes perfect ellipses for now and no deviations are allowed
-    central_luminosity = IntLum/(2.*np.pi*components.scale_length.to(unit.pc)**2*components.axis_ratio) #L_solar/pc^2
-
-    components.central_SB = central_luminosity
-    if radii.unit != unit.kpc:
-        radii = convertskyangle(radii,distance,quantity=True)
-    profile = central_luminosity*np.exp(-1.*(radii/components.scale_length))
+    if radii.unit == components.scale_length.unit:    
+        profile = components.central_SB*np.exp(-1.*(radii.value/components.scale_length.value))
+    else:
+        raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
     #profile = [x.value for x in profile]
     return profile
 exponential_luminosity.__doc__ = f'''
@@ -365,30 +378,15 @@ def sersic(r,effective_luminosity,effective_radius,n):
     func = effective_luminosity*np.exp(kappa*((r/effective_radius)**(1./n))-1)
     return func
 
-def sersic_luminosity(components,radii = None,band = 'WISE3.4',distance= 0.*unit.Mpc):
+def sersic_luminosity(components,radii = None):
     # This is not a deprojected surface density profile we should use the formula from Baes & gentile 2010
     # Once we implement that it should be possible use an Einasto profile/potential
     if radii is None:
         radii = components.radii
       
-    IntLum = mag_to_lum(components.total_SB,band=band, distance=distance)
-    kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
-
-    if components.R_effective.unit != unit.kpc:
-        R_kpc = convertskyangle(components.R_effective,distance,quantity =True)
-
-    if radii.unit != unit.kpc:
-        radii = convertskyangle(radii,distance,quantity=True)
-    effective_luminosity = IntLum/(2.*np.pi*(R_kpc.to(unit.pc))**2*\
-                            np.exp(kappa)*components.sersic_index*\
-                            kappa**(-2*components.sersic_index)*\
-                            components.axis_ratio*gamma(2.*components.sersic_index)) #L_solar/pc^2
-
-    #lum_components['Total SB'] = IntLum/components['axis ratio']
-    components.total_SB = IntLum
-    components.R_effective = R_kpc
+    effective_luminosity,kappa = calculate_L_effective(components)
     lum_profile = effective_luminosity*np.exp(-1.*kappa*((radii/components.R_effective)**(1./components.sersic_index)-1))
-    components.central_SB = effective_luminosity*np.exp(-1.*kappa*(((0.*unit.kpc)/components.R_effective)**(1./components.sersic_index)-1))
+    #components.central_SB = effective_luminosity*np.exp(-1.*kappa*(((0.*unit.kpc)/components.R_effective)**(1./components.sersic_index)-1))
 
     return lum_profile
 sersic_luminosity.__doc__ = f'''

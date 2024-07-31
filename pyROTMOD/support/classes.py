@@ -2,28 +2,52 @@ from pyROTMOD.support.errors import InputError
 from pyROTMOD.support.minor_functions import check_quantity,convertskyangle
 from pyROTMOD.optical.conversions import mag_to_lum
 from pyROTMOD.optical.profiles import exponential_luminosity,edge_luminosity,\
-      sersic_luminosity,fit_profile
+      sersic_luminosity,fit_profile,calculate_central_SB
 
 import astropy.units as u 
 import numpy as np
 import copy
 
 class Component:
-      def __init__(self, type = None, name = None):
+      #These should be set with a unit
+      def __init__(self, type = None, name = None, central_SB = None,\
+            total_SB = None, R_effective = None, scale_length = None,\
+            height_type = None, height = None,\
+            height_error = None ,sersic_index = None, central_position = None, \
+            axis_ratio = None, PA = None ,background = None, dx = None, dy = None):
             self.name = name
             self.type = type
-            self.central_SB = None 
-            self.total_SB = None 
-            self.R_effective = None 
-            self.scale_height = None
-            self.scale_length = None
-            self.sersic_index = None
-            self.central_position = None
-            self.axis_ratio = None
-            self.PA = None
-            self.background = None
-            self.dx = None
-            self.dy = None
+            self.central_SB = central_SB 
+            self.total_SB = total_SB
+            self.R_effective = R_effective
+            self.scale_length = scale_length
+            self.height_type = height_type
+            self.height = height
+            self.height_error = height_error
+            self.sersic_index = sersic_index
+            self.central_position = central_position
+            self.axis_ratio = axis_ratio
+            self.PA = PA
+            self.background = background
+            self.dx = dx
+            self.dy = dy
+            self.unit_dictionary = {'scale_length': u.kpc,\
+                              'type' : None,\
+                              'name' : None,
+                              'total_SB': u.Msun,\
+                              'height': u.kpc,\
+                              'height_error': u.kpc,\
+                              'central_SB': u.Msun/u.pc**2,\
+                              'PA': u.degree,\
+                              'R_effective': u.kpc,\
+                              'height_type': None,\
+                              'sersic_index': None,\
+                              'central_position': u.pix,\
+                              'axis_ratio': None,\
+                              'background': None,\
+                              'dx': u.pix,\
+                              'dy': u.pix}
+                              #Astrpoy does not have suitable units for the background
       def print(self):
             for attr, value in self.__dict__.items():
                   print(f' {attr} = {value} \n')  
@@ -45,47 +69,47 @@ class Density_Profile(Component):
       allowed_height_types = ['constant','gaussian','sech_sq','lorentzian','exp','inf_thin']
       def __init__(self, values = None, errors = None, radii = None,
                   unit = None, radii_unit = None, type = None, height = None,\
-                  height_unit = None, height_type = None, band = None, \
+                  height_type = None, band = None, \
                   height_error =None ,name =None, MLratio= None, 
                   distance = None,component = None ):
-            super().__init__(type = type,name = name)
+            super().__init__(type = type,name = name,\
+                  height = height, height_type=height_type,\
+                  height_error = height_error )
             self.values = values
+            self.errors = errors  
             self.radii = radii
             self.component = component # stars, gas or DM
-            self.errors = errors  
-            self.unit = unit  
             self.band = band
             self.distance = distance
             self.MLratio= MLratio
-            self.radii_unit = radii_unit
-            self.height_unit = height_unit
-            self.height_type = height_type 
-            self.height = height 
-            self.height_error = height_error
+          
+       
       def print(self):
             for attr, value in self.__dict__.items():
                   print(f' {attr} = {value} \n')  
-
       def fill_empty(self):
             for attr, value in self.__dict__.items():
                   if value is None:
-                        if attr in ['radii']:
-                              raise InputError(f'We cannot derive {attr} please set it')
-                        elif attr in ['values']:
-                              raise InputError(f' To create the profile we need the distance and band please use create_profile')
+                        if attr in ['radii','values','unit','errors','radii','radii_unit','component','band','distance','MLratio']:
+                              continue
+                              #raise InputError(f'We cannot derive {attr} please set it')
                         elif attr in ['axis_ratio']:
-                              if not self.scale_height is None and \
+                              if not self.height in [None,0.] and \
                                     not self.scale_length is None:
-                                    self.axis_ratio = self.scale_height/self.scale_length
-                              else:
-                                   print(f'We cannot derive an axis ratio as we have no scale length or scale height')
+                                    self.axis_ratio = self.height/self.scale_length
+                        elif attr in ['central_SB']:
+                              self.central_SB = calculate_central_SB(self)
+                              
+
+                        
+                        
       # Check that all profiles are quantities in the right units                             
       # i.e. M_SOLAR/PC^2 and KPC
       def check_profile(self):
             self.fill_empty()
-            self.values = check_quantity(self.values,unit =self.unit)
-            self.errors = check_quantity(self.errors,unit =self.unit)
-            self.radii = check_quantity(self.radii,unit =self.radii_unit)
+            self.values = check_quantity(self.values)
+            self.errors = check_quantity(self.errors)
+            self.radii = check_quantity(self.radii)
             self.values,self.unit = set_requested_units(self.values,requested_unit=u.Msun/u.pc**2,\
                         distance=self.distance,band=self.band,MLratio=self.MLratio)
             self.errors, tmp = set_requested_units(self.errors,requested_unit=u.Msun/u.pc**2,\
@@ -93,7 +117,25 @@ class Density_Profile(Component):
             self.radii, self.radii_unit = set_requested_units(self.radii,requested_unit=u.kpc,\
                         distance=self.distance)
           
+       # Check that all profiles are quantities in the right units                             
+      # i.e. M_SOLAR/PC^2 and KPC
+      def check_components(self):
+            
+            #The unit_dictionary contain all attr in the Component section
+            if not self.radii is None:
+                  self.radii, self.radii_unit = set_requested_units(self.radii,requested_unit=u.kpc,\
+                        distance=self.distance)
 
+        
+            for attr in self.unit_dictionary:
+                  value = getattr(self,attr)
+                  if not value is None:
+                        value,unit = set_requested_units(value,requested_unit=self.unit_dictionary[attr],\
+                                          distance=self.distance,band=self.band,MLratio=self.MLratio)
+                        setattr(self,attr, value)
+            self.fill_empty()
+          
+        
             
       def calculate_components(self,debug = False, log = None):
             self.check_profile()
@@ -117,20 +159,21 @@ class Density_Profile(Component):
                         self.type = 'random_disk'
                   else:
                         self.type =  'random_bulge'
+            self.check_components()
 
    
 
 
       def create_profile(self):
+            self.check_components()
             #Changing the units in the profiles important that you only trust values with quantities
             if self.type in ['expdisk']:
-                  self.values = exponential_luminosity(self,band=self.band,distance=self.distance)
+                  self.values = exponential_luminosity(self)
             elif self.type in ['edgedisk']:
-                  self.values = edge_luminosity(self,band=self.band, distance= self.distance)
+                  self.values = edge_luminosity(self)
             elif self.type in ['sersic','devauc']:
-                  self.values = sersic_luminosity(self,band = self.band,distance= self.distance)
+                  self.values = sersic_luminosity(self)
             if not self.type in ['sky','psf']: 
-           
                   self.check_profile()
      
    
@@ -168,9 +211,9 @@ class Rotation_Curve:
      
       def check_profile(self):
             self.fill_empty()
-            self.values = check_quantity(self.values,unit =self.unit)
-            self.errors = check_quantity(self.errors,unit =self.unit)
-            self.radii = check_quantity(self.radii,unit =self.unit)
+            self.values = check_quantity(self.values)
+            self.errors = check_quantity(self.errors)
+            self.radii = check_quantity(self.radii)
             self.values, self.unit = set_requested_units(self.values,requested_unit=u.km/u.s,\
                         distance=self.distance,band=self.band)
             self.errors, tmp = set_requested_units(self.errors,requested_unit=u.km/u.s,\
@@ -192,6 +235,13 @@ def set_requested_units(value_in,requested_unit = None,distance = None, \
       
       if value is None:
             return None,requested_unit
+      
+      if requested_unit is None:
+            try:
+                  return value.value,None
+            except AttributeError:
+                  return value,None
+      
       #If the unit is already the required one return the value 
       if value.unit == requested_unit:
             return value, requested_unit
@@ -212,7 +262,7 @@ def set_requested_units(value_in,requested_unit = None,distance = None, \
        
       if (value.unit in [u.arcsec,u.arcmin,u.degree] and \
             requested.unit in [u.kpc, u.pc]):
-            new_value = convertskyangle(value,distance, quantity =True)          
+            new_value = convertskyangle(value,distance, quantity =True)  
             return new_value.to(requested_unit), requested_unit
       
 
