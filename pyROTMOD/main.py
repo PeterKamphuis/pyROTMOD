@@ -43,12 +43,17 @@ def main():
         derived_RCs,total_rc = read_RCs(dir=cfg.general.output_dir, file=cfg.general.RC_file)
         print_log(f'We managed to read the RCs.\n',log)
 
+    #If there are profiles that are not proper we remove them
+    names = [name for name in derived_RCs] 
+    for name in names:
+        if name[0:3] in ['SKY']:
+            del derived_RCs[name]
+
     ######################################### Run our Bayesian interactive fitter thingy ################################################
-    baryonic_components = [x[0] for x in derived_RCs if x[0] != 'RADI']
     
     #We need to reset the configuration to include the profiles and the parameters to be fitted.
-    cfg = read_fitting_config(cfg,baryonic_components)
-    cfg, log= check_input(cfg)   
+    cfg = read_fitting_config(cfg,derived_RCs)
+    cfg, log= check_input(cfg,fitting =True)   
 
    
     if cfg.fitting_general.enable:

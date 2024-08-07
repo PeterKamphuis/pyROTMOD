@@ -25,14 +25,16 @@ def NFW():
     r,C,R200= symbols('r C R200')
     nfw = (R200/0.73)*sqrt( (R200/r)*((log(1+r*(C/R200))-(r*(C/R200)/(1+r*(C/R200))))/(log(1+C) - (C/(1+C)))))
     return nfw
-
+ 
 
 class NFW_config:
     parameters = {'C': [None, None, None, True,True],\
     'R200': [None, None, None, True,True]}
   
-# Where does this come from?
+  # if V and ML are in a potential it is assumed that this is an 
+  # alternative gravity where no additional RC is required beyond the baryonic RCs
 
+# Where does this come from?
 def MOND_CLASSIC():
     r, V,ML, a0 = symbols('r V ML a0')
     #Vt(r)=sqrt((mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb))*sqrt(1+sqrt(1+(2*r*a/(mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb)))**2))/sqrt(2))

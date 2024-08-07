@@ -19,9 +19,10 @@ with warnings.catch_warnings():
     import matplotlib.font_manager as mpl_fm
 
 from astropy import units as u
-from omegaconf import OmegaConf,ListConfig
+from omegaconf import OmegaConf
 from datetime import datetime
-from pyROTMOD.support.errors import UnitError
+from pyROTMOD.support.errors import UnitError,InputError,SupportRunError,\
+    RunTimeError
 
 
 def add_font(file):
@@ -60,12 +61,14 @@ def check_quantity(value):
     if not isinstance(value,u.quantity.Quantity):
         if isiterable(value):
         #if it is an iterable we make sure it it is an numpy array
-            if not isinstance(value,np.array) and not value is None:
-                value = np.array(value,dtype=float)
-        if not value is None:
-            raise UnitError(f'This value {value} is unitless it shouldnt  be')
+            if not isinstance(value,np.ndarray) and not value is None:
+                value = quantity_array(value)
+        if not value is None and not isinstance(value,u.quantity.Quantity):
+            raise UnitError(f'This value {value} is unitless it shouldnt be')
     return value
   
+
+
 
 def create_directory(directory,base_directory,debug=False):
     split_directory = [x for x in directory.split('/') if x]
@@ -199,7 +202,7 @@ def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', \
 
     return kpc
 
-def check_input(cfg):
+def check_input(cfg,fitting=False):
     'Check various input values to avoid problems later on.'
     #check the slashes and get the ininitial dir for the output dir
     if cfg.general.output_dir[-1] != '/':
@@ -225,9 +228,7 @@ def check_input(cfg):
     if not os.path.isdir(cfg.general.output_dir):
         os.mkdir(cfg.general.output_dir)
     create_directory(cfg.general.log_directory,cfg.general.output_dir)
-    #write the input to the log dir.
-    with open(f"{cfg.general.log_directory}run_input.yml",'w') as input_write:
-        input_write.write(OmegaConf.to_yaml(cfg))
+  
     log = f"{cfg.general.log_directory}{cfg.general.log}"
     #If it exists move the previous Log
     if os.path.exists(log):
@@ -245,9 +246,9 @@ This is version {pyROTMOD.__version__} of the program.
     print_log(f'''We are using the input from {cfg.RC_Construction.gas_file} for the gaseous component.
 ''',log,debug=cfg.general.debug)
     if cfg.RC_Construction.gas_file.split('.')[1].lower() == 'def' and \
-        cfg.RC_Construction.gas_scaleheight[1] is None:
-
-        cfg.RC_Construction.gas_scaleheight = [0.,'tir']
+        cfg.RC_Construction.gas_scaleheight[1] is None\
+        and cfg.RC_Construction.enable:
+        cfg.RC_Construction.gas_scaleheight = [0.,None,'ARCSEC','tir']
     
     if not cfg.RC_Construction.optical_file and cfg.RC_Construction.enable:
         cfg.RC_Construction.optical_file = input('''Please add the optical or galfit file to be evaluated: ''')
@@ -260,6 +261,17 @@ This is version {pyROTMOD.__version__} of the program.
     print_log(f'''We are using the following distance = {cfg.general.distance}.
 ''',log,debug=cfg.general.debug)
     # return the cfg and log name
+
+    #write the input to the log dir.
+    if cfg.general.debug:
+        name = f'{cfg.general.log_directory}run_input'
+        if fitting:
+            name += '_fitting'
+        name +='.yml'   
+        with open(name,'w') as input_write:
+            input_write.write(OmegaConf.to_yaml(cfg))
+       
+
     return cfg,log
 check_input.__doc__ =f'''
  NAME:
@@ -287,30 +299,42 @@ check_input.__doc__ =f'''
  NOTE:
 
 '''
-'''
-def check_fitting_input(cfg):
-    if cfg.fitting.enable:
-        for key in dir(cfg.fitting):
-            if type(getattr(cfg.fitting,key))==ListConfig:
-                tmp = getattr(cfg.fitting,key)
-                for i in range(3):
-                    try:
-                        if tmp[i].lower() != 'none':
-                            tmp[i]=float(tmp[i])
-                        else:
-                            tmp[i]=None
-                    except AttributeError:
-                        pass
 
-                for i in [3,4]:
-                    try:
-                        tmp[i]=eval(tmp[i])
-                    except TypeError:
-                        tmp[i]=bool(tmp[i])
-                setattr(cfg.fitting,key,tmp)
-    return cfg, log
-'''
-def get_effective_radius(radii,density,debug=False,log= None):
+def get_correct_label(par,no):
+    #Need to use raw strings here to avoid problems with \
+    label_dictionary = {'Gamma_disk':r'$\mathrm{M/L_{disk}}$',
+                         'Gamma_bulge':r'$\mathrm{M/L_{bulge}}$',
+                         'Gamma_gas':r'$\mathrm{M/L_{gas}}$',
+                         'ML_optical':r'$\mathrm{M/L_{optical}}$',
+                         'ML_gas':r'$\mathrm{M/L_{gas}}$',
+                         'RHO': r'$\mathrm{\rho_{c}\times 10^{-3}(M_{\odot}/pc^{3})}$',
+                         'RHO0': r'$\mathrm{\rho_{c}\times 10^{-3}(M_{\odot}/pc^{3})}$',
+                         'R_C': r'$ \mathrm{R_{c}(kpc)}$',
+                         'C':r'$\mathrm{c}$',
+                         'R200':r'$ \mathrm{R_{200}(kpc)}$',
+                         'm': r'$\mathrm{Axion Mass\times 10^{-23}(eV)}$',
+                         'central': r'$\mathrm{Central SBR} (M_{\odot}/pc^{2})$',
+                         'h': r'$\mathrm{Scale length} (kpc)$',
+                         'mass': r'$\mathrm{Total Mass} (M_{\odot})$',
+                         'hern_length': r'$\mathrm{Hernquist length} (kpc)$',
+                         'effective_luminosity': r'$\mathrm{L_{e}} (M_{\odot})$' ,
+                         'effective_radius': r'$\mathrm{R_{e}} (kpc)$' ,
+                         'n': r'Sersic Index',
+                         'a0': r'$\mathrm{a_{0}\times 10^{-8}  (cm s^{-2})}$'
+                         }
+    if par in label_dictionary:
+        if par[:5] == 'Gamma':
+            string = f'{label_dictionary[par]} {no}'
+        else:
+            string = label_dictionary[par]              
+    else:
+        print(f''' The parameter {par} has been stripped
+Unfortunately we can not find it in the label dictionary.''')
+        raise RunTimeError(f'Parameter is not in label dictionary')
+    
+    return string   
+
+def get_effective_radius_old(radii,density,debug=False,log= None):
 
    
     mass,ringarea = integrate_surface_density(radii,density)
@@ -343,24 +367,36 @@ def get_uncounted(key):
             component = key
         else:
             component = '_'.join([x for x in splitted[:-1]])
-            number = splitted[-1]
+            try:
+                int(splitted[-1])
+                number = splitted[-1]
+            except ValueError:
+                component = key
     except ValueError:
         component = key
+        
        
     return component,number
 
-def integrate_surface_density(radii,density, log=None):
 
-    ringarea= [0 if radii[0] == 0 else np.pi*((radii[0]+radii[1])/2.)**2]
-    ringarea = np.hstack((ringarea,
-                         [np.pi*(((y+z)/2.)**2-((y+x)/2.)**2) for x,y,z in zip(radii,radii[1:],radii[2:])],
-                         [np.pi*((radii[-1]+0.5*(radii[-1]-radii[-2]))**2-((radii[-1]+radii[-2])/2.)**2)]
-                         ))
-    #radii are in kpc and density in M_sun/pc^2
-    ringarea = ringarea*1000.**2
+def quantity_array(list,unit):
+    #Because astropy is coded by nincompoops Units to not convert into numpy arrays well.
+    #It seems impossible to convert a list of Quantities into a quantity  with a list or np array
+    #This means we have to pull some ticks when using numpy functions because they don't accept lists of Quantities
+    # Major design flaw in astropy unit and one think these nincompoops could incorporate a function like this 
+    #Convert a list of quantities into quantity with a numpy array
+    return np.array([x.to(unit).value for x in list],dtype=float)*unit 
+
+def integrate_surface_density(radii,density, log=None):
    
-    #print(ringarea,density)
-    mass = np.sum([x*y for x,y in zip(ringarea,density)])
+    ringarea= [0*u.kpc**2 if radii[0] == 0 else np.pi*((radii[0]+radii[1])/2.)**2]
+     #Make sure the ring radii are in pc**2 to match the densities
+    ringarea = quantity_array(ringarea +\
+        [np.pi*(((y+z)/2.)**2-((y+x)/2.)**2) for x,y,z in zip(radii,radii[1:],radii[2:])]\
+        +[np.pi*((radii[-1]+0.5*(radii[-1]-radii[-2]))**2-((radii[-1]+radii[-2])/2.)**2)]\
+        ,u.pc**2)
+    #Make sure the ring radii are in pc**2 to match the densities
+    mass = np.sum(quantity_array([x*y for x,y in zip(ringarea,density)],u.Msun))
     return mass,ringarea
 
 
@@ -402,31 +438,13 @@ isiterable.__doc__ =f'''
 '''
 
 
-def old_ensure_kpc_radii(in_radii,unit = None, distance= None):
-    '''Check that our list is a proper radius only list in kpc. if not try to convert.'''
-    if unit is None:
-        raise InputError(f'We can not check the units if we have no units')
-  
-    if unit == 'KPC':
-        return in_radii
-    elif unit == 'PC':
-        correct_rad = copy.deepcopy(in_radii)/1000.
-    elif unit in ['ARCSEC','ARCMIN','DEGREE']:
-        if distance is None:
-            raise InputError(f'We can not convert {unit} to kpc without a distance')
-        correct_rad = copy.deepcopy(in_radii)  
-        correct_rad = convertskyangle(correct_rad, distance, unit=unit)
-    return correct_rad
-
-
-
 def plot_individual_profile(profile,max,log = None):
-    if profile.unit != u.Msun/u.pc**2:
+    if profile.values.unit != u.Msun/u.pc**2:
         print_log(f'''The units of {profile.name} are not M_SOLAR/PC^2.
 Not plotting this profile.
 ''',log )
         return max,False
-    if profile.radii_unit != u.kpc:
+    if profile.radii.unit != u.kpc:
         print_log(f'''The units of {profile.name} are not KPC.
 Not plotting this profile.
 ''',log )
@@ -468,9 +486,10 @@ def plot_profiles(gas_profiles,optical_profiles, log= None\
                 ,output_dir = './',input_profiles = None):
     '''This function makes a simple plot of the optical profiles'''    
     max = 0.
+    
     for name in gas_profiles:
-        if gas_profiles[name].unit == u.Msun/u.pc**2 and \
-            gas_profiles[name].radii_unit == u.kpc:
+        if gas_profiles[name].values.unit == u.Msun/u.pc**2 and \
+            gas_profiles[name].radii.unit == u.kpc:
             plt.plot(gas_profiles[name].radii.value,gas_profiles[name].values.value,\
                      label = gas_profiles[name].name )
             max = np.nanmax(gas_profiles[name].values)
@@ -592,6 +611,27 @@ set_limits.__doc__ =f'''
  NOTE:
 '''
 
+
+'''Strip the unit making sure it is the correct unit '''
+def strip_unit(value, requested_unit = None, variable_type = None):
+    if requested_unit is None and variable_type is None:
+        raise InputError(f'You have to request a unit or set a variable type')
+    translation_dict = {'radii' : u.kpc,\
+                        'density': u.Msun/u.pc**2}
+    if requested_unit is None:
+        try:
+            requested_unit = translation_dict[variable_type]
+        except:
+            raise InputError(f'We do not know how to match {variable_type}')
+    else:
+        if variable_type in [x for x in translation_dict]:
+            print(f'You are overwriting the default for {variable_type}')
+    
+    if value.unit == requested_unit:
+        return value.value
+    else:
+        raise RunTimeError(f'The value {value} does not have to unit {requested_unit}')
+
    
 '''Translate strings to astropy units and vice versa (invert =True)'''
 def translate_string_to_unit(input,invert=False):
@@ -606,7 +646,8 @@ def translate_string_to_unit(input,invert=False):
                         'L_SOLAR': u.Lsun,
                         'L_SOLAR/PC^2': u.Lsun/u.pc**2,
                         'M_SOLAR/PC^2': u.Msun/u.pc**2,
-                        'MAG/ARCSEC^2': u.mag/u.arcsec**2}
+                        'MAG/ARCSEC^2': u.mag/u.arcsec**2,
+                        'SomethingIsWrong': None}
     output =False
     if invert:
         if input in list(translation_dict.values()):
@@ -622,32 +663,32 @@ def translate_string_to_unit(input,invert=False):
     else:
         return output
 
-
-
-def write_header(distance= None, MLratio= None, opt_scaleheight=None,\
-        gas_scaleheight=None, RC = True,opt_disk_type = None,
-        output_dir= './', file= 'You_Should_Set_A_File_RC.txt'):
+def zero_if_none(val):
+    if val is None:
+        val = 0.
+    return val
+def write_header(profiles,
+        output_dir= './', file= 'You_Should_Set_A_File.txt'):
 
     with open(f'{output_dir}{file}','w') as file:
-        if RC:
-            file.write('# This file contains the rotation curves derived by pyROTMOD. \n')
-        else:
-            file.write('# This file contains the mass density profiles derived by pyROTMOD. \n')
-        if distance != None:
-            file.write(f'# We used a distance of {distance:.1f} Mpc. \n')
-        if MLratio != None:
-            file.write(f'# We used a Mass to Light ratio for the stars of {MLratio:.3f}. \n')
-        if opt_scaleheight != None:
-            if opt_scaleheight[0] > 0:
-                file.write(f'# We used stellar scale height {opt_scaleheight[0]:.3f}. \n')
-            else:
-                file.write(f'# We assumed the stellar disk to be infinitely thin. \n')
-        if gas_scaleheight != None:
-            if gas_scaleheight[0] > 0:
-                file.write(f'# We used a gas scale height {gas_scaleheight[0]:.3f}. \n')
-            else:
-                file.write(f'# We assumed the gas disk to be infinitely thin. \n')
+        names = [profiles[name].name for name in profiles if name[0:3] != 'SKY']
+        file.write(f'# This file contains the info for the following profiles: {", ".join(names)}.\n')
+        for name in profiles:
+            if name[0:3] != 'SKY':
+                string = ''
+                if profiles[name].profile_type == 'rotation_curve': 
+                    string = f'# {profiles[name].name} is a rotation curve constructed with the following parameters. \n'
+                else:
+                    string = f'# {profiles[name].name} is a density profile constructed with the following parameters. \n'
+                string += f'''#{'':9s}We used a distance of {profiles[name].distance:.1f}. 
+#{'':9s}The type of is {profiles[name].type} relating to the component {profiles[name].component}. \n'''
 
+                if profiles[name].profile_type == 'density_profile': 
+                    string += f'''#{'':9s}We used a Mass to Light ratio of {zero_if_none(profiles[name].MLratio):.3f}.
+#{'':9s}A height of {zero_if_none(profiles[name].height)}+/-{zero_if_none(profiles[name].height_error)} of type {zero_if_none(profiles[name].height_type)}.                      
+'''
+                file.write(string)
+           
 
 
 write_header.__doc__ =f'''
@@ -683,53 +724,6 @@ write_header.__doc__ =f'''
 
 '''
 
-def write_RCs(RCs,total_rc,rc_err,log=None,\
-        output_dir= './', file= 'You_Should_Set_A_File_RC.txt'):
-    #print(RCs)
-    with open(f'{output_dir}{file}','a') as opt_file:
-        for x in range(len(RCs[0])):
-
-            line = [RCs[i][x] for i in range(len(RCs))]
-            line.append(total_rc[x])
-            line.append(rc_err[x])
-
-            if x <= 1:
-                writel = ' '.join([f'{y:>15s}' for y in line])
-            else:
-                writel = ' '.join([f'{y:>15.2f}' for y in line])
-            writel = f'{writel} \n'
-            opt_file.write(writel)
-write_RCs.__doc__ =f'''
- NAME:
-    write_RCs
- PURPOSE:
-    Write the derived RC
- CATEGORY:
-    support_functions
-
- INPUTS:
-    RCs = Dictionary with derived RCs
-    total_rc = The observed RC
-    rc_err = Error on the observed RC
-
- OPTIONAL INPUTS:
-    output_dir= './'
-
-    Directory where to write the file
-
-    file= 'You_Should_Set_A_File_RC.txt'
-
-    file name
-
- OUTPUTS:
-
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-
- NOTE:
-
-'''
 
 def profiles_to_lines(profiles):
     
@@ -740,13 +734,14 @@ def profiles_to_lines(profiles):
         if not profiles[x].values is None:
             to_write.append(x)
             single = [f'{profiles[x].name}_RADII',profiles[x].name]
-            single_units = [translate_string_to_unit(profiles[x].radii_unit,invert=True),
-                            translate_string_to_unit(profiles[x].unit,invert=True)]
+            single_units = [translate_string_to_unit(profiles[x].radii.unit,invert=True),
+                            translate_string_to_unit(profiles[x].values.unit,invert=True)]
             if not profiles[x].errors is None:
                 single.append(f'{profiles[x].name}_ERR')
-                single_units.append(translate_string_to_unit(profiles[x].unit,invert=True))
+                single_units.append(translate_string_to_unit(profiles[x].values.unit,invert=True))
             profile_columns = profile_columns+single
             profile_units = profile_units+single_units
+    print(profile_columns,profiles)
     lines = [' '.join([f'{y:>15s}' for y in profile_columns])]
     lines.append(' '.join([f'{y:>15s}' for y in profile_units]))   
     count = 0
@@ -776,28 +771,24 @@ def profiles_to_lines(profiles):
             lines.append(' '.join(line))
     return lines
   
-def write_profiles(gas_profile,total_rc,optical_profiles,output_dir= './',\
-             log =None):
+def write_profiles(gas_profile_in,total_rc,optical_profiles = None,output_dir= './',\
+             log =None, filename = None,optical_filename='Optical_Mass_Densities.txt'):
     '''Function to write all the profiles to some text files.'''
-    optical_lines = profiles_to_lines(optical_profiles)
-    with open(f'{output_dir}Optical_Mass_Densities.txt','w') as opt_file:
-        for line in optical_lines:
-            opt_file.write(f'{line} \n')
+    if not optical_profiles is None:
+        optical_lines = profiles_to_lines(optical_profiles)
+        write_header(optical_profiles,output_dir=output_dir,file=optical_filename)
+        with open(f'{output_dir}{optical_filename}','a') as opt_file:   
+            for line in optical_lines:
+                opt_file.write(f'{line} \n')
+    if not  filename is None:
+        gas_profile = copy.deepcopy(gas_profile_in)
+        gas_profile['V_OBS'] = total_rc
+        gas_lines =  profiles_to_lines(gas_profile)
+        #rc_lines = profiles_to_lines({'V_OBS':total_rc})  
 
-    gas_lines =  profiles_to_lines(gas_profile)
-    rc_lines = profiles_to_lines({'V_OBS':total_rc})   
-    with open(f'{output_dir}Gas_Mass_Density_And_RC.txt','w') as file:
-        nan_gas_line = ' '.join(f'{"NaN":>15s}' for x in gas_lines[0].split())
-        nan_rc_line = ' '.join(f'{"NaN":>15s}' for x in gas_lines[0].split())
-        no_lines = np.max([len(gas_lines),len(rc_lines)])
-        for x in range(no_lines):
-            if x < len(gas_lines):
-                line = gas_lines[x]
-            else:
-                line = nan_gas_line
-            if x < len(rc_lines):
-                line = f'{line} {rc_lines[x]}'
-            else:
-                line = f'{line} {nan_rc_line}'
-            file.write(f'{line} \n')
+        write_header(gas_profile,output_dir=output_dir,file=filename)
+        with open(f'{output_dir}{filename}','a') as file:
+            for line in gas_lines:
+                    file.write(f'{line} \n')
+       
      

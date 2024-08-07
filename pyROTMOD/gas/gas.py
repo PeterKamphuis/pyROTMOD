@@ -120,11 +120,11 @@ def get_individual_tirific_disk(disk,filename,log=None, debug =False):
     value_dictionary = load_tirific(filename, Variables=Variables, dict=True)  
   
     sbr.height = np.mean(value_dictionary[f'Z0{ext1}']+value_dictionary[f'Z0{ext2}'])*unit.arcsec
-    sbr.height_unit = unit.arcsec
+  
     if np.sum(value_dictionary[f'Z0{ext1}_ERR']+value_dictionary[f'Z0{ext2}_ERR']) != 0.:
     
         sbr.height_error = np.mean(value_dictionary[f'Z0{ext1}_ERR']+\
-                                value_dictionary[f'Z0{ext2}_ERR'])
+                                value_dictionary[f'Z0{ext2}_ERR'])*unit.arcsec
                                 
    
     if  value_dictionary[f'LTYPE{ext1}'][0] != value_dictionary[f'LTYPE{ext2}'][0] :
@@ -143,28 +143,29 @@ We always assume the function used in the first disk ({value_dictionary[f"LTYPE{
     
     av = np.array([(x1+x2)/2.*1000. for x1,x2 in zip(\
         value_dictionary[f'SBR{ext1}'],value_dictionary[f'SBR{ext2}'])],dtype=float)
-    sbr.unit = unit.Msun/unit.pc**2
+   
     sbr.values = np.array(columndensity(av,arcsquare = True , solar_mass_output = True,\
-                         systemic= value_dictionary[f'VSYS{ext1}'][0]),dtype=float)*sbr.unit
+                         systemic= value_dictionary[f'VSYS{ext1}'][0]),dtype=float)*unit.Msun/unit.pc**2
     if np.sum(value_dictionary[f'SBR{ext1}_ERR']+value_dictionary[f'SBR{ext2}_ERR']) != 0.:
         length = len(value_dictionary[f'SBR{ext1}_ERR']+value_dictionary[f'SBR{ext2}_ERR'])
-        sbr.errors = np.array([(x+y)/2. for x,y in zip(
+        av_errors = np.array([(x+y)/2.*1000. for x,y in zip(
                             value_dictionary[f'SBR{ext1}_ERR'],\
-                            value_dictionary[f'SBR{ext2}_ERR'] )],dtype=float)*sbr.unit 
-    sbr.radii_unit = unit.arcsec
-    sbr.radii = np.array(value_dictionary['RADI'],dtype=float)*sbr.radii_unit
+                            value_dictionary[f'SBR{ext2}_ERR'] )],dtype=float)
+        sbr.errors = np.array(columndensity(av_errors,arcsquare = True , solar_mass_output = True,\
+                         systemic= value_dictionary[f'VSYS{ext1}'][0]),dtype=float)*unit.Msun/unit.pc**2
+   
+    sbr.radii = np.array(value_dictionary['RADI'],dtype=float)*unit.arcsec
     
     if disk == 1:
-        RC.radii_unit = unit.arcsec
-        RC.radii = np.array(value_dictionary['RADI'],dtype=float)*RC.radii_unit
-        RC.unit = unit.km/unit.s
+        RC.radii = np.array(value_dictionary['RADI'],dtype=float)*unit.arcsec
+        
         RC.values =  np.array([(x1+x2)/2. for x1,x2 in\
             zip(value_dictionary['VROT'],value_dictionary['VROT_2']) ],\
-            dtype=float)*RC.unit
+            dtype=float)*unit.km/unit.s
        
         RC.errors = np.array([(x1+x2)/2. for x1,x2 in\
             zip(value_dictionary['VROT_ERR'],value_dictionary['VROT_2_ERR']) ],\
-            dtype=float)*RC.unit
+            dtype=float)*unit.km/unit.s
       
         return  sbr, RC
     else:
@@ -211,7 +212,7 @@ def get_gas_profiles(cfg,log=None, debug =False):
             #    gas_density[type] =  all_profiles[type]
             #    gas_density[type].height = 0.
             #    gas_density[type].height_type = 'inf_thin'
-
+  
     RC.distance = cfg.general.distance * unit.Mpc
     RC.band = cfg.RC_Construction.band   
     RC.component = 'All' 
@@ -221,17 +222,19 @@ def get_gas_profiles(cfg,log=None, debug =False):
         gas_density[name].band = cfg.RC_Construction.gas_band  
         gas_density[name].distance = cfg.general.distance * unit.Mpc
         if  gas_density[name].height == None:
+            if cfg.RC_Construction.gas_scaleheight[3] == 'tir':
+                raise InputError(f'The height for {gas_density[name].name} should have been set by the tirific file but it was not')
             gas_density[name].height = cfg.RC_Construction.gas_scaleheight[0]\
                 *translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
-            gas_density[name].height_unit = translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
             if not cfg.RC_Construction.scaleheight[1] is None:
                 gas_density[name].height_error = cfg.RC_Construction.gas_scaleheight[1]\
                     *translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
         if gas_density[name].height_type == None:
             gas_density[name].height_type = cfg.RC_Construction.gas_scaleheight[3]
-
+       
         gas_density[name].check_profile()  
-   
+        gas_density[name].calculate_attr() 
+    
     return gas_density, RC
 
 

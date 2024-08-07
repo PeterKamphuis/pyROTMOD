@@ -43,6 +43,7 @@ class RCConstruction:
 class Fitting:
     enable: bool = True
     negative_values: bool = False
+    initial_minimizer: str = 'differential_evolution'
     HALO: str = 'NFW'
     single_stellar_ML: bool = True
     single_gas_ML: bool = False
@@ -117,7 +118,7 @@ Exiting pyROTMOD.''')
     return cfg
 
 
-def read_fitting_config(cfg,baryonic_components,print_examples=False):
+def read_fitting_config(cfg,baryonic_RCs,print_examples=False):
     halo = 'NFW'
     try:
         halo = cfg.file_config.fitting_general.HALO
@@ -128,11 +129,11 @@ def read_fitting_config(cfg,baryonic_components,print_examples=False):
     except:
         pass
     if print_examples:
-        baryonic_components = {'DISK_GAS': [],'EXPONENTIAL_1':{},'HERNQUIST_1': []}
+        baryonic_components = {'DISK_GAS_1': [],'EXPONENTIAL_1':{},'HERNQUIST_1': []}
         cfg.fitting_general.HALO = halo
     halo_conf = f'{halo}_config'
     cfg_new = OmegaConf.structured(ExtendConfig)
-    cfg_new = add_dynamic(cfg_new,baryonic_components,halo = halo_conf)
+    cfg_new = add_dynamic(cfg_new,baryonic_RCs,halo = halo_conf)
     cfg_new = create_masked_copy(cfg_new,cfg.file_config)
     cfg_new = create_masked_copy(cfg_new,cfg.input_config) 
     cfg_new.fitting_general.HALO = halo
@@ -142,12 +143,12 @@ def add_dynamic(in_dict,in_components, halo = 'NFW'):
     halo_config = getattr(potentials,halo)
     with open_dict(in_dict):
         dict_elements = []
-        for component_full in in_components:
-            component,no = get_uncounted(component_full)
+        for name in in_components:
+            component,no = get_uncounted(in_components[name].name)
             if component in ['DISK_GAS']:
-                dict_elements.append([f'{component_full}',[1.33, None, None,True,True]])
+                dict_elements.append([f'{in_components[name].name}',[1.33, None, None,True,True]])
             elif component in ['DISK_STELLAR','EXPONENTIAL', 'SERSIC','BULGE_STELLAR','BULGE', 'HERNQUIST']:
-                dict_elements.append([f'{component_full}',[1., None, None,True,True]])  
+                dict_elements.append([f'{in_components[name].name}',[1., None, None,True,True]])  
             
         for key in halo_config.parameters:          
             dict_elements.append([f'{key}',halo_config.parameters[key]]) 

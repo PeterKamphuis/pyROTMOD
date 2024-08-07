@@ -1,9 +1,8 @@
 # -*- coding: future_fstrings -*-
-from pyROTMOD.rotmass.rotmass import initial_guess,mcmc_run
+from pyROTMOD.fitters.fitters import initial_guess,mcmc_run
 from pyROTMOD.support.errors import InputError,UnitError
-from pyROTMOD.optical.conversions import mag_to_lum
-from pyROTMOD.support.minor_functions import convertskyangle,integrate_surface_density,\
-    print_log, get_effective_radius
+from pyROTMOD.support.minor_functions import integrate_surface_density,\
+    print_log,strip_unit,get_uncounted
 from astropy import units as unit
 from scipy.special import k1,gamma
 import numpy as np
@@ -26,7 +25,7 @@ def calculate_central_SB(components):
                 components.central_SB = components.total_SB/(2.*np.pi*\
                                         components.scale_length.to(unit.pc)**2)
               
-        elif components.type == 'sersic':
+        elif components.type in ['sersic','devauc']:
        
             if not None in [components.total_SB ,components.R_effective,\
                             components.sersic_index,components.axis_ratio]: 
@@ -35,24 +34,128 @@ def calculate_central_SB(components):
                 components.central_SB = effective_luminosity*\
                     np.exp(-1.*kappa*(((0.*unit.kpc)/components.R_effective)**\
                     (1./components.sersic_index)-1))
-    return components.central_SB
+   
+
+
+
+
   
-def calculate_L_effective(components):
+def calculate_L_effective(components,from_central = False):
     '''The sersic profile is based on Sig_eff'''
     kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
-    effective_luminosity = components.total_SB/(2.*np.pi*(components.R_effective.to(unit.pc))**2*\
+    if from_central:
+        effective_luminosity = components.central_SB/np.exp(-1.*kappa*(((\
+            0.*unit.kpc)/components.R_effective)**(1./components.sersic_index)-1))
+    else:
+        effective_luminosity = components.total_SB/(2.*np.pi*(components.R_effective.to(unit.pc))**2*\
                             np.exp(kappa)*components.sersic_index*\
                             kappa**(-2*components.sersic_index)*\
                             components.axis_ratio*gamma(2.*components.sersic_index)) #L_solar/pc^2
     return effective_luminosity,kappa
 
 
+def calculate_R_effective(components):
+    prof_type = determine_density_profile(components.type,components.sersic_index)
+    if not components.scale_length is None:
+        # see calculate_scale_length for origin info
+        if prof_type == 'exponential':
+            components.R_effective = components.scale_length*1.678 
+        elif prof_type == 'hernquist':
+            components.R_effective = components.scale_length*1.8153  
+
+    elif not components.radii is None and not components.values is None:
+        mass,ringarea = integrate_surface_density(components.radii,\
+                                                  components.values)
+        
+        if components.total_SB is None:
+            components.total_SB = mass    
+
+        for i in range(len(components.radii.value),1,-1):
+            current_mass =  np.sum(ringarea.value[:i]*components.values.value[:i])*\
+                (components.values.unit*ringarea.unit)
+            if current_mass < mass/2.:
+                components.R_effective =  components.radii[i]
+                break
+    ''' Note that in   https://articles.adsabs.harvard.edu/pdf/1990ApJ...356..359H (Hernquist 1990) Eq 39
+    There is a factor 1.33 between the effective radius and the half mass radius but as we calculating the mass on a SB profile 
+    and not a density profile that doesn't apply here
+    '''
+    if components.scale_length is None:
+        components.scale_length = calculate_scale_length(components)
+   
+
+def calculate_scale_length(components):
+    prof_type = determine_density_profile(components.type,components.sersic_index)
+    if prof_type == 'exponential':
+        # From https://iopscience.iop.org/article/10.1088/0004-6256/139/6/2097/pdf Peng 2010 Eq 7
+        components.scale_length = components.R_effective/1.678 
+    elif prof_type == 'hernquist':
+        # Eq 38 in https://articles.adsabs.harvard.edu/pdf/1990ApJ...356..359H (Hernquist 1990)
+        components.scale_length  = components.R_effective/1.8153 
+
+
+
+
+
+        '''#This was in the old version for the hernquist profile but I do not know where it comes from  
+        elif not components.central_SB is None and not components.total_SB is None:
+            print(components.total_SB,components.central_SB)
+            central_3d = components.central_SB
+            components.scale_length  = (components.total_SB/(2.*np.pi*components.central_SB))**1/3
+            print( components.scale_length)
+            exit()
+
+        '''
+
+def calculate_total_SB(components):
+    # If calculated from the profile it can be set in calculate_R_effective as well
+    # Hence calculate_R_effective  is better to run first
+
+    if not components.radii is None and not components.values is None:
+        components.total_SB,ring_area = integrate_surface_density(\
+            components.radii,components.values)
+    else: 
+        if components.type == 'expdisk':
+            if not None in [components.central_SB,components.scale_length]:
+             
+                # this assumes perfect ellipses for now and no deviations are allowed
+
+                components.total_SB = components.central_SB*(2.*np.pi*\
+                                        components.scale_length.to(unit.pc)**2)
+              
+        elif components.type == 'sersic':
+       
+            if not None in [components.central_SB ,components.R_effective,\
+                            components.sersic_index,components.axis_ratio]: 
+                kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
+                effective_luminosity,kappa = calculate_L_effective(components, from_central=True)
+                components.total_SB = effective_luminosity*(2.*np.pi*(\
+                    components.R_effective.to(unit.pc))**2*\
+                    np.exp(kappa)*components.sersic_index*\
+                    kappa**(-2*components.sersic_index)*\
+                    components.axis_ratio*gamma(2.*components.sersic_index))
+    #return components.central_SB
+
+def determine_density_profile(type, n):
+    prof_type = None  
+    if type in ['expdisk','edgedisk', 'random_disk']:
+        prof_type = 'exponential'
+    elif type in ['devauc','hernquist']:
+        prof_type= 'hernquist'
+    elif type in ['sersic']:
+        if 0.75 < n < 1.25:
+            prof_type = 'exponential'
+        elif  3.75 < n < 3.25:
+            prof_type= 'hernquist'
+    return prof_type
+
+
 def determine_profiles_to_fit(type):
-    if type == 'DENSITY':
+    if type.upper() in ['DENSITY','RANDOM_DISK','RANDOM_BULGE']:
         evaluate = ['EXPONENTIAL','EXP+HERN']
-    elif type == 'BULGE':
+    elif type.upper() in ['BULGE', 'HERNQUIST']:
         evaluate = ['HERNQUIST']
-    elif type == 'DISK':
+    elif type.upper() in ['DISK', 'EXPONENTIAL']:
         evaluate = ['EXPONENTIAL']
     else:
         evaluate = [type]
@@ -153,25 +256,35 @@ exponential_luminosity.__doc__ = f'''
 '''
 
 
-def fit_profile(radii,density,function='EXPONENTIAL_1',\
+def fit_profile(radii,density,name='EXPONENTIAL_1',\
                 components = None,debug =False, log = None):
 
     if components is None:
         raise InputError(f'We need a place to store the results please set components =') 
-
-    if components.total_SB == None or components.R_effective == None:
-        totalsb,reff = get_effective_radius(radii,density, debug=debug,log=log)
-        if  components.total_SB == None:
-            components.total_SB = totalsb#*unit.Msun
-        if components.R_effective == None:
-            components.R_effective = reff
-       
-    type_split=function.split('_')
-    type = type_split[0]
-    try:
-        count = type_split[1]
-    except:
-        count='1'
+    
+    # We need the total SB and effective for the initial guesses for the hernquist profile
+    components.radii = radii
+    components.values = density
+  
+    if components.R_effective == None:
+        calculate_R_effective(components)
+    
+    if components.total_SB == None:
+        calculate_total_SB(components)
+        
+    del components.radii
+    del components.values 
+    type,count = get_uncounted(name)
+    #type_split=function.split('_')
+    #type = type_split[0]
+    #try:
+    #    count = type_split[1]
+    #except:
+    #    count='1'
+    radii = strip_unit(radii,variable_type='radii')
+    density = strip_unit(density,variable_type='density')
+    
+  
     fit_function_dictionary = {'EXPONENTIAL':
                 {'initial':[density[0],radii[density < density[0]/np.e ][0]],
                 'out':['Central SB','scale length'],
@@ -216,6 +329,7 @@ def fit_profile(radii,density,function='EXPONENTIAL_1',\
 
 
     evaluate = determine_profiles_to_fit(type)
+    print(evaluate)
     fitted_dict = {}
     for ev in evaluate:
         try:
@@ -265,11 +379,15 @@ As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a
 
 
     red_chi = [fitted_dict[x]['red_chi_sq']  for x in fitted_dict]
-    #red_chi = [float('NaN'),float('NaN')]
-    if not np.isnan(np.nanmin(red_chi)):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        min_red_chi = np.nanmin(red_chi)
+    #red_chi = [float('NaN'),float('NaN
+    # ')]
+    if not np.isnan(min_red_chi):
         print_log('FIT_PROFILE: We have found at least one decent fit.',log)
         for ev in fitted_dict:
-            if fitted_dict[ev]['red_chi_sq'] == np.nanmin(red_chi):
+            if fitted_dict[ev]['red_chi_sq'] == min_red_chi:
                 break
 
         fitted_dict =fitted_dict[ev]
@@ -358,19 +476,7 @@ def hernquist_profile(r, mass, h):
 
     return profile
 
-'''
-#Calculate the effective radius
-def obtain_R_eff(radii,density):
-    # if this is specified as an exponential disk without the parameters defined we fit a expoenential
-    ring_area = integrate_surface_density(radii,density,calc_ring_area=True)
-    R_eff = radii[-1] #*unit.kpc
-    for i in range(1,len(radii)):
-        current_mass = np.sum(ring_area[:i]*density[:i]) #*unit.Msun
-        if current_mass.value > components['Total SB'].value/2.:
-            R_eff = radii[i] #*unit.kpc
-            break
-    return R_eff
-'''
+
 
 def sersic(r,effective_luminosity,effective_radius,n):
     '''sersic function'''

@@ -472,7 +472,7 @@ def read_galfit(lines,log=None,debug=False):
         components[d].radii= np.linspace(0,max_radius,int(max_radius/2.))*\
             np.mean(plate_scale)*unit.arcsec # in arcsec
         components[d].radii_unit = unit.arcsec
-
+    
 
 
     galfit_info = {}
