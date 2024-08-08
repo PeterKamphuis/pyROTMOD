@@ -305,7 +305,7 @@ def get_correct_label(par,no):
     label_dictionary = {'Gamma_disk':r'$\mathrm{M/L_{disk}}$',
                          'Gamma_bulge':r'$\mathrm{M/L_{bulge}}$',
                          'Gamma_gas':r'$\mathrm{M/L_{gas}}$',
-                         'ML_optical':r'$\mathrm{M/L_{optical}}$',
+                         'ML_stellar':r'$\mathrm{M/L_{optical}}$',
                          'ML_gas':r'$\mathrm{M/L_{gas}}$',
                          'RHO': r'$\mathrm{\rho_{c}\times 10^{-3}(M_{\odot}/pc^{3})}$',
                          'RHO0': r'$\mathrm{\rho_{c}\times 10^{-3}(M_{\odot}/pc^{3})}$',
@@ -330,7 +330,7 @@ def get_correct_label(par,no):
     else:
         print(f''' The parameter {par} has been stripped
 Unfortunately we can not find it in the label dictionary.''')
-        raise RunTimeError(f'Parameter is not in label dictionary')
+        raise RunTimeError(f'{par} is not in label dictionary')
     
     return string   
 
