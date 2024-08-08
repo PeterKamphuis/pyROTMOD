@@ -451,11 +451,12 @@ def plot_individual_RC(RC,ax1,input=False):
             plot_err =  RC.calculated_errors.value 
 
     if not plot_err is None:
-        #if style_library['alpha'] < 1.:
-        #    use_alpha = style_library['alpha'] -0.3
-        #else:
-        #    use_alpha = style_library['alpha'] -0.5
-        use_alpha = 0.5
+        if style_library['markeredgecolor'][3] < 1.:
+            use_alpha =  style_library['markeredgecolor'][3] -0.3
+        else:
+            use_alpha = style_library['markeredgecolor'][3] -0.5
+        if use_alpha < 0.1:
+            use_alpha = 0.1
         ax1.fill_between(RC.radii.value,plot_err[0] ,\
                         plot_err[1] ,
                         color= style_library['color'],
@@ -472,20 +473,21 @@ def calculate_residual(RC,ax2):
         ax2.remove()
         return ax2
     ax2.plot(RC.radii,RC.values-RC.calculated_values,marker='o', \
-            ms=15,color='r',linestyle =None,zorder=1,lw=5)
+            ms=15,color='r',linestyle =None,zorder=2,lw=5)
     ax2.plot(RC.radii, np.zeros(len(RC.radii)),marker=None,lw=5, \
-            ms=10,color='k',linestyle ='-',zorder=0)
-    ax2.fill_between(RC.radii.value,-1*RC.errors.value ,\
-                        RC.errors.value  ,
-                        color= 'k',
-                        alpha = 0.5,
-                        edgecolor='none',zorder=1)
+            ms=10,color='k',linestyle ='-',zorder=1)
+    
     ax2.set_xlabel('Radius (kpc)', fontdict=dict(weight='bold',size=16))
     ax2.set_ylabel('Residual (km/s)', fontdict=dict(weight='bold',size=16))
     ymin,ymax=ax2.get_ylim()
     buffer = (ymax-ymin)/20.
     ax2.set_ylim(ymin-buffer,ymax+buffer)
     if not RC.errors is None:
+        ax2.fill_between(RC.radii.value,-1*RC.errors.value ,\
+                        RC.errors.value  ,
+                        color= 'k',
+                        alpha = 0.2,
+                        edgecolor='none',zorder=0)
         red_Chi_2 = calculate_red_chisq(RC)
 
         ax2.text(1.0,1.0,f'''Red. $\\chi^{{2}}$ = {red_Chi_2:.4f}''',rotation=0, va='top',ha='right', color='black',\
