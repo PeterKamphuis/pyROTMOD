@@ -4,6 +4,8 @@ from pyROTMOD.support.errors import InputError,UnitError
 from pyROTMOD.support.minor_functions import integrate_surface_density,\
     print_log,strip_unit,get_uncounted
 from astropy import units as unit
+from astropy.modeling import functional_models as astro_profiles
+from fractions import Fraction
 from scipy.special import k1,gamma
 import numpy as np
 import warnings
@@ -480,9 +482,16 @@ def hernquist_profile(r, mass, h):
 
 def sersic(r,effective_luminosity,effective_radius,n):
     '''sersic function'''
-    kappa = -1.*(2.*n-1./3.)
-    func = effective_luminosity*np.exp(kappa*((r/effective_radius)**(1./n))-1)
+    # as b/kappa should be numerically solved from the function Kapp = 2*gamm(2n,b) we use the astropy function
+    #kappa = -1.*(2.*n-1./3.)
+    #func = effective_luminosity*np.exp(kappa*((r/effective_radius)**(1./n))-1)
+    model = astro_profiles.Sersic1D(r_eff = effective_radius,amplitude = effective_luminosity,n=n)
+    func = model(r)
     return func
+def get_integers(n):
+    solution= Fraction(n)
+    return int(solution.numerator),int(solution.denominator)
+    
 
 def sersic_luminosity(components,radii = None):
     # This is not a deprojected surface density profile we should use the formula from Baes & gentile 2010
@@ -490,9 +499,14 @@ def sersic_luminosity(components,radii = None):
     if radii is None:
         radii = components.radii
       
-    effective_luminosity,kappa = calculate_L_effective(components)
-    lum_profile = effective_luminosity*np.exp(-1.*kappa*((radii/components.R_effective)**(1./components.sersic_index)-1))
+    #effective_luminosity,kappa = calculate_L_effective(components)
+    #lum_profile = effective_luminosity*np.exp(-1.*kappa*((radii/components.R_effective)**(1./components.sersic_index)-1))
     #components.central_SB = effective_luminosity*np.exp(-1.*kappa*(((0.*unit.kpc)/components.R_effective)**(1./components.sersic_index)-1))
+
+    #first we need to derive the integer numbers that make up the  sersic index
+    p, q = get_integers(components.sersic_index)
+    
+
 
     return lum_profile
 sersic_luminosity.__doc__ = f'''
