@@ -4,7 +4,7 @@ from pyROTMOD.support.minor_functions import check_quantity,convertskyangle\
 from pyROTMOD.optical.conversions import mag_to_lum
 from pyROTMOD.optical.profiles import exponential_luminosity,edge_luminosity,\
       sersic_luminosity,fit_profile,calculate_central_SB,calculate_total_SB,\
-      calculate_R_effective,calculate_scale_length
+      calculate_R_effective,calculate_scale_length,calculate_axis_ratio
 
 import astropy.units as u 
 import numpy as np
@@ -51,6 +51,23 @@ class Component:
                               'dx': u.pix,\
                               'dy': u.pix}
                               #Astrpoy does not have suitable units for the background
+      def fill_empty(self):
+            for attr, value in self.__dict__.items():
+                  if value is None:
+                        if attr in ['radii','values','unit','errors','radii','radii_unit','component','band','distance','MLratio']:
+                              continue
+                              #raise InputError(f'We cannot derive {attr} please set it')
+                        elif attr in ['axis_ratio']:
+                              calculate_axis_ratio(self)
+                              
+                        elif attr in ['central_SB']:
+                              calculate_central_SB(self)
+                        elif attr in ['total_SB']:
+                              calculate_total_SB(self)
+                        elif attr in ['R_effective']:
+                              calculate_R_effective(self)
+                        elif attr in ['scale_length']:
+                              calculate_scale_length(self)
       def print(self):
             for attr, value in self.__dict__.items():
                   print(f' {attr} = {value} \n')  
@@ -73,13 +90,21 @@ class Density_Profile(Component):
                               }
       allowed_height_types = ['constant','gaussian','sech_sq','lorentzian','exp','inf_thin']
       def __init__(self, values = None, errors = None, radii = None,
-                  unit = None, radii_unit = None, type = None, height = None,\
+                  type = None, height = None,\
                   height_type = None, band = None, \
                   height_error =None ,name =None, MLratio= None, 
-                  distance = None,component = None ):
+                  distance = None,component = None, central_SB = None,\
+                  total_SB = None, R_effective = None,\
+                  scale_length = None,\
+                  sersic_index = None, central_position = None, \
+                  axis_ratio = None, PA = None ,background = None,\
+                  dx = None, dy = None ):
             super().__init__(type = type,name = name,\
                   height = height, height_type=height_type,\
-                  height_error = height_error )
+                  height_error = height_error, central_SB = central_SB,\
+                  total_SB = total_SB, R_effective = R_effective, scale_length = scale_length,\
+                  sersic_index = sersic_index, central_position = central_position, \
+                  axis_ratio = axis_ratio, PA = PA ,background = background, dx = dx, dy = dx )
             self.values = values
             self.errors = errors  
             self.profile_type = 'density_profile'
@@ -94,24 +119,7 @@ class Density_Profile(Component):
             for attr, value in self.__dict__.items():
                   print(f' {attr} = {value} \n')
                     
-      def fill_empty(self):
-            for attr, value in self.__dict__.items():
-                  if value is None:
-                        if attr in ['radii','values','unit','errors','radii','radii_unit','component','band','distance','MLratio']:
-                              continue
-                              #raise InputError(f'We cannot derive {attr} please set it')
-                        elif attr in ['axis_ratio']:
-                              if not self.height in [None,0.] and \
-                                    not self.scale_length is None:
-                                    self.axis_ratio = self.height/self.scale_length
-                        elif attr in ['central_SB']:
-                              calculate_central_SB(self)
-                        elif attr in ['total_SB']:
-                              calculate_total_SB(self)
-                        elif attr in ['R_effective']:
-                              calculate_R_effective(self)
-                        elif attr in ['scale_length']:
-                              calculate_scale_length(self)
+     
                         
                         
                               

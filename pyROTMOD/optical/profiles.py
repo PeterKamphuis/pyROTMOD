@@ -6,14 +6,18 @@ from pyROTMOD.support.minor_functions import integrate_surface_density,\
 from astropy import units as unit
 from astropy.modeling import functional_models as astro_profiles
 from fractions import Fraction
-from scipy.special import k1,gamma
+from scipy.special import k1,gamma, gammaincinv
+from sympy.functions.special.hyper import meijerg
 import numpy as np
 import warnings
 import copy
 import inspect
 
 
-
+def calculate_axis_ratio(components):
+    if not components.height in [None,0.] and \
+        not components.scale_length is None:
+            components.axis_ratio = components.height/components.scale_length
 def calculate_central_SB(components):
 
     if components.radii[0] == 0. and not components.values is None:
@@ -480,7 +484,7 @@ def hernquist_profile(r, mass, h):
 
 
 
-def sersic(r,effective_luminosity,effective_radius,n):
+def sersic_luminosity(r,effective_luminosity,effective_radius,n):
     '''sersic function'''
     # as b/kappa should be numerically solved from the function Kapp = 2*gamm(2n,b) we use the astropy function
     #kappa = -1.*(2.*n-1./3.)
@@ -492,8 +496,15 @@ def get_integers(n):
     solution= Fraction(n)
     return int(solution.numerator),int(solution.denominator)
     
-
-def sersic_luminosity(components,radii = None):
+def get_sersic_b(components):
+    # Get the gamma function to calculate b
+    b =  gammaincinv(2. * components.sersic_index, 0.5)    
+    return b
+    
+  
+    
+    
+def sersic_profile(components,radii = None):
     # This is not a deprojected surface density profile we should use the formula from Baes & gentile 2010
     # Once we implement that it should be possible use an Einasto profile/potential
     if radii is None:
@@ -505,10 +516,33 @@ def sersic_luminosity(components,radii = None):
 
     #first we need to derive the integer numbers that make up the  sersic index
     p, q = get_integers(components.sersic_index)
+    # The a and b vectors of equation 22
+    avect = [x/q for x in range(1,q)]
+    bvect = [x/(2.*p) for x in range(1,2*p)]+\
+            [x/(2.*q) for x in range(1,2.*q,2)]
+    # We need a central Intensity 
+    if components.central_SB is None:
+        calculate_central_SB(components)
+        if components.central_SB is None:
+            raise RuntimeError(f'We cannot find the central density for {components.name}')
+    if components.R_effective is None:
+        calculate_R_effective(components)
+        if components.R_effective is None:
+            raise RuntimeError(f'We cannot find the effective radius for {components.name}')
+    # Obtain the b vector:
+    b = get_sersic_b(components)
+    s = radii/components.R_effective
     
-
-
-    return lum_profile
+    # front factor # This lacking an 1./R_effective because it cancels with 1./s later on
+    const = 2.*components.central_SB*np.sqrt(p*q)/(2*np.pi)**p
+    meijer_input =  (b/(2*p))**(2*p) * s**(2*q)
+    meijer_result = meijerg([[],avect,bvect,[]],meijer_input).evalf()
+#print(sympy.functions.special.hyper.meijerg([[], [-1/(k-1)], [0, 0], []], -p/k2).evalf())
+#import mpmath
+#print(mpmath.meijerg([[], [-1/(k-1)], [0, 0], []], -p/k2))
+    #This is with 1/rad instead of 1/s as we drooped the R_eff from the const 
+    density_profile =  const/radii*meijer_result
+    return density_profile
 sersic_luminosity.__doc__ = f'''
 NAME:
     sersic_luminosity
