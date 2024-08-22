@@ -293,7 +293,7 @@ def read_galfit(lines,log=None,debug=False):
                         components[current_name].PA = float(tmp[1])*unit.degree
     
     if len(plate_scale) == 0 or len(mag_zero) == 0:
-        raise BadFileError(f'Your file {file} is not recognized by pyROTMOD')
+        raise BadFileError(f'Your input ({input}) is not recognized by pyROTMOD')
     
     for d in components:
         # add radii
