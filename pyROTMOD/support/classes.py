@@ -4,7 +4,8 @@ from pyROTMOD.support.minor_functions import check_quantity,convertskyangle\
 from pyROTMOD.optical.conversions import mag_to_lum
 from pyROTMOD.optical.profiles import exponential_luminosity,edge_luminosity,\
       sersic_luminosity,fit_profile,calculate_central_SB,calculate_total_SB,\
-      calculate_R_effective,calculate_scale_length,calculate_axis_ratio
+      calculate_R_effective,calculate_scale_length,calculate_axis_ratio,\
+      sersic_profile,edge_profile,exponential_profile
 
 import astropy.units as u 
 import numpy as np
@@ -73,6 +74,8 @@ class Component:
                   print(f' {attr} = {value} \n')  
 
 
+          
+
 
 class Density_Profile(Component):
       allowed_units = ['L_SOLAR/PC^2','M_SOLAR/PC^2','MAG/ARCSEC^2']
@@ -104,7 +107,8 @@ class Density_Profile(Component):
                   height_error = height_error, central_SB = central_SB,\
                   total_SB = total_SB, R_effective = R_effective, scale_length = scale_length,\
                   sersic_index = sersic_index, central_position = central_position, \
-                  axis_ratio = axis_ratio, PA = PA ,background = background, dx = dx, dy = dx )
+                  axis_ratio = axis_ratio, PA = PA ,background = background, \
+                  dx = dx, dy = dy )
             self.values = values
             self.errors = errors  
             self.profile_type = 'density_profile'
@@ -207,6 +211,51 @@ class Density_Profile(Component):
             self.check_attr()
             #Changing the units in the profiles important that you only trust values with quantities
             if self.type in ['expdisk']:
+                  self.values = exponential_profile(self)
+            elif self.type in ['edgedisk']:
+                  self.values = edge_profile(self)
+            elif self.type in ['sersic','devauc']:
+                  self.values = sersic_profile(self)
+            if not self.type in ['sky','psf']: 
+                  self.check_profile()
+     
+class Luminosity_Profile(Density_Profile):
+      def __init__(self, values = None, errors = None, radii = None,
+                  type = None, height = None,\
+                  height_type = None, band = None, \
+                  height_error =None ,name =None, MLratio= None, 
+                  distance = None,component = None, central_SB = None,\
+                  total_SB = None, R_effective = None,\
+                  scale_length = None,\
+                  sersic_index = None, central_position = None, \
+                  axis_ratio = None, PA = None ,background = None,\
+                  dx = None, dy = None ):
+            super().__init__(type = type,name = name, values = values,\
+                  errors = errors, radii = radii, band = band,\
+                  height = height, height_type=height_type, component= component,\
+                  height_error = height_error, central_SB = central_SB,\
+                  total_SB = total_SB, R_effective = R_effective,\
+                  scale_length = scale_length, distance =distance,\
+                  MLratio=MLratio,\
+                  sersic_index = sersic_index, central_position = central_position, \
+                  axis_ratio = axis_ratio, PA = PA ,background = background, \
+                  dx = dx, dy = dy )
+            self.profile_type = 'luminosity_profile'   
+      def check_profile(self):
+            self.values = check_quantity(self.values)
+            self.errors = check_quantity(self.errors)
+            self.radii = check_quantity(self.radii)
+            self.values = set_requested_units(self.values,requested_unit=u.Lsun/u.pc**2,\
+                        distance=self.distance,band=self.band,MLratio=self.MLratio)
+            self.errors = set_requested_units(self.errors,requested_unit=u.Lsun/u.pc**2,\
+                        distance=self.distance,band=self.band,MLratio=self.MLratio)
+            self.radii = set_requested_units(self.radii,requested_unit=u.kpc,\
+                        distance=self.distance)
+     
+      def create_profile(self):
+            self.check_attr()
+            #Changing the units in the profiles important that you only trust values with quantities
+            if self.type in ['expdisk']:
                   self.values = exponential_luminosity(self)
             elif self.type in ['edgedisk']:
                   self.values = edge_luminosity(self)
@@ -214,8 +263,6 @@ class Density_Profile(Component):
                   self.values = sersic_luminosity(self)
             if not self.type in ['sky','psf']: 
                   self.check_profile()
-     
-   
      
 
 class Rotation_Curve:

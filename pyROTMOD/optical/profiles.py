@@ -6,8 +6,9 @@ from pyROTMOD.support.minor_functions import integrate_surface_density,\
 from astropy import units as unit
 from astropy.modeling import functional_models as astro_profiles
 from fractions import Fraction
-from scipy.special import k1,gamma, gammaincinv
-from sympy.functions.special.hyper import meijerg
+#the individul functions are quicker than the general function https://docs.scipy.org/doc/scipy/reference/special.html
+from scipy.special import k0,k1,gamma, gammaincinv
+from sympy import meijerg
 import numpy as np
 import warnings
 import copy
@@ -36,11 +37,10 @@ def calculate_central_SB(components):
             if not None in [components.total_SB ,components.R_effective,\
                             components.sersic_index,components.axis_ratio]: 
               
-                effective_luminosity,kappa = calculate_L_effective(components)
-                components.central_SB = effective_luminosity*\
-                    np.exp(-1.*kappa*(((0.*unit.kpc)/components.R_effective)**\
-                    (1./components.sersic_index)-1))
-   
+                effective_luminosity = calculate_L_effective(components)
+                components.central_SB = sersic(0.*unit.kpc,effective_luminosity,\
+                    components.R_effective,components.sersic_index)
+              
 
 
 
@@ -48,7 +48,8 @@ def calculate_central_SB(components):
   
 def calculate_L_effective(components,from_central = False):
     '''The sersic profile is based on Sig_eff'''
-    kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
+    #kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
+    kappa = get_sersic_b(components.sersic_index)
     if from_central:
         effective_luminosity = components.central_SB/np.exp(-1.*kappa*(((\
             0.*unit.kpc)/components.R_effective)**(1./components.sersic_index)-1))
@@ -57,7 +58,7 @@ def calculate_L_effective(components,from_central = False):
                             np.exp(kappa)*components.sersic_index*\
                             kappa**(-2*components.sersic_index)*\
                             components.axis_ratio*gamma(2.*components.sersic_index)) #L_solar/pc^2
-    return effective_luminosity,kappa
+    return effective_luminosity
 
 
 def calculate_R_effective(components):
@@ -133,8 +134,9 @@ def calculate_total_SB(components):
        
             if not None in [components.central_SB ,components.R_effective,\
                             components.sersic_index,components.axis_ratio]: 
-                kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
-                effective_luminosity,kappa = calculate_L_effective(components, from_central=True)
+                #kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
+                kappa = get_sersic_b(components.sersic_index)
+                effective_luminosity= calculate_L_effective(components, from_central=True)
                 components.total_SB = effective_luminosity*(2.*np.pi*(\
                     components.R_effective.to(unit.pc))**2*\
                     np.exp(kappa)*components.sersic_index*\
@@ -216,10 +218,64 @@ import inspect
  NOTE: This is not well tested yet !!!!!!!!!
 '''
 
+def edge_profile(components,radii = None):
+   
+    if radii is None:
+        radii = components.radii
+    #The edge luminosity in galfit is taken from vdKruit and Searle which is the
+    # edge-on projection of an exponential luminosity density (See Eg 5 in vd Kruit and Searle) 
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        if radii.unit == components.scale_length.unit:    
+            #Equation 5 in vd Kruit and Searle with z 0
+            profile = components.central_SB*np.exp(radii/components.scale_length)
+          
+        else:
+            raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
+    #profile = [x.value for x in profile]
+    return profile
+        
+edge_luminosity.__doc__ = f'''
+ NAME:
+     edge_luminosity
+
+ PURPOSE:
+    Convert the components from the galfit file into luminosity profiles
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    components = the components read from the galfit file.
+
+ OPTIONAL INPUTS:
+    radii = []
+        the radii at which to evaluate
+    zero_point_flux =0.
+        The magnitude zero point flux value. Set by selecting the correct band.
+    distance  = 0.
+        Distance to the galaxy
+    log = None
+    debug = False
+
+ OUTPUTS:
+   lum_ profile  = the luminosity profile
+   lum_components = a set of homogenized luminosity components for the components in galfit file.
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+import inspect
+ NOTE: This is not well tested yet !!!!!!!!!
+'''
+
+
+
+
 def exponential(r,central,h):
     '''Exponential function'''
     return central*np.exp(-1.*r/h)
-
 
 def exponential_luminosity(components,radii = None):
     #lum_components = copy.deepcopy(components)
@@ -227,12 +283,56 @@ def exponential_luminosity(components,radii = None):
     if radii is None:
         radii = components.radii
     if radii.unit == components.scale_length.unit:    
-        profile = components.central_SB*np.exp(-1.*(radii.value/components.scale_length.value))
+        profile = exponential(radii, components.central_SB, components.scale_length) 
     else:
         raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
     #profile = [x.value for x in profile]
     return profile
 exponential_luminosity.__doc__ = f'''
+ NAME:
+    exponential_luminosity
+
+ PURPOSE:
+    Convert the components from the galfit file into luminosity profiles
+
+ CATEGORY:
+    optical
+
+ INPUTS:
+    components = the components read from the galfit file.
+
+ OPTIONAL INPUTS:
+    radii = the radii at which to evaluate the profile
+
+
+ OUTPUTS:
+   profile  = the luminosity profile
+   lum_components = a set of homogenized luminosity components for the components in galfit file.
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
+
+def exponential_profile(components,radii = None):
+
+    #lum_components = copy.deepcopy(components)
+    #Ftot = 2πrs2Σ0q
+    if radii is None:
+        radii = components.radii
+    if radii.unit == components.scale_length.unit:    
+        #Equation 24 in Gentile and Baes
+        profile = components.central_SB/(np.pi*components.scale_length.to(unit.pc).value)\
+            *k0(radii/components.scale_length)
+    else:
+        raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
+    #profile = [x.value for x in profile]
+    return profile
+exponential_profile.__doc__ = f'''
  NAME:
     exponential_luminosity
 
@@ -483,22 +583,36 @@ def hernquist_profile(r, mass, h):
     return profile
 
 
+def sersic(r,effective_luminosity,effective_radius,n):
+    b = get_sersic_b(n) 
+    print(effective_luminosity,b,r,effective_radius)
+    return effective_luminosity*np.exp(b*((r/effective_radius)**(1./n))-1.)
 
-def sersic_luminosity(r,effective_luminosity,effective_radius,n):
+
+def sersic_luminosity(components,radii=None):
     '''sersic function'''
     # as b/kappa should be numerically solved from the function Kapp = 2*gamm(2n,b) we use the astropy function
     #kappa = -1.*(2.*n-1./3.)
     #func = effective_luminosity*np.exp(kappa*((r/effective_radius)**(1./n))-1)
-    model = astro_profiles.Sersic1D(r_eff = effective_radius,amplitude = effective_luminosity,n=n)
+    if radii is None:
+        radii = components.radii
+    if radii.unit == components.R_effective.unit:   
+        L_effective = calculate_L_effective() 
+        profile = sersic(radii, L_effective, components.R_effective,components.sersic_index ) 
+    else:
+        raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
+    #profile = [x.value for x in profile]
+    return profile
+    model = sersic
     func = model(r)
     return func
 def get_integers(n):
     solution= Fraction(n)
     return int(solution.numerator),int(solution.denominator)
     
-def get_sersic_b(components):
+def get_sersic_b(sersic_index):
     # Get the gamma function to calculate b
-    b =  gammaincinv(2. * components.sersic_index, 0.5)    
+    b =  gammaincinv(2. * sersic_index, 0.5)    
     return b
     
   
@@ -516,10 +630,12 @@ def sersic_profile(components,radii = None):
 
     #first we need to derive the integer numbers that make up the  sersic index
     p, q = get_integers(components.sersic_index)
+   
     # The a and b vectors of equation 22
     avect = [x/q for x in range(1,q)]
     bvect = [x/(2.*p) for x in range(1,2*p)]+\
-            [x/(2.*q) for x in range(1,2.*q,2)]
+            [x/(2.*q) for x in range(1,2*q,2)]
+    
     # We need a central Intensity 
     if components.central_SB is None:
         calculate_central_SB(components)
@@ -530,20 +646,26 @@ def sersic_profile(components,radii = None):
         if components.R_effective is None:
             raise RuntimeError(f'We cannot find the effective radius for {components.name}')
     # Obtain the b vector:
-    b = get_sersic_b(components)
-    s = radii/components.R_effective
+    b = get_sersic_b(components.sersic_index)
+    s = radii.value/components.R_effective.value
     
     # front factor # This lacking an 1./R_effective because it cancels with 1./s later on
     const = 2.*components.central_SB*np.sqrt(p*q)/(2*np.pi)**p
-    meijer_input =  (b/(2*p))**(2*p) * s**(2*q)
-    meijer_result = meijerg([[],avect,bvect,[]],meijer_input).evalf()
+   
+    meijer_result = []
+    for s_ind in s:
+        meijer_input =  (b/(2*p))**(2*p) * s_ind**(2*q)
+        meijer_result.append(meijerg([[],avect],[bvect,[]],meijer_input).evalf())
+
+    meijer_result = np.array(meijer_result,dtype=float)
+  
 #print(sympy.functions.special.hyper.meijerg([[], [-1/(k-1)], [0, 0], []], -p/k2).evalf())
 #import mpmath
 #print(mpmath.meijerg([[], [-1/(k-1)], [0, 0], []], -p/k2))
     #This is with 1/rad instead of 1/s as we drooped the R_eff from the const 
-    density_profile =  const/radii*meijer_result
+    density_profile =  const/radii.to(unit.pc).value*meijer_result
     return density_profile
-sersic_luminosity.__doc__ = f'''
+sersic_profile.__doc__ = f'''
 NAME:
     sersic_luminosity
 

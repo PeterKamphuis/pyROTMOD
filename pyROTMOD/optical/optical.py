@@ -12,12 +12,6 @@ from pyROTMOD.support.classes import Density_Profile
 from astropy import units as unit
 
 import warnings
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    import matplotlib
-    matplotlib.use('pdf')
-    import matplotlib.pyplot as plt
-
 
 
 
@@ -203,172 +197,6 @@ organize_profiles.__doc__ =f'''
  NOTE:
 '''
 
-
-def old_plot_profile(in_radii,density, exponential,name='generic',\
-                    output_dir='./',red_chi = None, count = '1'):
-    '''This function makes a simple plot of the optical profiles'''
-    figure = plt.figure(figsize=(10,7.5) , dpi=300, facecolor='w', edgecolor='k')
-    ax = figure.add_subplot(1,1,1)
-    ax.plot(in_radii,density, label='Input Profile')
-    ax.plot(in_radii,exponential, label='Fitted Profile')
-
-
-    #plt.xlim(0,6)
-    ax.set_ylabel(r'Density (M$_\odot$/pc$^2$)')
-    ax.set_xlabel('Radius (kpc)')
-    if red_chi:
-        ax.text(0.5,1.05,f'''Red. $\\chi^{{2}}$ = {red_chi:.4f}''',rotation=0, va='bottom',ha='center', color='black',\
-            bbox=dict(facecolor='white',edgecolor='white',pad=0.5,alpha=0.),\
-            zorder=7, backgroundcolor= 'white',fontdict=dict(weight='bold',size=16),transform=ax.transAxes)
-    ax.set_yscale('log')
-    plt.legend()
-    if int(count) > 1:
-        name = f'{name}_{count}'
-    plt.savefig(f'{output_dir}/{name}_Profiles.png')
-    plt.close()
-
-old_plot_profile.__doc__ =f'''
- NAME:
-     plot_profile(in_radii,density, exponential,name='generic',\
-                        output_dir='./',red_chi = None,bulge =False, count = 1):
- PURPOSE:
-    plot the fitted function over the input profile
-
- CATEGORY:
-    optical
-
- INPUTS:
-    in_radii = radii
-    density = original profile
-    exponential = fitted profile
-
- OPTIONAL INPUTS:
-    name = 'generic'
-        Name of the fitted function to be used in the file name
-
-    output_dir = './'
-        Destination directory for filename
-
-    red_chi = None
-        Reduced Chi square
-
-    count = '1'
-        number of function fitting used in file name
-
- OUTPUTS:
-    png plot
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-    Unspecified
-
- NOTE:
-'''
-'''
-def process_read_profile(optical_profiles,cleaned_components,\
-                    output_dir = './',debug =False, log = None):
-    optical_profiles_out = {}
-    component_out  = []
-    exponen_count = 1
-    hern_count = 1
-    for type in optical_profiles:
-        prof= type.split('_')
-        if prof[0] == 'EXPONENTIAL':
-            if int(prof[1]) > int(exponen_count):
-                exponen_count = int(prof[1])
-        if prof[0] == 'HERNQUIST':
-            if int(prof[1]) > int(hern_count):
-                hern_count = int(prof[1])
-
-    ori_count= 0
-    for i,type in enumerate(optical_profiles):
-        if type == 'RADI':
-            optical_profiles_out[type] = optical_profiles[type]
-        elif optical_profiles[type][1] in ['KM/S']:
-            if type[:3] in ['EXP','DEN','DIS','SER']:
-                cleaned_components[i-1]['Type'] = 'random_disk'
-            else:
-                cleaned_components[i-1]['Type'] = 'random_bulge'
-            optical_profiles_out[type] = optical_profiles[type]
-            component_out.append(cleaned_components[i-1])
-        elif optical_profiles[type][1] in ['M_SOLAR/PC^2'] and \
-            type[:3] in ['EXP','HER','SER','DEN'] :
-            result,profiles,components = fit_profile(optical_profiles['RADI'][2:],optical_profiles[type][2:],\
-                    cleaned_components[i-1],function=type, output_dir = output_dir\
-                    ,debug = debug, log = log)
-            if result == 'process':
-                optical_profiles_out[f'EXPONENTIAL_{exponen_count}'] = \
-                    [f'EXPONENTIAL_{exponen_count}','M_SOLAR/PC^2'] + list(profiles[1])
-                component_out.append(components[1])
-                optical_profiles_out[f'HERNQUIST_{hern_count}'] = \
-                    [f'HERNQUIST_{hern_count}','M_SOLAR/PC^2'] + list(profiles[0])
-                component_out.append(components[0])
-                exponen_count += 1
-                hern_count += 1
-            elif result == 'ok':
-
-                if components['Type'] == 'expdisk':
-                    optical_profiles_out[f'EXPONENTIAL_{exponen_count}'] = \
-                        [f'EXPONENTIAL_{exponen_count}','M_SOLAR/PC^2'] + list(profiles)
-                    exponen_count += 1
-                elif components['Type'] == 'hernquist':
-                    optical_profiles_out[f'HERNQUIST_{hern_count}'] = \
-                        [f'HERNQUIST_{hern_count}','M_SOLAR/PC^2'] + list(profiles)
-                    hern_count += 1
-                else:
-                    optical_profiles_out[type] = optical_profiles[type]
-                component_out.append(components)
-            else:
-                optical_profiles_out[type] = optical_profiles[type]
-                component_out.append(cleaned_components[i-1])
-        elif type[:3] == 'DIS':
-            cleaned_components[i-1]['Type'] = 'random_disk'
-            optical_profiles_out[type] = optical_profiles[type]
-            component_out.append(cleaned_components[i-1])
-        else:
-            print_log(f''PROCESS_READ_PROFILES: We do not know how convert the profile {optical_profiles[type][0]} with the units {optical_profiles[type][1]} to velocities
-'',log)
-            raise InputError(f''PROCESS_READ_PROFILES: We do not know how convert the profile {optical_profiles[type][0]} with the units {optical_profiles[type][1]} to velocities'')
-    return optical_profiles_out,component_out
-process_read_profile.__doc__ ='''
-f'''
- NAME:
-    process_read_profile(optical_profiles,cleaned_components,fit_random = False,\
-                        output_dir = './',debug =False, log = None):
- PURPOSE:
-    Fit the components of the read profile with their specified function
-    in case the densities are read from file and not a galfit file
-
- CATEGORY:
-    optical
-
- INPUTS:
-    optical_profiles = the read input profiles dictionary
-    cleaned_components = list of components to match the profiles
-                        (this runs i-1 compared to the profiles as the radii doesn't have components )
-
-
-
- OPTIONAL INPUTS:
-    fit_random = False
-        if input is a radom density disk (DISK_) do we want to fit it?
-    output_dir = './'
-        standard for directory name where to put comparison plots
-    log = None
-    debug = False
-
- OUTPUTS:
-    updated components list
-
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-    Unspecified
-
- NOTE: For now we can not model the sersic profile into a density distribution so
-       sersic profiles are converted to hernquist or exponential profiles in rotmod
-        but only if 0.75 < n < 1.25 (to exponential) or 3.75 < n < 4.25 (hernquist)
-'''
 def read_galfit(lines,log=None,debug=False):
 
     
@@ -465,7 +293,7 @@ def read_galfit(lines,log=None,debug=False):
                         components[current_name].PA = float(tmp[1])*unit.degree
     
     if len(plate_scale) == 0 or len(mag_zero) == 0:
-        raise BadFileError(f'Your file  is not recognized by pyROTMOD')
+        raise BadFileError(f'Your file {file} is not recognized by pyROTMOD')
     
     for d in components:
         # add radii
