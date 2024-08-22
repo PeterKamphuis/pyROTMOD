@@ -86,6 +86,7 @@ def calculate_R_effective(components):
 
 def calculate_scale_length(components):
     prof_type = determine_density_profile(components.type,components.sersic_index)
+  
     if prof_type == 'exponential':
         # From https://iopscience.iop.org/article/10.1088/0004-6256/139/6/2097/pdf Peng 2010 Eq 7
         components.scale_length = components.R_effective/1.678 
@@ -93,11 +94,8 @@ def calculate_scale_length(components):
         # Eq 38 in https://articles.adsabs.harvard.edu/pdf/1990ApJ...356..359H (Hernquist 1990)
         components.scale_length  = components.R_effective/1.8153 
 
-
-
-
-
-        '''#This was in the old version for the hernquist profile but I do not know where it comes from  
+   
+    '''#This was in the old version for the hernquist profile but I do not know where it comes from  
         elif not components.central_SB is None and not components.total_SB is None:
             print(components.total_SB,components.central_SB)
             central_3d = components.central_SB
@@ -105,7 +103,7 @@ def calculate_scale_length(components):
             print( components.scale_length)
             exit()
 
-        '''
+    '''
 
 def calculate_total_SB(components):
     # If calculated from the profile it can be set in calculate_R_effective as well
@@ -329,7 +327,7 @@ def fit_profile(radii,density,name='EXPONENTIAL_1',\
 
 
     evaluate = determine_profiles_to_fit(type)
-    print(evaluate)
+   
     fitted_dict = {}
     for ev in evaluate:
         try:
@@ -617,3 +615,20 @@ single_fit_profile.__doc__ =f'''
 
  NOTE:
 '''
+
+def cal_truncation_function(radii, truncation_radius):
+    '''Calculate the truncation function following GALFIT Peng 2010'''
+    if truncation_radius[0].unit !=  truncation_radius[1].unit:
+        raise RuntimeError(f'For the truncation radius and the softning length should be the same. ({truncation_radius[0].unit,truncation_radius[1].unit})')
+    B = 2.65-4.98*(truncation_radius[0].value/(truncation_radius[0].value-truncation_radius[1].value))
+    Pn = 0.5*(np.tanh((2-B)*radii.value/truncation_radius[0].value +B)+1)
+    return Pn
+def truncate_density_profile(profile):
+    if not profile.truncation_radius[0] is None:
+        if profile.truncation_radius[0] < profile.radii[-1]:
+            Pn= cal_truncation_function(profile.radii,profile.truncation_radius)
+            print(Pn,profile.values)
+            profile.values =  profile.values*(1.-Pn)
+            for i in range(len(profile.radii)):
+                print(profile.radii[i],Pn[i],profile.values[i],)
+            exit()

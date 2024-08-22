@@ -216,12 +216,13 @@ def get_gas_profiles(cfg,log=None, debug =False):
     RC.distance = cfg.general.distance * unit.Mpc
     RC.band = cfg.RC_Construction.band   
     RC.component = 'All' 
+    RC.extend = RC.radii[-1]   
     RC.check_profile()
     for name in gas_density:
         gas_density[name].component = 'gas'
         gas_density[name].band = cfg.RC_Construction.gas_band  
         gas_density[name].distance = cfg.general.distance * unit.Mpc
-        if  gas_density[name].height == None:
+        if  gas_density[name].height is None:
             if cfg.RC_Construction.gas_scaleheight[3] == 'tir':
                 raise InputError(f'The height for {gas_density[name].name} should have been set by the tirific file but it was not')
             gas_density[name].height = cfg.RC_Construction.gas_scaleheight[0]\
@@ -229,12 +230,20 @@ def get_gas_profiles(cfg,log=None, debug =False):
             if not cfg.RC_Construction.scaleheight[1] is None:
                 gas_density[name].height_error = cfg.RC_Construction.gas_scaleheight[1]\
                     *translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
-        if gas_density[name].height_type == None:
+        if gas_density[name].height_type is None:
             gas_density[name].height_type = cfg.RC_Construction.gas_scaleheight[3]
+        if  gas_density[name].truncation_radius is None:
+            if not cfg.RC_Construction.gas_truncation_radius[0] is None:
+                trunc_rad = cfg.RC_Construction.gas_truncation_radius[0]*\
+                    translate_string_to_unit(cfg.RC_Construction.gas_truncation_radius[2])
+            else: 
+                trunc_rad = None
+            gas_density[name].truncation_radius = \
+                [trunc_rad,cfg.RC_Construction.gas_truncation_radius[1]]
        
         gas_density[name].check_profile()  
         gas_density[name].calculate_attr() 
-    
+        gas_density[name].extend = gas_density[name].radii[-1] 
     return gas_density, RC
 
 

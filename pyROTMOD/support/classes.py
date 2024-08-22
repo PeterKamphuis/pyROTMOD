@@ -4,7 +4,7 @@ from pyROTMOD.support.minor_functions import check_quantity,convertskyangle\
 from pyROTMOD.optical.conversions import mag_to_lum
 from pyROTMOD.optical.profiles import exponential_luminosity,edge_luminosity,\
       sersic_luminosity,fit_profile,calculate_central_SB,calculate_total_SB,\
-      calculate_R_effective,calculate_scale_length
+      calculate_R_effective,calculate_scale_length,truncate_density_profile
 
 import astropy.units as u 
 import numpy as np
@@ -17,13 +17,16 @@ class Component:
             total_SB = None, R_effective = None, scale_length = None,\
             height_type = None, height = None,\
             height_error = None ,sersic_index = None, central_position = None, \
-            axis_ratio = None, PA = None ,background = None, dx = None, dy = None):
+            axis_ratio = None, PA = None ,background = None, dx = None,\
+            dy = None, truncation_radius = [None], extend = None):
             self.name = name
             self.type = type
             self.central_SB = central_SB 
             self.total_SB = total_SB
             self.R_effective = R_effective
+            self.extend = extend
             self.scale_length = scale_length
+            self.truncation_radius = truncation_radius
             self.height_type = height_type
             self.height = height
             self.height_error = height_error
@@ -73,17 +76,19 @@ class Density_Profile(Component):
                               }
       allowed_height_types = ['constant','gaussian','sech_sq','lorentzian','exp','inf_thin']
       def __init__(self, values = None, errors = None, radii = None,
-                  unit = None, radii_unit = None, type = None, height = None,\
+                  type = None, height = None, extend = None,\
                   height_type = None, band = None, \
                   height_error =None ,name =None, MLratio= None, 
-                  distance = None,component = None ):
+                  distance = None,component = None, truncation_radius = [None] ):
             super().__init__(type = type,name = name,\
                   height = height, height_type=height_type,\
-                  height_error = height_error )
+                  height_error = height_error, extend = extend,\
+                  truncation_radius=truncation_radius )
             self.values = values
             self.errors = errors  
             self.profile_type = 'density_profile'
             self.radii = radii
+            
             self.component = component # stars, gas or DM
             self.band = band
             self.distance = distance
@@ -174,7 +179,12 @@ class Density_Profile(Component):
                                           distance=self.distance,band=self.band,MLratio=self.MLratio)
                         setattr(self,attr, value)
             self.fill_empty()
-
+            if not self.truncation_radius[0] is None:
+                  self.truncation_radius[0] = check_quantity(self.truncation_radius[0])
+                  if not isinstance( self.truncation_radius[1],u.quantity.Quantity):
+                        if not  self.scale_length is None:
+                              self.truncation_radius[1] *= self.scale_length
+                  
 
       def check_component(self):
             self.component = check_profile_component(self.component,self.name)
@@ -192,11 +202,15 @@ class Density_Profile(Component):
             self.radii = set_requested_units(self.radii,requested_unit=u.kpc,\
                         distance=self.distance)
      
-   
+      def check_radius(self):
+            self.radii = check_radii(self)
+           
 
     
       def create_profile(self):
+            self.check_radius()
             self.check_attr()
+           
             #Changing the units in the profiles important that you only trust values with quantities
             if self.type in ['expdisk']:
                   self.values = exponential_luminosity(self)
@@ -206,6 +220,7 @@ class Density_Profile(Component):
                   self.values = sersic_luminosity(self)
             if not self.type in ['sky','psf']: 
                   self.check_profile()
+                  truncate_density_profile(self)
      
    
      
@@ -214,8 +229,9 @@ class Rotation_Curve:
       allowed_units = ['KM/S', 'M/S'] 
       allowed_radii_unit = ['ARCSEC','ARCMIN','DEGREE','KPC','PC']
       def __init__(self, values = None, errors = None, radii = None, band=None,\
-                  type = None, name= None,\
-                  distance = None, component= None, fitting_variables = None):
+                  type = None, name= None,truncation_radius =[None],\
+                  distance = None, component= None, fitting_variables = None,\
+                  extend = None):
             self.type = type
             self.profile_type = 'rotation_curve'
             self.band = band
@@ -226,6 +242,8 @@ class Rotation_Curve:
             self.matched_values = None
             self.calculated_values = None
             self.radii = radii
+            self.truncation_radius = truncation_radius
+            self.extend = extend
             self.matched_radii = None
             self.errors = errors
             self.matched_errors = None
@@ -272,7 +290,8 @@ class Rotation_Curve:
       def check_component(self):
             self.component = check_profile_component(self.component,self.name)
             
-
+      def check_radius(self):
+            self.radii = check_radii(self)
 
       #Make sure that if we want a single ml all Gamma parameters are set 
       def check_unified(self,single_stars,single_gas):
@@ -336,6 +355,28 @@ def check_profile_component(component,name):
                   else:
                         component = 'DM'
       return component
+
+
+# check that the radii extend far enough
+def check_radii(self):
+      un = self.radii.unit
+      tmp_radii = list(self.radii.value)
+      if not self.extend is None:
+            max_rad = self.extend
+      elif not self.truncation_radius[0] is None:
+            max_rad = self.truncation_radius[0]
+      else:
+            max_rad = self.radii[-1]
+      if max_rad.unit != self.radii.unit:
+            raise UnitError(f'The unit in the radii ({self.radii.unit}) does not match the extend we compare to ({max_rad.unit})')      
+
+    #And that it covers the full length that we require
+      if self.radii[-1] < max_rad:  
+            ring_width = tmp_radii[-1]-tmp_radii[-2]
+            while tmp_radii[-1]*un < max_rad:
+                  tmp_radii.append(tmp_radii[-1]+ring_width)
+      return np.array(tmp_radii,dtype=float)*un
+
 
 #Has to be here to avoid circular imports
 def set_requested_units(value_in,requested_unit = None,distance = None, \
