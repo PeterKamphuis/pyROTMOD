@@ -521,7 +521,7 @@ Not plotting this profile.
     '''     
     max = np.nanmax(tot_opt['Profile'].value)
     min = np.nanmin(np.array([x for x in tot_opt['Profile'].value if x > 0.]))
-
+   
     plt.ylim(min,max)
     #plt.xlim(0,6)
     plt.ylabel(r'Density (M$_\odot$/pc$^2$)')
@@ -569,6 +569,53 @@ print_log.__doc__ =f'''
     If the log is None messages are printed to the screen.
     This is useful for testing functions.
 '''
+
+
+
+def profiles_to_lines(profiles):
+    '''Trandform the profiles into a set of line by line columns.'''
+    profile_columns = []
+    profile_units = []
+    to_write = []
+    for x in profiles:
+        if not profiles[x].values is None:
+            to_write.append(x)
+            single = [f'{profiles[x].name}_RADII',profiles[x].name]
+            single_units = [translate_string_to_unit(profiles[x].radii.unit,invert=True),
+                            translate_string_to_unit(profiles[x].values.unit,invert=True)]
+            if not profiles[x].errors is None:
+                single.append(f'{profiles[x].name}_ERR')
+                single_units.append(translate_string_to_unit(profiles[x].values.unit,invert=True))
+            profile_columns = profile_columns+single
+            profile_units = profile_units+single_units
+    lines = [' '.join([f'{y:>15s}' for y in profile_columns])]
+    lines.append(' '.join([f'{y:>15s}' for y in profile_units]))   
+    count = 0
+    finished = False
+ 
+    while not finished:
+        finished  = True
+        line = []
+        for x in to_write:
+            single = []
+            if len(profiles[x].values) > count:
+                single = [f'{profiles[x].radii[count].value:>15.2f}',\
+                          f'{profiles[x].values[count].value:>15.2f}']
+                if not profiles[x].errors is None:
+                    single.append(f'{profiles[x].errors[count].value:>15.2f}')
+            else:
+                single = [f'{"NaN":>15s}',f'{"NaN":>15s}']
+                if not profiles[x].errors is None:
+                    single.append(f'{"NaN":>15s}')
+            line = line+single
+      
+        if np.all([x.strip() == 'NaN' for x in line]):
+            pass
+        else:
+            finished = False
+            count += 1
+            lines.append(' '.join(line))
+    return lines
 
 def propagate_mean_error(errors):
     n = len(errors)
@@ -663,10 +710,7 @@ def translate_string_to_unit(input,invert=False):
     else:
         return output
 
-def zero_if_none(val):
-    if val is None:
-        val = 0.
-    return val
+
 def write_header(profiles,
         output_dir= './', file= 'You_Should_Set_A_File.txt'):
 
@@ -724,52 +768,6 @@ write_header.__doc__ =f'''
 
 '''
 
-
-def profiles_to_lines(profiles):
-    
-    profile_columns = []
-    profile_units = []
-    to_write = []
-    for x in profiles:
-        if not profiles[x].values is None:
-            to_write.append(x)
-            single = [f'{profiles[x].name}_RADII',profiles[x].name]
-            single_units = [translate_string_to_unit(profiles[x].radii.unit,invert=True),
-                            translate_string_to_unit(profiles[x].values.unit,invert=True)]
-            if not profiles[x].errors is None:
-                single.append(f'{profiles[x].name}_ERR')
-                single_units.append(translate_string_to_unit(profiles[x].values.unit,invert=True))
-            profile_columns = profile_columns+single
-            profile_units = profile_units+single_units
-    print(profile_columns,profiles)
-    lines = [' '.join([f'{y:>15s}' for y in profile_columns])]
-    lines.append(' '.join([f'{y:>15s}' for y in profile_units]))   
-    count = 0
-    finished = False
- 
-    while not finished:
-        finished  = True
-        line = []
-        for x in to_write:
-            single = []
-            if len(profiles[x].values) > count:
-                single = [f'{profiles[x].radii[count].value:>15.2f}',\
-                          f'{profiles[x].values[count].value:>15.2f}']
-                if not profiles[x].errors is None:
-                    single.append(f'{profiles[x].errors[count].value:>15.2f}')
-            else:
-                single = [f'{"NaN":>15s}',f'{"NaN":>15s}']
-                if not profiles[x].errors is None:
-                    single.append(f'{"NaN":>15s}')
-            line = line+single
-      
-        if np.all([x.strip() == 'NaN' for x in line]):
-            pass
-        else:
-            finished = False
-            count += 1
-            lines.append(' '.join(line))
-    return lines
   
 def write_profiles(gas_profile_in,total_rc,optical_profiles = None,output_dir= './',\
              log =None, filename = None,optical_filename='Optical_Mass_Densities.txt'):
@@ -792,3 +790,7 @@ def write_profiles(gas_profile_in,total_rc,optical_profiles = None,output_dir= '
                     file.write(f'{line} \n')
        
      
+def zero_if_none(val):
+    if val is None:
+        val = 0.
+    return val

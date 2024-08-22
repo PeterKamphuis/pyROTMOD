@@ -31,8 +31,12 @@ class RCConstruction:
     # 0 for a bulge profile will be a spherical bulge
     # units can be 'PC', "KPC', "ARCSEC', 'ARCMIN', 'DEGREE'
     scaleheight: List = field(default_factory=lambda: [0., None, 'KPC', 'inf_thin']) 
+    # truncation radius at which point the profile will gaussian tapered to 0.
+    # given as radius, softening_length as fraction of scalelength, unit
+    truncation_radius: List = field(default_factory=lambda: [None, 0.2,  'KPC']) 
     # Same for gas, if read from def file this takes precedence
     gas_scaleheight: List = field(default_factory=lambda: [0., None,  'KPC', 'inf_thin']) 
+    gas_truncation_radius: List = field(default_factory=lambda: [None, 0.2, 'KPC']) 
     axis_ratio: float = 1.
     exposure_time: float = 1.
     mass_to_light_ratio: float = 1.0

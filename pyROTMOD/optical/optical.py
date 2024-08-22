@@ -17,7 +17,7 @@ import warnings
 
 
 
-def get_optical_profiles(cfg,log=None):
+def get_optical_profiles(cfg,extend = None,log=None):
    
     #filename,distance = 0.*unit.Mpc,band = 'SPITZER3.6',exposure_time=1.,\
     #                        MLRatio = 0.6, log =None,debug=False, scale_height=None,
@@ -63,16 +63,25 @@ def get_optical_profiles(cfg,log=None):
         optical_profiles[name].MLratio = MLRatio  
         optical_profiles[name].component = 'stars' 
      
-        if optical_profiles[name].height == None:
+        if optical_profiles[name].height is None:
             optical_profiles[name].height = cfg.RC_Construction.scaleheight[0]\
                 *translate_string_to_unit(cfg.RC_Construction.scaleheight[2])
             #optical_profiles[name].height_unit = cfg.RC_Construction.scaleheight[2]
             if not cfg.RC_Construction.scaleheight[1] is None:
                 optical_profiles[name].height_error = cfg.RC_Construction.scaleheight[1]\
                     *translate_string_to_unit(cfg.RC_Construction.scaleheight[2])
-        if optical_profiles[name].height_type == None:
+        if optical_profiles[name].height_type is None:
             optical_profiles[name].height_type = cfg.RC_Construction.scaleheight[3]
-
+        if optical_profiles[name].truncation_radius[0] is None:
+            if not cfg.RC_Construction.truncation_radius[0] is None:
+                trunc_rad = cfg.RC_Construction.truncation_radius[0]*\
+                    translate_string_to_unit(cfg.RC_Construction.truncation_radius[2])
+            else: 
+                trunc_rad = None
+            optical_profiles[name].truncation_radius = \
+                [trunc_rad, cfg.RC_Construction.truncation_radius[1]]
+          
+    
         if galfit_file:
     
             #for the expdisk profiles  we apparently need to deproject the totalSB
@@ -81,13 +90,21 @@ def get_optical_profiles(cfg,log=None):
                                     band =optical_profiles[name].band , distance=distance)
                  # and transform to a face on total magnitude (where does this come from?)
                 optical_profiles[name].total_SB =  IntLum/optical_profiles[name].axis_ratio 
-            optical_profiles[name].create_profile()
+            
+            if not extend is None:
+                optical_profiles[name].extend = extend
+            optical_profiles[name].check_radius()
+            #This should be laste
+            optical_profiles[name].create_profile()    
+            
         else:
             optical_profiles[name].calculate_components()
+            optical_profiles[name].extend = optical_profiles[name].radii[-1]
     
   
     print_log(f"We found the following optical components:\n",log,debug=cfg.general.debug)
     for name in optical_profiles:
+        
         # Components are returned as [type,integrated magnitude,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]
         if optical_profiles[name].type in ['expdisk','edgedisk']:
             print_log(f'''We have found an exponential disk with the following values.
@@ -150,7 +167,7 @@ get_optical_profiles.__doc__ =f'''
  NOTE:
 '''
 
-def organize_profiles(profiles):
+def oldorganize_profiles(profiles):
     organized = {}
     all_radii = False
     if 'RADI' in [x for x in profiles]:
@@ -169,7 +186,7 @@ def organize_profiles(profiles):
                                         profiles[f'{type}_RADI'][2:]],dtype=float)
                 organized[type]['Radii_Unit'] = profiles[f'{type}_RADI'][1]
 
-organize_profiles.__doc__ =f'''
+oldorganize_profiles.__doc__ =f'''
  NAME:
     organize_profiles
 
@@ -213,7 +230,7 @@ def read_galfit(lines,log=None,debug=False):
     plate_scale = []
     read_component = False
     components = {}
-    max_radius = 0.
+    max_radius = 0.*unit.arcsec
     for line in lines:
         tmp = [x.strip().lower() for x in line.split()]
 
@@ -266,8 +283,8 @@ def read_galfit(lines,log=None,debug=False):
                         if current_component in ['sersic','devauc']:
                             components[current_name].R_effective = float(tmp[1])\
                             *np.mean(plate_scale)*unit.arcsec
-                            if max_radius < 5* float(tmp[1]): 
-                                max_radius = 5 * float(tmp[1])
+                            if max_radius < 5* components[current_name].R_effective: 
+                                max_radius = 5 * components[current_name].R_effective
                         if current_component in ['edgedisk']:
                             components[current_name].scale_height = float(tmp[1])\
                                 *np.mean(plate_scale)*unit.arcsec
@@ -276,17 +293,18 @@ def read_galfit(lines,log=None,debug=False):
                             components[current_name].scale_length = float(tmp[1])\
                                 *np.mean(plate_scale)*unit.arcsec
                             #components[current_name].scale_height = 0.*unit.arcsec
-                            if max_radius < 10 * float(tmp[1]): 
-                                max_radius = 10 * float(tmp[1])
+                            if max_radius < 10*components[current_name].scale_length: 
+                                max_radius = 10 * components[current_name].scale_length
                     elif tmp[0] == '5)'  and\
                         current_component in ['sersic','edgedisk','devauc']:
                         if current_component in ['sersic','devauc']:
                             components[current_name].sersic_index = float(tmp[1])
                         elif current_component in ['edgedisk']:
-                            if max_radius < 10 * float(tmp[1]): 
-                                max_radius = 10 * float(tmp[1])
                             components[current_name].scale_length = float(tmp[1])\
                                 *np.mean(plate_scale)*unit.arcsec
+                            if max_radius < 10*components[current_name].scale_length: 
+                                max_radius = 10 * components[current_name].scale_length
+                            
                     elif tmp[0] == '9)' and current_component in ['expdisk','sersic','devauc']:
                         components[current_name].axis_ratio = float(tmp[1])
                     elif tmp[0] == '10)':
@@ -297,15 +315,17 @@ def read_galfit(lines,log=None,debug=False):
     
     for d in components:
         # add radii
-        components[d].radii= np.linspace(0,max_radius,int(max_radius/2.))*\
-            np.mean(plate_scale)*unit.arcsec # in arcsec
-        components[d].radii_unit = unit.arcsec
+        components[d].radii= np.linspace(0,max_radius.value,int(max_radius.value))*\
+            max_radius.unit
+              
+       
+        #components[d].radii_unit = unit.arcsec
     
 
 
     galfit_info = {}
-    galfit_info['radii'] = np.linspace(0,max_radius,int(max_radius/2.))*\
-        np.mean(plate_scale)*unit.arcsec # in arcsec
+    galfit_info['radii'] = np.linspace(0,max_radius.value,int(max_radius.value/2.))*\
+            max_radius.unit# in arcsec
     galfit_info['plate_scale'] = plate_scale*unit.arcsec #[arcsec per pixel]
     galfit_info['magnitude_zero'] = mag_zero*unit.mag
 
