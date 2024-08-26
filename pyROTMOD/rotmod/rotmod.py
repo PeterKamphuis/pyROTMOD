@@ -8,7 +8,8 @@ from astropy import units as unit
 from pyROTMOD.support.minor_functions import integrate_surface_density,\
                         print_log,set_limits,plot_profiles,write_profiles
 from pyROTMOD.support.major_functions import read_columns                     
-from pyROTMOD.optical.optical import get_optical_profiles
+from pyROTMOD.optical.optical import get_optical_profiles,convert_luminosity_profiles
+from pyROTMOD.optical.profiles import calc_truncation_function
 from pyROTMOD.gas.gas import get_gas_profiles
 
 from pyROTMOD.support.errors import InputError, UnitError, RunTimeError
@@ -35,8 +36,7 @@ The axis ratio is {Density_In.axis_ratio}.
 ''' ,log,debug=debug)
         RC_radii = check_radius(Density_In,RC_Out)
        
-        RC = hernquist_parameter_RC(RC_radii,Density_In,log = log, \
-                    truncation_radius = RC_Out.truncation_radius )
+        RC = hernquist_parameter_RC(RC_radii,Density_In,log = log,debug=debug)
         RC_Out.radii = RC_radii
         RC_Out.values = RC
 
@@ -77,7 +77,8 @@ def convert_dens_rc( optical_profiles, gas_profiles, cfg = None,\
         RCs[name] = Rotation_Curve(name=profiles[name].name, distance = profiles[name].distance,\
             band= profiles[name].band, type=profiles[name].type,\
             component=profiles[name].component, truncation_radius =\
-            profiles[name].truncation_radius )
+            profiles[name].truncation_radius,softening_length=\
+            profiles[name].softening_length )
         
         if profiles[name].type in ['expdisk','edgedisk']:
             print_log(f'We have detected the input to be an disk',log)
@@ -192,8 +193,7 @@ def random_RC(Density_In,RC_Out,log=None,debug=None):
     #If the RC has already radii we assume we want it on that radii
     RC_radii = check_radius(Density_In,RC_Out)
 
-    RC = random_density_disk(RC_radii,Density_In,truncation_radius =\
-        RC_Out.truncation_radius, log=log, debug=debug)
+    RC = random_density_disk(RC_radii,Density_In, log=log, debug=debug)
     RC_Out.radii = RC_radii
     RC_Out.values = RC
     
@@ -222,9 +222,7 @@ def check_height(Density_In):
     return sech
 
 def exponential_RC(Density_In,RC_Out,log=None,debug=None):
-    # All the checks on the components should be done previously so if we are missing something
-    # this should just fail
-    sech = check_height(Density_In)
+   
     #If the RC has already radii we assume we want it on that radii
     RC_radii = check_radius(Density_In,RC_Out)
     print_log(f'''We have found an exponential disk with the following values.
@@ -232,8 +230,7 @@ The total mass of the disk is {Density_In.total_SB} a central mass density {Dens
 The scale length is {Density_In.scale_length} and the scale height {Density_In.height}.
 The axis ratio is {Density_In.axis_ratio}.
 ''' ,log,debug=debug)
-    RC = exponential_parameter_RC(RC_radii,Density_In,log = log,sech = sech, \
-                    truncation_radius = RC_Out.truncation_radius )
+    RC = exponential_parameter_RC(RC_radii,Density_In,log = log)
     RC_Out.radii = RC_radii
     RC_Out.values = RC
    
@@ -282,21 +279,24 @@ exponential_RC.__doc__ =f'''
 '''
 
 
-def apply_truncation(RC, radii, truncation_radius, Mass ):
+def apply_truncation(RC, radii, parameters ):
     # This is an approximation of the implemantation of a truncation radius
-    if truncation_radius[0] < radii[-1]:
+    if parameters.truncation_radius < radii[-1]:
      
-        if truncation_radius[0].unit != truncation_radius[1].unit:
+        if  parameters.truncation_radius.unit !=  parameters.softening_length.unit:
             raise RunTimeError(f' The units in the truncation radius do not match. Most likely the scale length value is not yet converted.')
-        mix =  ( radii - truncation_radius[0].value) / truncation_radius[1].value
-        mix[mix > 1.] = 1.
-        mix[mix < 0.] = 0.
-        RC =RC*(1-mix)+np.sqrt(c.Gsol*float(Mass)/(radii))*mix
-
+        mix = calc_truncation_function(radii, parameters.truncation_radius,\
+            parameters.softening_length)
+        index = np.where(radii != 0.)
+        RC[index] = RC[index]*(1.-mix[index])+np.sqrt(c.Grotmod*parameters.total_SB/(radii[index]))*mix[index]
+        index = np.where(radii == 0.)
+        RC[index] = 0.
     return RC
 
-def exponential_parameter_RC(radii,parameters, sech =False, log= False,\
-        truncation_radius = [None], debug=False):
+def exponential_parameter_RC(radii,parameters,  log= False, debug=False):
+    # All the checks on the components should be done previously so if we are missing something
+    # this should just fail
+    sech = check_height(parameters)
     #print(f'This is the total mass in the parameterized exponential disk {float(parameters[1]):.2e}')
   
     if parameters.height_type != 'inf_thin':
@@ -312,14 +312,14 @@ def exponential_parameter_RC(radii,parameters, sech =False, log= False,\
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         RC = [exp_disk_potential.vcirc(x*radii.unit) for x in radii.value]
-    if not truncation_radius[0] is None:
-        RC = apply_truncation(RC,radii,truncation_radius,parameters.total_SB)
-       
+  
     if np.isnan(RC[0]) and radii[0] == 0:
         RC[0] = 0.
     if RC[0] <= 0.:
         RC[0] = 0.
     RC =np.array(RC,dtype=float)*unit.km/unit.s
+    if not parameters.truncation_radius is None:
+        RC = apply_truncation(RC,radii,parameters)
     return RC
 
 exponential_parameter_RC.__doc__ =f'''
@@ -388,8 +388,7 @@ def get_rotmod_scalelength(radii,density):
     dens = np.exp((sy*sxx-sx*sxy)/det)
     return h,dens
 
-def hernquist_parameter_RC(radii,parameters, truncation_radius = [None],\
-                           log= False, debug=False):
+def hernquist_parameter_RC(radii,parameters,log= False, debug=False):
     '''This assumes a Hernquist potential where the scale length should correspond to hernquist scale length'''
     #The two is specified in https://docs.galpy.org/en/latest/reference/potentialhernquist.html?highlight=hernquist
     #It is assumed this hold with the the triaxial potential as well.
@@ -398,16 +397,15 @@ def hernquist_parameter_RC(radii,parameters, truncation_radius = [None],\
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         RC = [float(bulge_potential.vcirc(x*radii.unit)) for x in radii.value]
-
-    if not truncation_radius[0] is None:
-        RC = apply_truncation(RC,radii,truncation_radius,parameters.total_SB)
- 
     if np.isnan(RC[0]) and radii[0] == 0:
         RC[0] = 0.
     if RC[0] <= 0.:
         RC[0] = 0.
-    return np.array(RC,dtype=float)*unit.km/unit.s
-
+    RC = np.array(RC,dtype=float)*unit.km/unit.s
+    if not parameters.truncation_radius is None:
+        RC = apply_truncation(RC,radii,parameters)
+    return RC
+ 
 hernquist_parameter_RC.__doc__ =f'''
  NAME:
     hernquist_parameter__RC
@@ -522,19 +520,24 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
 ''' ,log,screen= True)
     
 
-  
+   
     ########################################## Make a plot with the extracted profiles ######################3
     plot_profiles(gas_profiles,optical_profiles,\
         output_dir = cfg.general.output_dir, log=log)
+    
+    ########################################## Convert the luminosity  profiles to density profiles  ######################3
+    density_profiles = convert_luminosity_profiles(optical_profiles)
    
-
+    ########################################## Make a plot with the desnity profiles ######################3
+    plot_profiles(gas_profiles,density_profiles,\
+        output_dir = cfg.general.output_dir, log=log)
     ########################################## Make a nice file with all the different components as a column ######################3
-    write_profiles(gas_profiles,total_rc,optical_profiles= optical_profiles,\
+    write_profiles(gas_profiles,total_rc,optical_profiles= density_profiles,\
         output_dir = cfg.general.output_dir, log=log, filename='Gas_Mass_Density_And_RC.txt')
  
     ######################################### Convert to Rotation curves ################################################
    
-    derived_RCs = convert_dens_rc(optical_profiles, gas_profiles, cfg=cfg,\
+    derived_RCs = convert_dens_rc(density_profiles, gas_profiles, cfg=cfg,\
             output_dir=cfg.general.output_dir)
    
     write_profiles(derived_RCs,total_rc,\
@@ -543,7 +546,7 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
 
     return derived_RCs, total_rc
 
-def random_density_disk(radii,density_profile,truncation_radius = None, debug= None,log= None):
+def random_density_disk(radii,density_profile, debug= None,log= None):
     print_log(f'''We are calculating the random disk with:
 h_z = {density_profile.height} and vertical mode = {density_profile.height_type}
 ''',log)
@@ -566,16 +569,19 @@ h_z = {density_profile.height} and vertical mode = {density_profile.height_type}
         raise UnitError(f'The scale height is not in kpc, it should be by now. (height = {density_profile.height}, name = {density_profile.name})')
     h_z = density_profile.height.value
     h_r,dens0 = get_rotmod_scalelength(radii,density)
-    if truncation_radius[0] is None:
+    if density_profile.truncation_radius is None:
         rcut = radii[-1]+5.
     else:
-        if truncation_radius[0].unit != rad_unit:
+        if density_profile.truncation_radius[0].unit != rad_unit:
             raise UnitError(f'Your truncation radius has to be in kpc for a random density disk') 
-        rcut = truncation_radius[0].value
-    if truncation_radius[1] is None:
+        rcut = density_profile.truncation_radius.value
+    if density_profile.softening_length is None:
         delta = 0.2*h_r
     else:
-        delta = truncation_radius[1]*h_r
+        if density_profile.softening_length.unit == unit.dimensionless_unscaled:
+            delta = density_profile.softening_length*h_r
+        else:
+            delta = density_profile.softening_length
     RC = []
    
     h_z1 = set_limits(h_z,0.1*h_r,0.3*h_r)

@@ -34,9 +34,12 @@ class NFW_config:
   # if V and ML are in a potential it is assumed that this is an 
   # alternative gravity where no additional RC is required beyond the baryonic RCs
 
-# Where does this come from?
+# This is the formula as stated in the ROTMASS documentation of Gipsy
 def MOND_CLASSIC():
     r, V,ML, a0 = symbols('r V ML a0')
+    #Vt(r)=2*r*a/(mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb))
+    #with default: a=3734
+    #V**2 = ML*V**2*sqrt(1+sqrt(1+(2*r*a/(ML*V**2))**2))/sqrt(2)  
     #Vt(r)=sqrt((mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb))*sqrt(1+sqrt(1+(2*r*a/(mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb)))**2))/sqrt(2))
     mond = sqrt(ML*V*abs(V)*sqrt(1+sqrt(1+(2*r*(a0*3.0856776e11)/(ML*V*abs(V)))**2))/sqrt(2)) 
     #The factor 3.08e11 is to convert from cm/s**2 to km**2/(s**2*kpc)

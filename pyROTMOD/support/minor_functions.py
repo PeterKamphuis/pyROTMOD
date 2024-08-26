@@ -67,7 +67,19 @@ def check_quantity(value):
             raise UnitError(f'This value {value} is unitless it shouldnt be')
     return value
   
-
+def isquantity(value):
+    verdict= True
+    if not isinstance(value,u.quantity.Quantity):
+        if isiterable(value):
+        #if it is an iterable we make sure it it is an numpy array
+            if not isinstance(value,np.ndarray) and not value is None:
+                value = quantity_array(value)
+            else:
+                verdict = False
+        else:
+            verdict = False
+       
+    return verdict
 
 
 def create_directory(directory,base_directory,debug=False):
@@ -113,6 +125,10 @@ create_directory.__doc__ =f'''
 
  NOTE:
 '''
+
+
+
+
 
 
 # function for converting kpc to arcsec and vice versa
@@ -307,20 +323,20 @@ def get_correct_label(par,no):
                          'Gamma_gas':r'$\mathrm{M/L_{gas}}$',
                          'ML_stellar':r'$\mathrm{M/L_{optical}}$',
                          'ML_gas':r'$\mathrm{M/L_{gas}}$',
-                         'RHO': r'$\mathrm{\rho_{c}\times 10^{-3}(M_{\odot}/pc^{3})}$',
-                         'RHO0': r'$\mathrm{\rho_{c}\times 10^{-3}(M_{\odot}/pc^{3})}$',
-                         'R_C': r'$ \mathrm{R_{c}(kpc)}$',
+                         'RHO': r'$\mathrm{\rho_{c}\times 10^{-3}\,\, (M_{\odot} \,\, pc^{-3})}$',
+                         'RHO0': r'$\mathrm{\rho_{c}\times 10^{-3}\,\, (M_{\odot} \,\, pc^{-3})}$',
+                         'R_C': r'$ \mathrm{R_{c}\,\, (kpc)}$',
                          'C':r'$\mathrm{c}$',
-                         'R200':r'$ \mathrm{R_{200}(kpc)}$',
-                         'm': r'$\mathrm{Axion Mass\times 10^{-23}(eV)}$',
-                         'central': r'$\mathrm{Central SBR} (M_{\odot}/pc^{2})$',
-                         'h': r'$\mathrm{Scale length} (kpc)$',
-                         'mass': r'$\mathrm{Total Mass} (M_{\odot})$',
-                         'hern_length': r'$\mathrm{Hernquist length} (kpc)$',
-                         'effective_luminosity': r'$\mathrm{L_{e}} (M_{\odot})$' ,
+                         'R200':r'$ \mathrm{R_{200}\,\, (kpc)}$',
+                         'm': r'$\mathrm{Axion\,\,  Mass\times 10^{-23}\,\, (eV)}$',
+                         'central': r'$\mathrm{Central\,\, SBR\,\,  (M_{\odot}\,\, pc^{-2})}$',
+                         'h': r'$\mathrm{Scale\,\,  length\,\,  (kpc)}$',
+                         'mass': r'$\mathrm{Total\,\,  Mass \,\, (M_{\odot})}$',
+                         'hern_length': r'$\mathrm{Hernquist\,\, length\,\,  (kpc)}$',
+                         'effective_luminosity': r'$\mathrm{L_{e}\,\,  (M_{\odot})}$' ,
                          'effective_radius': r'$\mathrm{R_{e}} (kpc)$' ,
                          'n': r'Sersic Index',
-                         'a0': r'$\mathrm{a_{0}\times 10^{-8}  (cm s^{-2})}$'
+                         'a0': r'$\mathrm{a_{0}\times 10^{-8}\,\,   (cm\,\,  s^{-2})}$'
                          }
     if par in label_dictionary:
         if par[:5] == 'Gamma':
@@ -334,26 +350,6 @@ Unfortunately we can not find it in the label dictionary.''')
     
     return string   
 
-def get_effective_radius_old(radii,density,debug=False,log= None):
-
-   
-    mass,ringarea = integrate_surface_density(radii,density)
-    Cuma_prof = []
-    for i,rad in enumerate(radii):
-        if i == 0:
-            Cuma_prof.append(ringarea[i]*density[i])
-        else:
-            new = Cuma_prof[-1]+ringarea[i]*density[i]
-            Cuma_prof.append(new)
-    #now to get the half of the total mass.
-    if Cuma_prof[0] > mass/2.:
-        print_log(f'''Your effective radius of the bulge is smaller than the first ring.
-You should improve the resolution of the bulge profile.''',log)
-        out_rad = radii[0]
-    else:
-        out_rad = radii[np.where(Cuma_prof<mass/2.)[-1][-1]]
-
-    return mass,out_rad
 
 
 
@@ -439,8 +435,9 @@ isiterable.__doc__ =f'''
 
 
 def plot_individual_profile(profile,max,log = None):
-    if profile.values.unit != u.Msun/u.pc**2:
-        print_log(f'''The units of {profile.name} are not M_SOLAR/PC^2.
+    if not profile.values.unit in [u.Lsun/u.pc**2,u.Msun/u.pc**3] :
+        print_log(f'''The units of {profile.name} are not L_SOLAR/PC^2 OR M_SOLAR/PC^3 .
+Unit = {profile.values.unit}                  
 Not plotting this profile.
 ''',log )
         return max,False
@@ -480,55 +477,94 @@ def calculate_total_profile(total,profile):
                         zip(add_profile,total['Profile'].value)],type=float)*total['Profile'].unit
     return total
 
-    
-
+def get_accepted_unit(search_dictionary,attr, acceptable_units = \
+                      [u.Lsun/u.pc**2,u.Msun/u.pc**3]):
+    funit = None
+    iters = iter(search_dictionary)
+    while funit is None:
+        try:
+            check = next(iters)
+        except StopIteration:
+            break
+        values  = getattr(search_dictionary[check],attr)
+          
+        if isquantity(values):
+            funit = values.unit
+          
+        else:
+            continue
+     
+        if not funit in acceptable_units:
+            funit = None
+    return funit
 def plot_profiles(gas_profiles,optical_profiles, log= None\
                 ,output_dir = './',input_profiles = None):
     '''This function makes a simple plot of the optical profiles'''    
     max = 0.
-    
+    # From the optical profiles we select the first acceptable units and make sure that all 
+    # other profiles adhere to these unit. As they are not coupled it is possible that 
+    # no profile adheres to the combination of units
+    first_value_unit = get_accepted_unit(optical_profiles,'values')
+    first_radii_unit = get_accepted_unit(optical_profiles,'radii',\
+        acceptable_units=[u.pc,u.kpc,u.Mpc])
+    if first_value_unit is None:
+        print_log(f'''We cannot find acceptable units in the optical profiles.
+The units are not L_SOLAR/PC^2 or M_SOLAR/PC^3 for any profile.
+This is not acceptable for the output
+''',log )
+        raise RunTimeError("No proper units")    
+    if first_radii_unit is None:
+        print_log(f'''We cannot find acceptable units in the radii in optical profiles.
+The units are not PC, KPC or MPC for any profile.
+This is not acceptable for the output
+''',log )
+        raise RunTimeError("No proper units")
     for name in gas_profiles:
-        if gas_profiles[name].values.unit == u.Msun/u.pc**2 and \
-            gas_profiles[name].radii.unit == u.kpc:
+        if gas_profiles[name].values.unit == first_value_unit and\
+            gas_profiles[name].radii.unit == first_radii_unit:
             plt.plot(gas_profiles[name].radii.value,gas_profiles[name].values.value,\
                      label = gas_profiles[name].name )
             max = np.nanmax(gas_profiles[name].values)
         else:
-            print_log(f'''The units of {gas_profiles[name]} are not M_SOLAR/PC^2 or the radii are not in KPC.
+            print_log(f'''The profile units of {gas_profiles[name].name} are not {first_value_unit} (unit  = {gas_profiles[name].values.unit})
+or the radii units are   not {first_radii_unit} (unit  = {gas_profiles[name].radii.unit})           
 Not plotting this profile.
 ''',log )
     #This is only used here so do not make it a Density Profile        
     tot_opt ={'Profile': [],'Radii': []}
     for x in optical_profiles:
-        if optical_profiles[x].name.split('_')[0] != 'SKY':
+        if optical_profiles[x].name.split('_')[0] == 'SKY':
+            continue
+        if optical_profiles[x].values.unit == first_value_unit and\
+            optical_profiles[x].radii.unit == first_radii_unit:
             max,succes = plot_individual_profile(optical_profiles[x],max)
+            if succes:
+                tot_opt = calculate_total_profile(tot_opt,optical_profiles[x])
+            
         else:
-            succes=False
-        if succes:
-            tot_opt = calculate_total_profile(tot_opt,optical_profiles[x])
+            print_log(f'''The profile units of {optical_profiles[x].name} are not {first_value_unit} (unit  = {optical_profiles[x].values.unit})
+or the radii units are   not {first_radii_unit} (unit  = {optical_profiles[x].radii.unit})           
+Not plotting this profile.
+''',log )
+          
        
     plt.plot(tot_opt['Radii'],tot_opt['Profile'], label='Total Optical')
-    '''
-    if not (input_profiles  is None):
-        for x in input_profiles:
-            if x != 'RADI':
-                if input_profiles[x][1] != 'M_SOLAR/PC^2':
-                    print_log(f''The units of {input_profiles[x][0]} are not M_SOLAR/PC^2.
-Not plotting this profile.
-'',log )
-                    continue
-                plt.plot(radii[2:],np.array( input_profiles[x][2:]), label =  input_profiles[x][0])
-    '''     
+    
     max = np.nanmax(tot_opt['Profile'].value)
     min = np.nanmin(np.array([x for x in tot_opt['Profile'].value if x > 0.]))
    
     plt.ylim(min,max)
     #plt.xlim(0,6)
-    plt.ylabel(r'Density (M$_\odot$/pc$^2$)')
-    plt.xlabel('Radius (kpc)')
+    plt.ylabel(select_axis_label(first_value_unit))
+    plt.xlabel(select_axis_label(first_radii_unit))    
+   
+
     plt.yscale('log')
     plt.legend()
-    plt.savefig(f'{output_dir}/Mass_Profiles.png')
+    if first_value_unit == u.Lsun/u.pc**2:
+        plt.savefig(f'{output_dir}/Surface_Brightness_Profiles.png')
+    else:
+        plt.savefig(f'{output_dir}/Density_Profiles.png')
     plt.close()
 
 def print_log(log_statement,log, screen = True,debug = False):
@@ -679,7 +715,30 @@ def strip_unit(value, requested_unit = None, variable_type = None):
     else:
         raise RunTimeError(f'The value {value} does not have to unit {requested_unit}')
 
-   
+'select a plotting label based on a unit'
+def select_axis_label(input):
+    #If the input is not a string we need to convert
+    if not isinstance(input,str):
+        input = translate_string_to_unit(input,invert=True)
+     
+    translation_dict = {'ARCSEC': r'Radius (")',
+                        'ARCMIN': r"Radius (')",
+                        'DEGREE': r"$\mathrm{Radius\,\,  (^{\circ})}$",
+                        'MPC': r'Radius (Mpc)',
+                        'KPC': r'Radius (kpc)',
+                        'PC': r'Radius (pc)',
+                        'KM/S': r'$\mathrm{Velocity\,\,  (km\,\,  s^{-1})}$',
+                        'M/S': r'$\mathrm{Velocity\,\,  (m\,\,  s^{-1})}$',
+                        'M_SOLAR': r'Mass $\mathrm{(M_{\odot})}$',
+                        'L_SOLAR': r'Luminosty $\mathrm{(L_{\odot})}$',
+                        'L_SOLAR/PC^2': r'$\mathrm{Surface\,\, Brightness\,\, (L_{\odot}\,\, pc^{-2})}$',
+                        'M_SOLAR/PC^2': r'$\mathrm{Surface\,\,  Density (M_{\odot}\,\,  pc^{-2})}$',
+                        'MAG/ARCSEC^2':r'$\mathrm{Surface\,\,  Brightness (Mag\,\,  arsec^{-2})}$',
+                        'L_SOLAR/PC^3': r'$\mathrm{Luminosity\,\,  Density (L_{\odot}\,\,  pc^{-3})}$',
+                        'M_SOLAR/PC^3': r'$\mathrm{Density\,\,  (M_{\odot}\,\,  pc^{-3})}$',
+                        'SomethingIsWrong': None}
+    return translation_dict[input]
+
 '''Translate strings to astropy units and vice versa (invert =True)'''
 def translate_string_to_unit(input,invert=False):
     translation_dict = {'ARCSEC': u.arcsec,
@@ -693,6 +752,8 @@ def translate_string_to_unit(input,invert=False):
                         'L_SOLAR': u.Lsun,
                         'L_SOLAR/PC^2': u.Lsun/u.pc**2,
                         'M_SOLAR/PC^2': u.Msun/u.pc**2,
+                        'L_SOLAR/PC^3': u.Lsun/u.pc**3,
+                        'M_SOLAR/PC^3': u.Msun/u.pc**3,
                         'MAG/ARCSEC^2': u.mag/u.arcsec**2,
                         'SomethingIsWrong': None}
     output =False

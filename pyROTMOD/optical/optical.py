@@ -1,21 +1,31 @@
 # -*- coding: future_fstrings -*-
 
 import numpy as np
-import warnings
 
 from pyROTMOD.support.minor_functions import print_log,translate_string_to_unit
 from pyROTMOD.support.major_functions import read_columns
 from pyROTMOD.optical.conversions import mag_to_lum
 from pyROTMOD.support.errors import InputError, BadFileError
-from pyROTMOD.support.classes import Density_Profile
+from pyROTMOD.support.classes import Luminosity_Profile,Density_Profile,Component
 
 from astropy import units as unit
 
-import warnings
-
-
-
-
+#Convert luminosity profiles to Density Profiles
+def convert_luminosity_profiles(profiles_in):
+    profiles_out = {}
+    transfer = Component()
+    for name in profiles_in:
+        profiles_out[name] = Density_Profile(distance=profiles_in[name].distance\
+            ,radii=profiles_in[name].radii,MLratio=profiles_in[name].MLratio)
+       
+        for attr, value in transfer.__dict__.items():
+            if attr not in ['central_SB']:
+                setattr(profiles_out[name],attr,getattr(profiles_in[name],attr))
+        profiles_out[name].create_profile()
+        profiles_out[name].check_profile()
+      
+       
+    return profiles_out    
 
 def get_optical_profiles(cfg,extend = None,log=None):
    
@@ -62,7 +72,6 @@ def get_optical_profiles(cfg,extend = None,log=None):
         optical_profiles[name].distance = distance
         optical_profiles[name].MLratio = MLRatio  
         optical_profiles[name].component = 'stars' 
-     
         if optical_profiles[name].height is None:
             optical_profiles[name].height = cfg.RC_Construction.scaleheight[0]\
                 *translate_string_to_unit(cfg.RC_Construction.scaleheight[2])
@@ -72,14 +81,12 @@ def get_optical_profiles(cfg,extend = None,log=None):
                     *translate_string_to_unit(cfg.RC_Construction.scaleheight[2])
         if optical_profiles[name].height_type is None:
             optical_profiles[name].height_type = cfg.RC_Construction.scaleheight[3]
-        if optical_profiles[name].truncation_radius[0] is None:
+        if optical_profiles[name].truncation_radius is None:
             if not cfg.RC_Construction.truncation_radius[0] is None:
-                trunc_rad = cfg.RC_Construction.truncation_radius[0]*\
+                optical_profiles[name].truncation_radius = cfg.RC_Construction.truncation_radius[0]*\
                     translate_string_to_unit(cfg.RC_Construction.truncation_radius[2])
-            else: 
-                trunc_rad = None
-            optical_profiles[name].truncation_radius = \
-                [trunc_rad, cfg.RC_Construction.truncation_radius[1]]
+                optical_profiles[name].softening_length = \
+                    cfg.RC_Construction.truncation_radius[1]*unit.dimensionless_unscaled
           
     
         if galfit_file:
@@ -100,6 +107,7 @@ def get_optical_profiles(cfg,extend = None,log=None):
         else:
             optical_profiles[name].calculate_components()
             optical_profiles[name].extend = optical_profiles[name].radii[-1]
+       
     
   
     print_log(f"We found the following optical components:\n",log,debug=cfg.general.debug)
@@ -167,53 +175,6 @@ get_optical_profiles.__doc__ =f'''
  NOTE:
 '''
 
-def oldorganize_profiles(profiles):
-    organized = {}
-    all_radii = False
-    if 'RADI' in [x for x in profiles]:
-        all_radii = True
-    for type in profiles:
-        if type[-4:] != 'RADI':
-            organized[type] = {'Profile': np.array([x for x in\
-                                    profiles[type][2:]],dtype=float),\
-                    'Profile_Unit': profiles[type][1]}
-            if all_radii:
-                organized[type]['Radii'] = np.array([x for x in\
-                                    profiles['RADI'][2:]],dtype=float)
-                organized[type]['Radii_Unit'] = profiles['RADI'][1]
-            else:
-                organized[type]['Radii'] = np.array([x for x in\
-                                        profiles[f'{type}_RADI'][2:]],dtype=float)
-                organized[type]['Radii_Unit'] = profiles[f'{type}_RADI'][1]
-
-oldorganize_profiles.__doc__ =f'''
- NAME:
-    organize_profiles
-
- PURPOSE:
-    Transform a list of profile with the old [''Name', 'Unit', profile[0:]
-    To a dictionary withe entries of name {{'Profile': profile[0:], 
-    'Profile_Unit': unit, 'Radii': individual radius, 'Radii_Unit': radius unit }}
-    This is to allow for storage of individual radii for each profile.
-
- CATEGORY:
-    optical
-
- INPUTS:
-    profiles = old profiles
-
- OPTIONAL INPUTS:
-    
- OUTPUTS:
-    dict_profiles = New dictionary
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-    Unspecified
-
- NOTE:
-'''
-
 def read_galfit(lines,log=None,debug=False):
 
     
@@ -256,7 +217,7 @@ def read_galfit(lines,log=None,debug=False):
                        
                         counter[output.index(trans_dict[current_component])] += 1
                         current_name = f'{trans_dict[current_component]}_{counter[output.index(trans_dict[current_component])]}'
-                        components[current_name] = Density_Profile(\
+                        components[current_name] = Luminosity_Profile(\
                             type=current_component,name=current_name)
                                   
                         #if current_component in ['expdisk','sersic','devauc']:

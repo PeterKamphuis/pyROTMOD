@@ -1,13 +1,13 @@
 # -*- coding: future_fstrings -*-
 from pyROTMOD.fitters.fitters import initial_guess,mcmc_run
-from pyROTMOD.support.errors import InputError,UnitError
+from pyROTMOD.support.errors import InputError,UnitError,RunTimeError
 from pyROTMOD.support.minor_functions import integrate_surface_density,\
     print_log,strip_unit,get_uncounted
 from astropy import units as unit
-from astropy.modeling import functional_models as astro_profiles
 from fractions import Fraction
 #the individul functions are quicker than the general function https://docs.scipy.org/doc/scipy/reference/special.html
 from scipy.special import k0,k1,gamma, gammaincinv
+from scipy.interpolate import interp1d
 from sympy import meijerg
 import numpy as np
 import warnings
@@ -49,6 +49,7 @@ def calculate_central_SB(components):
 def calculate_L_effective(components,from_central = False):
     '''The sersic profile is based on Sig_eff'''
     #kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
+
     kappa = get_sersic_b(components.sersic_index)
     if from_central:
         effective_luminosity = components.central_SB/np.exp(-1.*kappa*(((\
@@ -166,19 +167,22 @@ def determine_profiles_to_fit(type):
     else:
         evaluate = [type]
     return evaluate
-# This is untested for now
+# The edge functions are  untested for now
+def edge(r,central,h):
+    '''This is the actual edge on sky projection of an exponential disk (vd Kruit 1981)'''
+    s=r/h
+    return central*s*k1(s)
+
+
+
 def edge_luminosity(components,radii = None):
-   
     if radii is None:
         radii = components.radii
- 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        lum_profile = components.central_SB*np.array([float(x/components.scale_length) for x in radii],dtype=float)\
-            *k1(np.array([float(x/components.scale_length) for x in radii],dtype=float))
+        lum_profile = edge(radii,components.central_SB,components.scale_length)
         if np.isnan(lum_profile[0]):
             lum_profile[0] = components.central_SB
-
     # this assumes perfect ellipses for now and no deviations are allowed
     return lum_profile
 edge_luminosity.__doc__ = f'''
@@ -226,14 +230,15 @@ def edge_profile(components,radii = None):
         warnings.simplefilter("ignore")
         if radii.unit == components.scale_length.unit:    
             #Equation 5 in vd Kruit and Searle with z 0
-            profile = components.central_SB*np.exp(radii/components.scale_length)
+            L0 = components.total_SB/(4.*np.pi*components.scale_length**2*components.height)
+            profile = exponential(radii,L0,components.scale_length)
           
         else:
             raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
     #profile = [x.value for x in profile]
     return profile
         
-edge_luminosity.__doc__ = f'''
+edge_profile.__doc__ = f'''
  NAME:
      edge_luminosity
 
@@ -267,7 +272,13 @@ edge_luminosity.__doc__ = f'''
 import inspect
  NOTE: This is not well tested yet !!!!!!!!!
 '''
-
+def extrapolate_zero(radii,profile):
+    if 0. in radii:
+        index = np.where(radii != 0.)
+        extra = interp1d(radii[index].value, profile[index].value, fill_value = "extrapolate")
+        index = np.where(radii == 0.)
+        profile[index] = extra(radii[index].value)*profile.unit
+    return profile
 
 
 
@@ -281,6 +292,7 @@ def exponential_luminosity(components,radii = None):
     if radii is None:
         radii = components.radii
     if radii.unit == components.scale_length.unit:    
+        
         profile = exponential(radii, components.central_SB, components.scale_length) 
     else:
         raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
@@ -324,11 +336,14 @@ def exponential_profile(components,radii = None):
         radii = components.radii
     if radii.unit == components.scale_length.unit:    
         #Equation 24 in Gentile and Baes
-        profile = components.central_SB/(np.pi*components.scale_length.to(unit.pc).value)\
+        profile = components.central_SB/(np.pi*components.scale_length.to(unit.pc))\
             *k0(radii/components.scale_length)
     else:
         raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
     #profile = [x.value for x in profile]
+    profile = extrapolate_zero(radii,profile)
+   
+
     return profile
 exponential_profile.__doc__ = f'''
  NAME:
@@ -361,8 +376,17 @@ exponential_profile.__doc__ = f'''
 
 
 def fit_profile(radii,density,name='EXPONENTIAL_1',\
-                components = None,debug =False, log = None):
+                components = None,debug =False, log = None,\
+                profile_type = 'sbr_lum'):
+    '''We only implemented the functions for the luminosity profiles 
+    So this alway needs to be done on surface brightness profiles
+    '''
 
+    if density.unit not in [unit.Lsun/unit.pc**2,unit.Msun/unit.pc**2]:
+        raise UnitError(f'''The profile {name} is not a surface brightness profile that we can fit 
+The unit {density.unit} will not lead to the right result.                         
+''')
+    main_unit = density.unit*unit.pc**2
     if components is None:
         raise InputError(f'We need a place to store the results please set components =') 
     
@@ -379,12 +403,7 @@ def fit_profile(radii,density,name='EXPONENTIAL_1',\
     del components.radii
     del components.values 
     type,count = get_uncounted(name)
-    #type_split=function.split('_')
-    #type = type_split[0]
-    #try:
-    #    count = type_split[1]
-    #except:
-    #    count='1'
+   
     radii = strip_unit(radii,variable_type='radii')
     density = strip_unit(density,variable_type='density')
     
@@ -392,8 +411,8 @@ def fit_profile(radii,density,name='EXPONENTIAL_1',\
     fit_function_dictionary = {'EXPONENTIAL':
                 {'initial':[density[0],radii[density < density[0]/np.e ][0]],
                 'out':['Central SB','scale length'],
-                'out_units':[unit.Msun/unit.pc**2,unit.kpc],
                 'function': exponential,
+                'out_units':[main_unit/unit.pc**2,unit.kpc],
                 'Type':'expdisk',
                 'max_red_sqr': 1000,
                 'name':'Exponential',
@@ -401,8 +420,8 @@ def fit_profile(radii,density,name='EXPONENTIAL_1',\
                 'HERNQUIST':
                 {'initial':[components.total_SB.value/2.,float(components.R_effective.value/1.8153)],
                 'out':['Total SB','scale length'],
-                'out_units':[unit.Msun,unit.kpc],
-                'function': hernquist_profile,
+                'out_units':[main_unit,unit.kpc],
+                'function': hernquist,
                 'Type':'hernquist',
                 'max_red_sqr': 3000,
                 'name':'Hernquist',
@@ -421,9 +440,9 @@ def fit_profile(radii,density,name='EXPONENTIAL_1',\
                 {'initial':[components.total_SB.value/10.,float(components.R_effective.value/(10.*1.8153)),\
                                 density[0]/2.,radii[density < density[0]/np.e][0]],
                 'out':[['Total SB','scale length'],['Central SB','scale length']],
-                'out_units':[[unit.Msun,unit.kpc],[unit.Msun/unit.pc**2,unit.kpc]],
-                'function': lambda r,mass,hern_length,central,h:\
-                        hernquist_profile(r,mass,hern_length) + exponential(r,central,h),
+                'out_units':[[main_unit,unit.kpc],[main_unit/unit.pc**2,unit.kpc]],
+                'function': lambda r,Ltotal,hern_length,central,h:\
+                        hernquist(r,Ltotal,hern_length) + exponential(r,central,h),
                 'separate_functions': [hernquist_profile,exponential],
                 'Type':['hernquist','expdisk'],
                 'max_red_sqr': 3000,
@@ -557,34 +576,63 @@ fit_profile.__doc__ =f'''
  NOTE:
 '''
 
-def hernquist_profile(r, mass, h):
+def hernquist(r,total_l,h):
+    '''
+    This is the projected profile of a Hernquist density profile
+    These are presented in Hernquist 1990 Eq 32 and what follows
+    M_total/Gamma is replaced by L_total
+    '''
+    s = r/h
+    XS_1 = 1./np.sqrt(1-s[s < 1]**2)*\
+        np.log((1+np.sqrt(1-s[s<1]**2))/s[s < 1])
+    XS_2 = 1./np.sqrt(s[s > 1]**2-1)*1./np.cos(1./s[s > 1])
+    XS = np.array(list(XS_1)+list(XS_2),dtype=float)
+    profile = total_l.to(unit.Lsun)/(2.*np.pi*h.to(unit.pc)**2*\
+        (1-s**2)**2)*((2+s**2)*XS-3)
+    profile = extrapolate_zero(r,profile)  
+    return profile
+
+
+def hernquist_luminosity(components,radii=None):
+    if radii is None:
+        radii = components.radii
+    if radii.unit == components.R_effective.unit:  
+        profile = hernquist(radii, components.total_SB,components.scale_length) 
+    else:
+        raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
+    #profile = [x.value for x in profile]
+    return profile
+  
+
+def hernquist_profile(components,radii=None):
     '''
     The hernquist density profile (Eq 2, Hernquist 1990)
     mass/(np.pi*2)*(scale_length/radii)*1./(radii+scale_length)**3
     Note that in galpy this is amp/(4*pi*a**3)*1./((r/a)(1+r/a)**2
     With amp = 2. mass
     Both have inf at r = 0. so if radii == 0 it needs to be adapted
-    This is a 3D profile, we need a 2 profile
-    We want to fit the Vaucouleur to the profile and the relate back Re = 1.8153 a (eq38) and get I_0 from the mass
-    The projected profiles are in eq 32
-    here if h is in kpc then the output is in M_solar/kpc**2
-    '''
-    s = r/h
-    hpc=1000.*h
-    #XS_1 = 1./np.sqrt(1-s[s < 1]**2)*1./np.sech(s[s > 1])
-    #XS_2 = 1./np.sqrt(s[s > 1]**2-1)*1./np.sec(s[s > 1])
-    XS_1 = 1./np.sqrt(1-s[s < 1]**2)*np.log((1+np.sqrt(1-s[s<1]**2))/s[s < 1])
-    XS_2 = 1./np.sqrt(s[s > 1]**2-1)*1./np.cos(1./s[s > 1])
-    XS = np.array(list(XS_1)+list(XS_2),dtype=float)
-    profile = mass/(2.*np.pi*hpc**2*(1-s**2)**2)*((2+s**2)*XS-3)
 
-    return profile
+    We want to fit the luminosity to a profile and then relate
+    back Re = 1.8153 a (eq38) and  r_1/2 = 1.33 R_e
+   
+
+
+    '''
+    if radii is None:
+        radii = components.radii
+    if radii.unit == components.R_effective.unit:  
+        a = components.R_effective/1.8153
+        profile = components.total_SB/(2.*np.pi)*a/radii*1./(radii+a)**3
+    else:
+        raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
+    profile = extrapolate_zero(radii,profile)
+  
+    return profile 
 
 
 def sersic(r,effective_luminosity,effective_radius,n):
     b = get_sersic_b(n) 
-    print(effective_luminosity,b,r,effective_radius)
-    return effective_luminosity*np.exp(b*((r/effective_radius)**(1./n))-1.)
+    return effective_luminosity*np.exp(-1.*b*((r/effective_radius)**(1./n)-1))
 
 
 def sersic_luminosity(components,radii=None):
@@ -595,15 +643,13 @@ def sersic_luminosity(components,radii=None):
     if radii is None:
         radii = components.radii
     if radii.unit == components.R_effective.unit:   
-        L_effective = calculate_L_effective() 
+        L_effective = calculate_L_effective(components) 
         profile = sersic(radii, L_effective, components.R_effective,components.sersic_index ) 
     else:
         raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
     #profile = [x.value for x in profile]
     return profile
-    model = sersic
-    func = model(r)
-    return func
+ 
 def get_integers(n):
     solution= Fraction(n)
     return int(solution.numerator),int(solution.denominator)
@@ -613,32 +659,24 @@ def get_sersic_b(sersic_index):
     b =  gammaincinv(2. * sersic_index, 0.5)    
     return b
     
-  
-    
-    
 def sersic_profile(components,radii = None):
-    # This is not a deprojected surface density profile we should use the formula from Baes & gentile 2010
-    # Once we implement that it should be possible use an Einasto profile/potential
+    # This is the deprojected surface density profile from Baes & gentile 2010 Equation 22
+    # With this it should be possible use an Einasto profile/potential
     if radii is None:
         radii = components.radii
-      
-    #effective_luminosity,kappa = calculate_L_effective(components)
-    #lum_profile = effective_luminosity*np.exp(-1.*kappa*((radii/components.R_effective)**(1./components.sersic_index)-1))
-    #components.central_SB = effective_luminosity*np.exp(-1.*kappa*(((0.*unit.kpc)/components.R_effective)**(1./components.sersic_index)-1))
-
     #first we need to derive the integer numbers that make up the  sersic index
     p, q = get_integers(components.sersic_index)
-   
     # The a and b vectors of equation 22
-    avect = [x/q for x in range(1,q)]
-    bvect = [x/(2.*p) for x in range(1,2*p)]+\
-            [x/(2.*q) for x in range(1,2*q,2)]
+    avect = np.array([x/q for x in range(1,q)],dtype=float)
+    bvect = np.array([x/(2.*p) for x in range(1,2*p)]+\
+            [x/(2.*q) for x in range(1,2*q,2)],dtype=float)
     
     # We need a central Intensity 
     if components.central_SB is None:
         calculate_central_SB(components)
         if components.central_SB is None:
             raise RuntimeError(f'We cannot find the central density for {components.name}')
+    # And an effecitve radius
     if components.R_effective is None:
         calculate_R_effective(components)
         if components.R_effective is None:
@@ -647,21 +685,21 @@ def sersic_profile(components,radii = None):
     b = get_sersic_b(components.sersic_index)
     s = radii.value/components.R_effective.value
     
-    # front factor # This lacking an 1./R_effective because it cancels with 1./s later on
+    # front factor # This is lacking an 1./R_effective because it cancels with 1./s later on
     const = 2.*components.central_SB*np.sqrt(p*q)/(2*np.pi)**p
-   
+    
+    # The meijer g function insympy does not accept arrays
+    # We could consider mpmath but it is an additional package
     meijer_result = []
     for s_ind in s:
         meijer_input =  (b/(2*p))**(2*p) * s_ind**(2*q)
         meijer_result.append(meijerg([[],avect],[bvect,[]],meijer_input).evalf())
-
     meijer_result = np.array(meijer_result,dtype=float)
-  
-#print(sympy.functions.special.hyper.meijerg([[], [-1/(k-1)], [0, 0], []], -p/k2).evalf())
-#import mpmath
-#print(mpmath.meijerg([[], [-1/(k-1)], [0, 0], []], -p/k2))
-    #This is with 1/rad instead of 1/s as we drooped the R_eff from the const 
-    density_profile =  const/radii.to(unit.pc).value*meijer_result
+    #This is with 1/rad instead of 1/s as we dropped the R_eff from the const 
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        density_profile =  const/radii.to(unit.pc)*meijer_result
+        density_profile = extrapolate_zero(radii,density_profile)           
     return density_profile
 sersic_profile.__doc__ = f'''
 NAME:
@@ -786,19 +824,20 @@ single_fit_profile.__doc__ =f'''
  NOTE:
 '''
 
-def cal_truncation_function(radii, truncation_radius):
-    '''Calculate the truncation function following GALFIT Peng 2010'''
-    if truncation_radius[0].unit !=  truncation_radius[1].unit:
-        raise RuntimeError(f'For the truncation radius and the softning length should be the same. ({truncation_radius[0].unit,truncation_radius[1].unit})')
-    B = 2.65-4.98*(truncation_radius[0].value/(truncation_radius[0].value-truncation_radius[1].value))
-    Pn = 0.5*(np.tanh((2-B)*radii.value/truncation_radius[0].value +B)+1)
+def calc_truncation_function(radii, truncation_radius,softening_length):
+    '''Calculate the truncation function following GALFIT Peng 2010
+    (see Equation (B2) in Appendix B)'''
+    if truncation_radius.unit !=  softening_length.unit:
+        raise RuntimeError(f'For the truncation radius and the softening length should be the same. ({truncation_radius.unit,softening_length.unit})')
+    B = 2.65-4.98*(truncation_radius.value/(softening_length.value))
+    Pn = 0.5*(np.tanh((2.-B)*radii.value/truncation_radius.value +B)+1.)
     return Pn
+
 def truncate_density_profile(profile):
-    if not profile.truncation_radius[0] is None:
-        if profile.truncation_radius[0] < profile.radii[-1]:
-            Pn= cal_truncation_function(profile.radii,profile.truncation_radius)
-            print(Pn,profile.values)
+    if not profile.truncation_radius is None:
+        if profile.truncation_radius < profile.radii[-1]:
+            Pn= calc_truncation_function(profile.radii,\
+                profile.truncation_radius,profile.softening_length)
+         
             profile.values =  profile.values*(1.-Pn)
-            for i in range(len(profile.radii)):
-                print(profile.radii[i],Pn[i],profile.values[i],)
-            exit()
+            

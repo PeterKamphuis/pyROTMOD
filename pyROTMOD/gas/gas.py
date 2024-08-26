@@ -105,7 +105,8 @@ def get_individual_tirific_disk(disk,filename,log=None, debug =False):
         sbr = Density_Profile(type='random_disk')
         ext1=f'_{disk}'
     ext2 = f'_{disk+1}'
-
+    sbr.profile_type = 'sbr_dens'
+  
     if disk == 1: 
         Variables =  ['RADI','VROT','VROT_2','VROT_ERR',\
                       'VROT_2_ERR']
@@ -234,16 +235,14 @@ def get_gas_profiles(cfg,log=None, debug =False):
             gas_density[name].height_type = cfg.RC_Construction.gas_scaleheight[3]
         if  gas_density[name].truncation_radius is None:
             if not cfg.RC_Construction.gas_truncation_radius[0] is None:
-                trunc_rad = cfg.RC_Construction.gas_truncation_radius[0]*\
+                gas_density[name].truncation_radius = cfg.RC_Construction.gas_truncation_radius[0]*\
                     translate_string_to_unit(cfg.RC_Construction.gas_truncation_radius[2])
-            else: 
-                trunc_rad = None
-            gas_density[name].truncation_radius = \
-                [trunc_rad,cfg.RC_Construction.gas_truncation_radius[1]]
+                gas_density[name].softening_length = cfg.RC_Construction.gas_truncation_radius[1]
        
         gas_density[name].check_profile()  
         gas_density[name].calculate_attr() 
         gas_density[name].extend = gas_density[name].radii[-1] 
+      
     return gas_density, RC
 
 

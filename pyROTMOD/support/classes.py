@@ -1,11 +1,12 @@
-from pyROTMOD.support.errors import InputError,RunTimeError
+from pyROTMOD.support.errors import InputError,RunTimeError,UnitError
 from pyROTMOD.support.minor_functions import check_quantity,convertskyangle\
-      ,get_uncounted
+      ,get_uncounted,isquantity
 from pyROTMOD.optical.conversions import mag_to_lum
 from pyROTMOD.optical.profiles import exponential_luminosity,edge_luminosity,\
       sersic_luminosity,fit_profile,calculate_central_SB,calculate_total_SB,\
       calculate_R_effective,calculate_scale_length,calculate_axis_ratio,\
-      sersic_profile,edge_profile,exponential_profile,truncate_density_profile
+      sersic_profile,edge_profile,exponential_profile,truncate_density_profile,\
+      hernquist_profile,hernquist_luminosity
 
 import astropy.units as u 
 import numpy as np
@@ -19,7 +20,7 @@ class Component:
             height_type = None, height = None,\
             height_error = None ,sersic_index = None, central_position = None, \
             axis_ratio = None, PA = None ,background = None, dx = None,\
-            dy = None, truncation_radius = [None], extend = None):
+            dy = None, truncation_radius = None, extend = None,softening_length =None):
             self.name = name
             self.type = type
             self.central_SB = central_SB 
@@ -28,6 +29,7 @@ class Component:
             self.extend = extend
             self.scale_length = scale_length
             self.truncation_radius = truncation_radius
+            self.softening_length = softening_length
             self.height_type = height_type
             self.height = height
             self.height_error = height_error
@@ -39,19 +41,20 @@ class Component:
             self.dx = dx
             self.dy = dy
             self.unit_dictionary = {'scale_length': u.kpc,\
-                              'type' : None,\
-                              'name' : None,
-                              'total_SB': u.Msun,\
+                              'total_SB': {'density':u.Msun,\
+                                    'sbr_lum':u.Lsun,
+                                    'sbr_dens':u.Msun},\
                               'height': u.kpc,\
                               'height_error': u.kpc,\
-                              'central_SB': u.Msun/u.pc**2,\
+                              'central_SB': {'sbr_lum':u.Lsun/u.pc**2,\
+                                    'sbr_dens': u.Msun/u.pc**2,\
+                                    'density':u.Msun/u.pc**3},\
                               'PA': u.degree,\
                               'R_effective': u.kpc,\
-                              'height_type': None,\
-                              'sersic_index': None,\
+                              'extend': u.kpc,\
+                              'truncation_radius': u.kpc,\
+                              'softening_length': u.kpc,\
                               'central_position': u.pix,\
-                              'axis_ratio': None,\
-                              'background': None,\
                               'dx': u.pix,\
                               'dy': u.pix}
                               #Astrpoy does not have suitable units for the background
@@ -99,63 +102,61 @@ class Density_Profile(Component):
                   height_error =None ,name =None, MLratio= None, 
                   distance = None,component = None, central_SB = None,\
                   total_SB = None, R_effective = None,\
-                  scale_length = None, truncation_radius = [None]\
+                  scale_length = None, truncation_radius = None,\
                   sersic_index = None, central_position = None, \
                   axis_ratio = None, PA = None ,background = None,\
-                  dx = None, dy = None ):
+                  dx = None, dy = None,softening_length =None ):
             super().__init__(type = type,name = name,\
                   height = height, height_type=height_type,\
                   height_error = height_error, central_SB = central_SB,\
                   total_SB = total_SB, R_effective = R_effective, scale_length = scale_length,\
                   sersic_index = sersic_index, central_position = central_position, \
                   axis_ratio = axis_ratio, PA = PA ,background = background, \
-                  dx = dx, dy = dy ,truncation_radius=truncation_radius )
+                  dx = dx, dy = dy ,truncation_radius=truncation_radius,\
+                  softening_length = softening_length)
             self.values = values
             self.errors = errors  
-            self.profile_type = 'density_profile'
+            #The density profiles can be sbr_dens or density
+            self.profile_type = 'density'
             self.radii = radii
             self.component = component # stars, gas or DM
             self.band = band
             self.distance = distance
             self.MLratio= MLratio
-          
-       
+            for attr in ['values',errors]:
+                  self.unit_dictionary[attr] = {'density':u.Msun/u.pc**3,\
+                                    'sbr_lum':u.Lsun/u.pc**2,\
+                                    'sbr_dens':u.Msun/u.pc**2}
+            self.unit_dictionary['radii'] = u.kpc
+            self.unit_dictionary['distance'] = u.Mpc
+            self.unit_dictionary['MLratio'] = u.Msun/u.Lsun
+
       def print(self):
             for attr, value in self.__dict__.items():
                   print(f' {attr} = {value} \n')
-                    
-     
-                        
-                        
-                              
-
-                        
-                        
-           
             
-          
-      
-          
-        
-            
-      def calculate_attr(self,debug = False, log = None, apply =False):
-           
+      def calculate_attr(self,debug = False, log = None, apply =False): 
+            '''Calculate the various attributes from fitting a profile 
+            If apply = True we replace values with the fitted profile to
+            '''
+            #First check that the calues are appropriate
             self.check_profile()
-           
+            # Copy the components already present
             components = Component()
             for attr, value in components.__dict__.items():
                   setattr(components,attr, getattr(self,attr))
 
-            succes, components, profile = fit_profile(self.radii,self.values,\
-                        name=self.type, debug=debug,log=log, components = components)
-          
+            #Fit the profile
+            succes, components, profile = fit_profile(self.radii, \
+                  self.values,name=self.type, debug=debug,log=log, \
+                  components = components,profile_type = self.profile_type)
+            #If the fit is succesful copy the new attributes nad 
+            # if apply the profile
             if succes is True:
                   for attr, value in components.__dict__.items():
                         setattr(self,attr, value)
                   if apply:
-
                         self.values = profile 
-
             elif succes == 'process':
                   for attr, value in components[0].__dict__.items():
                         value = [value, getattr(components[1],attr)]
@@ -168,7 +169,7 @@ class Density_Profile(Component):
                   if self.name.split('_')[0] in ['EXPONENTIAL','DENSITY','DISK','SERSIC']:
                         self.type = 'random_disk'
                   else:
-                        self.type =  'random_bulge'
+                        self.type = 'random_bulge'
            
             self.check_attr()
      
@@ -176,22 +177,19 @@ class Density_Profile(Component):
             
             #The unit_dictionary contain all attr in the Component section
             if not self.radii is None:
-                  self.radii = set_requested_units(self.radii,requested_unit=u.kpc,\
-                        distance=self.distance)
+                 set_requested_units(self,'radii')
 
-        
-            for attr in self.unit_dictionary:
+            
+            for attr, value in Component().__dict__.items():
                   value = getattr(self,attr)
                   if not value is None:
-                        value = set_requested_units(value,requested_unit=self.unit_dictionary[attr],\
-                                          distance=self.distance,band=self.band,MLratio=self.MLratio)
-                        setattr(self,attr, value)
+                        set_requested_units(self,attr)
             self.fill_empty()
-            if not self.truncation_radius[0] is None:
-                  self.truncation_radius[0] = check_quantity(self.truncation_radius[0])
-                  if not isinstance( self.truncation_radius[1],u.quantity.Quantity):
-                        if not  self.scale_length is None:
-                              self.truncation_radius[1] *= self.scale_length
+          
+            if not self.softening_length is None:
+                  if self.softening_length.unit == u.dimensionless_unscaled\
+                        and not self.scale_length is None:
+                        self.softening_length *= self.scale_length
                   
 
       def check_component(self):
@@ -203,12 +201,8 @@ class Density_Profile(Component):
             self.values = check_quantity(self.values)
             self.errors = check_quantity(self.errors)
             self.radii = check_quantity(self.radii)
-            self.values = set_requested_units(self.values,requested_unit=u.Msun/u.pc**2,\
-                        distance=self.distance,band=self.band,MLratio=self.MLratio)
-            self.errors = set_requested_units(self.errors,requested_unit=u.Msun/u.pc**2,\
-                        distance=self.distance,band=self.band,MLratio=self.MLratio)
-            self.radii = set_requested_units(self.radii,requested_unit=u.kpc,\
-                        distance=self.distance)
+            for attr in ['radii','values','radii']:
+                  set_requested_units(self,attr)
      
       def check_radius(self):
             self.radii = check_radii(self)
@@ -228,7 +222,7 @@ class Density_Profile(Component):
                   self.values = sersic_profile(self)
             if not self.type in ['sky','psf']: 
                   self.check_profile()
-            truncate_density_profile(self)
+                  truncate_density_profile(self)
      
 class Luminosity_Profile(Density_Profile):
       def __init__(self, values = None, errors = None, radii = None,
@@ -240,7 +234,7 @@ class Luminosity_Profile(Density_Profile):
                   scale_length = None,\
                   sersic_index = None, central_position = None, \
                   axis_ratio = None, PA = None ,background = None,\
-                  dx = None, dy = None ):
+                  dx = None, dy = None,softening_length =None ):
             super().__init__(type = type,name = name, values = values,\
                   errors = errors, radii = radii, band = band,\
                   height = height, height_type=height_type, component= component,\
@@ -250,21 +244,14 @@ class Luminosity_Profile(Density_Profile):
                   MLratio=MLratio,\
                   sersic_index = sersic_index, central_position = central_position, \
                   axis_ratio = axis_ratio, PA = PA ,background = background, \
-                  dx = dx, dy = dy )
-            self.profile_type = 'luminosity_profile'   
-      def check_profile(self):
-            self.values = check_quantity(self.values)
-            self.errors = check_quantity(self.errors)
-            self.radii = check_quantity(self.radii)
-            self.values = set_requested_units(self.values,requested_unit=u.Lsun/u.pc**2,\
-                        distance=self.distance,band=self.band,MLratio=self.MLratio)
-            self.errors = set_requested_units(self.errors,requested_unit=u.Lsun/u.pc**2,\
-                        distance=self.distance,band=self.band,MLratio=self.MLratio)
-            self.radii = set_requested_units(self.radii,requested_unit=u.kpc,\
-                        distance=self.distance)
+                  dx = dx, dy = dy,softening_length = softening_length )
+            self.profile_type = 'sbr_lum'   
+
      
       def create_profile(self):
+            
             self.check_attr()
+           
             #Changing the units in the profiles important that you only trust values with quantities
             if self.type in ['expdisk']:
                   self.values = exponential_luminosity(self)
@@ -272,9 +259,11 @@ class Luminosity_Profile(Density_Profile):
                   self.values = edge_luminosity(self)
             elif self.type in ['sersic','devauc']:
                   self.values = sersic_luminosity(self)
+            elif self.type in ['hernquist']:
+                  self.values = hernquist_luminosity(self)
             if not self.type in ['sky','psf']: 
                   self.check_profile()
-            truncate_density_profile(self)
+                  truncate_density_profile(self)
      
 
 class Rotation_Curve:
@@ -283,7 +272,7 @@ class Rotation_Curve:
       def __init__(self, values = None, errors = None, radii = None, band=None,\
                   type = None, name= None,truncation_radius =[None],\
                   distance = None, component= None, fitting_variables = None,\
-                  extend = None):
+                  extend = None,softening_length = None):
             self.type = type
             self.profile_type = 'rotation_curve'
             self.band = band
@@ -295,6 +284,7 @@ class Rotation_Curve:
             self.calculated_values = None
             self.radii = radii
             self.truncation_radius = truncation_radius
+            self.softening_length = softening_length
             self.extend = extend
             self.matched_radii = None
             self.errors = errors
@@ -303,6 +293,19 @@ class Rotation_Curve:
             self.fitting_variables = fitting_variables
             self.curve = None
             self.individual_curve = None
+            self.unit_dictionary = {'distance': u.Mpc,\
+                              'values': u.km/u.s,\
+                              'matched_values':  u.km/u.s,\
+                              'calculated_values': u.km/u.s,\
+                              'radii': u.kpc,\
+                              'truncation_radius': u.kpc,\
+                              'softening_length': u.kpc,\
+                              'extend': u.kpc,\
+                              'matched_radii': u.kpc,\
+                              'errors': u.km/u.s,\
+                              'matched_errors': u.km/u.s,\
+                              'calculated_errors': u.km/u.s,\
+                            }
       
 
       def calculate_RC(self):
@@ -368,17 +371,13 @@ class Rotation_Curve:
             self.values = check_quantity(self.values)
             self.errors = check_quantity(self.errors)
             self.radii = check_quantity(self.radii)
-            self.values = set_requested_units(self.values,requested_unit=u.km/u.s,\
-                        distance=self.distance,band=self.band)
-            self.errors = set_requested_units(self.errors,requested_unit=u.km/u.s,\
-                        distance=self.distance,band=self.band)
-          
-            self.radii = set_requested_units(self.radii,requested_unit=u.kpc,\
-                        distance=self.distance)
+            for attr in ['radii','values','radii']:
+                  set_requested_units(self,attr)
+            
       
       def match_radii(self,to_match):
             if self.radii.unit != to_match.radii.unit:
-                  raise InputError(f'The units of the radii in {self.name} and {to_match.name} are not the same.')
+                  raise InputError(f'The units of the radii in {self.name} and {to_match.name} are not the same in profile {self.name}.')
             if not self.errors is None:
                   self.matched_errors = np.interp(to_match.radii.value,\
                         self.radii.value,self.errors.value)*self.errors.unit
@@ -386,6 +385,7 @@ class Rotation_Curve:
                   self.matched_errors = None
             self.matched_radii= to_match.radii
             if not self.values is None:
+                  print(to_match.radii.value,len(self.radii.value),len(self.values.value))
                   self.matched_values = np.interp(to_match.radii.value,\
                         self.radii.value,self.values.value)*self.values.unit
             else:
@@ -413,14 +413,15 @@ def check_profile_component(component,name):
 def check_radii(self):
       un = self.radii.unit
       tmp_radii = list(self.radii.value)
+     
       if not self.extend is None:
             max_rad = self.extend
-      elif not self.truncation_radius[0] is None:
-            max_rad = self.truncation_radius[0]
+      elif not self.truncation_radius is None:
+            max_rad = self.truncation_radius+self.softening_length
       else:
             max_rad = self.radii[-1]
       if max_rad.unit != self.radii.unit:
-            raise UnitError(f'The unit in the radii ({self.radii.unit}) does not match the extend we compare to ({max_rad.unit})')      
+            raise UnitError(f'The unit in the radii ({self.radii.unit}) does not match the extend we compare to ({max_rad.unit}) in profile {self.name}')      
 
     #And that it covers the full length that we require
       if self.radii[-1] < max_rad:  
@@ -431,63 +432,88 @@ def check_radii(self):
 
 
 #Has to be here to avoid circular imports
-def set_requested_units(value_in,requested_unit = None,distance = None, \
-                       band = None, MLratio = None):
+def set_requested_units(self,req_attr):
       #If value is None skip
       #make sure that we not feed back
-      value = copy.deepcopy(value_in) 
+      value = getattr(self,req_attr) 
+
+      try:
+            requested_unit = self.unit_dictionary[req_attr]
+      except KeyError:
+            requested_unit = None
+
+      if isinstance(requested_unit,dict):
+            requested_unit = requested_unit[self.profile_type]
       
-      if value is None:
-            return None
+      #if the value is none or the reuested unit is unknown we leave
+      if requested_unit is None or\
+            value is None:
+            return
+      if not isquantity(value):
+            raise UnitError(f'{req_attr} in {self.name} has no unit, please assign a unit when filling it (value = {value})')
+  
+      new_value = None
       
-      if requested_unit is None:
-            try:
-                  return value.value
-            except AttributeError:
-                  return value
-      
-      #If the unit is already the required one return the value 
-      if value.unit == requested_unit:
-            return value
+      while new_value is None:      
+            #If the unit is already the required one return the value 
+            if value.unit == requested_unit:
+                  new_value = value
+                  break
      
-      # see if we can simply convert
-      try: 
-            return value.to(requested_unit)
-      except:
-            pass
-      # Now it gets more tricky
-      requested = 1.*requested_unit
+            # see if we can simply convert
+            try: 
+                  new_value = value.to(requested_unit)
+                  break
+            except:
+                  pass
+            # Now it gets more tricky
+            requested = 1.*requested_unit
+            if req_attr == 'softening_length' and value.unit == u.dimensionless_unscaled:
+                  if not self.scale_length is None:
+                        new_value = self.softening_length *self.scale_length
+                  else:
+                        new_value = value
+                        requested_unit = u.dimensionless_unscaled
+                  break
+      
+            if (value.unit in [u.kpc, u.pc] and \
+                  requested.unit in [u.arcsec,u.arcmin.u.degree]):
+                  new_value = convertskyangle(value,self.distance, quantity =True,\
+                              physical=True).to(requested_unit)
+                  break
            
-      
-      if (value.unit in [u.kpc, u.pc] and \
-            requested.unit in [u.arcsec,u.arcmin.u.degree]):
-            new_value = convertskyangle(value,distance, quantity =True,\
-                              physical=True)
-            return new_value.to(requested_unit)
        
-      if (value.unit in [u.arcsec,u.arcmin,u.degree] and \
-            requested.unit in [u.kpc, u.pc]):
-            new_value = convertskyangle(value,distance, quantity =True)  
-            return new_value.to(requested_unit)
+            if (value.unit in [u.arcsec,u.arcmin,u.degree] and \
+                  requested.unit in [u.kpc, u.pc]):
+                  new_value = convertskyangle(value,self.distance, \
+                        quantity =True).to(requested_unit)
+                  break
 
-    #if our input unit is in mag and we wnat to go L_solar
-      
-      if requested_unit in [u.Lsun, u.Msun] and value.unit == u.mag:
-            value = mag_to_lum(value,distance=distance,band=band)
-      elif requested_unit in [u.Lsun/u.pc**2, u.Msun/u.pc**2] and \
-            value.unit == u.mag/u.arcsec**2:
-            value = mag_to_lum(value,band=band)
-      
-    # If we get here we want to converts Lsun or Lsun/pc**2 to Msun
+            #if our input unit is in mag and we wnat to go L_solar
+            #These we do not want to break as it is possible to convert mag to Msun
+            if requested_unit in [u.Lsun, u.Msun] and value.unit == u.mag:
+                  new_value = mag_to_lum(value,distance=self.distance,\
+                        band=self.band)
+            elif requested_unit in [u.Lsun/u.pc**2, u.Msun/u.pc**2] and \
+                  value.unit == u.mag/u.arcsec**2:
+                  new_value = mag_to_lum(value,band=self.band)
+            if not new_value is None:
+                  value = new_value
+            # If we get here we want to converts Lsun or Lsun/pc**2 to Msun
+            if (value.unit == u.Lsun and requested_unit == u.Msun) or \
+                  (value.unit == u.Lsun/u.pc**2 and requested_unit == u.Msun/u.pc**2) or \
+                  (value.unit == u.Lsun/u.pc**3 and requested_unit == u.Msun/u.pc**3):
+                  new_value = self.MLratio*value
+                  break
+            
 
+                  
+                  
+      if new_value.unit != requested_unit:
+            raise InputError(f'For {req_attr} in {self.name} we do not know how convert {value.unit} to {requested.unit}')
+      else:
+            setattr(self,req_attr,new_value) 
       
-      if (value.unit == u.Lsun and requested_unit == u.Msun) or \
-            (value.unit == u.Lsun/u.pc**2 and requested_unit == u.Msun/u.pc**2):
-                  new_value = MLratio*value
-                  return new_value
-      if value.unit != requested.unit:
-            raise InputError(f'We do not know how convert {value.unit} to {requested.unit}')
-      return value
           
 
 

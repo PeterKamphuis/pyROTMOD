@@ -28,7 +28,7 @@ def main():
     cfg = read_config(argv)
     if cfg.general.debug:
         warnings.showwarning = warn_with_traceback
- 
+     
     cfg, log= check_input(cfg)
     #Add the requested font and get the font name name
     font_name = add_font(cfg.general.font)
