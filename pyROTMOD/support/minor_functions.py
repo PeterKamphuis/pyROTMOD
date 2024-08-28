@@ -344,7 +344,7 @@ def get_correct_label(par,no,exponent = 0.):
         else:
             string = label_dictionary[par][0] 
         if abs(exponent) >= 1.:
-            string += f'$\\times10^{{{exponent}}}' 
+            string += f'$\\times10^{{{exponent}}}$' 
         string += f'{label_dictionary[par][1]}'
                      
     else:
