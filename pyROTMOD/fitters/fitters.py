@@ -7,7 +7,8 @@ from pyROTMOD.support.errors import InitialGuessWarning
 import copy
 import lmfit
 import corner
-from pyROTMOD.support.minor_functions import print_log, get_uncounted,get_correct_label
+from pyROTMOD.support.minor_functions import print_log, get_uncounted,\
+    get_correct_label,get_exponent
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import matplotlib
@@ -269,9 +270,12 @@ def mcmc_run(total_RC,original_variable_settings,out_dir = None,\
                     parameter = x
                     if parameter_mc == parameter and parameter not in added:
                         strip_parameter,no = get_uncounted(parameter) 
-                        lab.append(get_correct_label(strip_parameter,no))
-                        added.append(parameter)                   
-       
+                        edv,correction = get_exponent(np.mean(result_emcee.flatchain[parameter_mc]),threshold=3.)
+                        result_emcee.flatchain[parameter_mc] = result_emcee.flatchain[parameter_mc]*correction
+                        lab.append(get_correct_label(strip_parameter,no,exponent= edv))
+                        added.append(parameter)  
+                              
+      
         fig = corner.corner(result_emcee.flatchain, quantiles=[0.16, 0.5, 0.84],show_titles=True,
                         title_kwargs={"fontsize": 15},labels=lab)
         fig.savefig(f"{out_dir}{results_name}_COV_Fits.pdf",dpi=300)

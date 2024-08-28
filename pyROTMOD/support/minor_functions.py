@@ -316,40 +316,43 @@ check_input.__doc__ =f'''
 
 '''
 
-def get_correct_label(par,no):
+def get_correct_label(par,no,exponent = 0.):
     #Need to use raw strings here to avoid problems with \
-    label_dictionary = {'Gamma_disk':r'$\mathrm{M/L_{disk}}$',
-                         'Gamma_bulge':r'$\mathrm{M/L_{bulge}}$',
-                         'Gamma_gas':r'$\mathrm{M/L_{gas}}$',
-                         'ML_stellar':r'$\mathrm{M/L_{optical}}$',
-                         'ML_gas':r'$\mathrm{M/L_{gas}}$',
-                         'RHO': r'$\mathrm{\rho_{c}\times 10^{-3}\,\, (M_{\odot} \,\, pc^{-3})}$',
-                         'RHO0': r'$\mathrm{\rho_{c}\times 10^{-3}\,\, (M_{\odot} \,\, pc^{-3})}$',
-                         'R_C': r'$ \mathrm{R_{c}\,\, (kpc)}$',
-                         'C':r'$\mathrm{c}$',
-                         'R200':r'$ \mathrm{R_{200}\,\, (kpc)}$',
-                         'm': r'$\mathrm{Axion\,\,  Mass\times 10^{-23}\,\, (eV)}$',
-                         'central': r'$\mathrm{Central\,\, SBR\,\,  (M_{\odot}\,\, pc^{-2})}$',
-                         'h': r'$\mathrm{Scale\,\,  length\,\,  (kpc)}$',
-                         'mass': r'$\mathrm{Total\,\,  Mass \,\, (M_{\odot})}$',
-                         'hern_length': r'$\mathrm{Hernquist\,\, length\,\,  (kpc)}$',
-                         'effective_luminosity': r'$\mathrm{L_{e}\,\,  (M_{\odot})}$' ,
-                         'effective_radius': r'$\mathrm{R_{e}} (kpc)$' ,
-                         'n': r'Sersic Index',
-                         'a0': r'$\mathrm{a_{0}\times 10^{-8}\,\,   (cm\,\,  s^{-2})}$'
+    label_dictionary = {'Gamma_disk':[r'$\mathrm{M/L_{disk}}$', ''],
+                         'Gamma_bulge':[r'$\mathrm{M/L_{bulge}}$', ''],
+                         'Gamma_gas': [r'$\mathrm{M/L_{gas}}$',''],
+                         'ML_stellar':[r'$\mathrm{M/L_{optical}}$',''],
+                         'ML_gas':[r'$\mathrm{M/L_{gas}}$',''],
+                         'RHO': [r'$\mathrm{\rho_{c}}$',r'$\mathrm{(M_{\odot} \,\, pc^{-3})}$'],
+                         'RHO0': [r'$\mathrm{\rho_{c}}$',r'$\mathrm{(M_{\odot} \,\, pc^{-3})}$'],
+                         'R_C': [r'$ \mathrm{R_{c}}$','(kpc)'],
+                         'C':[r'C',''],
+                         'R200':[r'$ \mathrm{R_{200}}$','(kpc)'],
+                         'm': [r'Axion Mass','(eV)'],
+                         'central': [r'Central SBR',r'$\mathrm{(M_{\odot}\,\,pc^{-2})}$'],
+                         'h': [r'Scale Length','(kpc)'],
+                         'mass': [r'Total Mass', r'$\mathrm{(M_{\odot})}$'],
+                         'hern_length': ['Hernquist length','(kpc)}$'],
+                         'effective_luminosity': [r'$\mathrm{L_{e}}$',r'$\mathrm{(M_{\odot})}$'] ,
+                         'effective_radius': [r'$\mathrm{R_{e}}}$','(kpc)'] ,
+                         'n': [r'Sersic Index',''],
+                         'a0': [r'$\mathrm{a_{0}}$',r'\mathrm{$(cm\,\,s^{-2})}$']
                          }
     if par in label_dictionary:
         if par[:5] == 'Gamma':
-            string = f'{label_dictionary[par]} {no}'
+            string = f'{label_dictionary[par][0]} {no}'
         else:
-            string = label_dictionary[par]              
+            string = label_dictionary[par][0] 
+        if abs(exponent) >= 1.:
+            string += f'$\\times10^{{{exponent}}}' 
+        string += f'{label_dictionary[par][1]}'
+                     
     else:
         print(f''' The parameter {par} has been stripped
 Unfortunately we can not find it in the label dictionary.''')
         raise RunTimeError(f'{par} is not in label dictionary')
     
     return string   
-
 
 
 
@@ -497,6 +500,16 @@ def get_accepted_unit(search_dictionary,attr, acceptable_units = \
         if not funit in acceptable_units:
             funit = None
     return funit
+
+def get_exponent(level,threshold = 2.):
+    logexp = int(np.floor(np.log10(level)))
+    correction = 1./(10**(logexp))
+    if abs(logexp) <= threshold:
+        logexp = 0.
+        correction=1.
+    return logexp,correction
+
+
 def plot_profiles(gas_profiles,optical_profiles, log= None\
                 ,output_dir = './',input_profiles = None):
     '''This function makes a simple plot of the optical profiles'''    
