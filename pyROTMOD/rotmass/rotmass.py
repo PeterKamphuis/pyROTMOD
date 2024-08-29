@@ -28,20 +28,26 @@ def build_curve(all_RCs,total_RC,debug=False,log=None):
     total_sympy_curve = None
     for name in all_RCs:
         RC_symbols = [x for x in list(all_RCs[name].curve.free_symbols) if str(x) != 'r']
-        
+        print(f'##########################{name}##################')
+        print( all_RCs[name].fitting_variables)
+        print( all_RCs[name].curve)
+       
+        print(f'############################################')
         for symbol in RC_symbols:
+            print()
             if symbol == V:
                 V_replace = symbols(f'V_{all_RCs[name].name}')
                 for attr in ['curve', 'individual_curve']:
                     setattr(all_RCs[name],attr,getattr(all_RCs[name],attr).subs({V: V_replace}))
 
                 all_RCs[name].match_radii(total_RC)
-                #Here we need to set it all to the radii of the total_RC else we can not match    
-                replace_dict[f'V_{all_RCs[name].name}'] =   all_RCs[name].matched_values.value
-                replace_dict['symbols'].append(V_replace)
+                #Here we need to set it all to the radii of the total_RC else we can not match  
+                if all_RCs[name].include: 
+                    replace_dict[f'V_{all_RCs[name].name}'] =   all_RCs[name].matched_values.value
+                    replace_dict['symbols'].append(V_replace)
             if symbol == ML:
                 for variable in all_RCs[name].fitting_variables:
-                    if variable.split('_')[0].lower() in ['gamma','ml']:
+                    if variable.split('_')[0].lower() in ['gamma','ml']:    
                         ML_replace = symbols(variable)
                 for attr in ['curve', 'individual_curve']:
                     setattr(all_RCs[name],attr,getattr(all_RCs[name],attr).subs({ML: ML_replace}))
@@ -50,11 +56,12 @@ def build_curve(all_RCs,total_RC,debug=False,log=None):
         RC_symbols = [x for x in list(all_RCs[name].individual_curve.free_symbols)]
         all_RCs[name].numpy_curve ={'function': lambdify(RC_symbols,all_RCs[name].individual_curve,"numpy"),
                                     'variables': [str(x) for x in RC_symbols]}
-        if  total_sympy_curve is None:
-            total_sympy_curve =  all_RCs[name].curve**2
-        else:
-            total_sympy_curve += all_RCs[name].curve**2
- 
+        if  all_RCs[name].include:
+            if  total_sympy_curve is None:
+                total_sympy_curve =  all_RCs[name].curve**2
+            else:
+                total_sympy_curve += all_RCs[name].curve**2
+    
    
     total_sympy_curve = sqrt(total_sympy_curve)
 
@@ -407,7 +414,7 @@ def set_RC_style(RC,input=False):
         elif RC.component == 'stars':
             rcs,no = get_uncounted(RC.name)
             style_dictionary['linestyle'] = '--'
-            if rcs in ['SERSIC','EXPONENTIAL','DISK','SERSIC_DISK']:
+            if rcs in ['EXPONENTIAL','DISK']:
                 style_dictionary['color'] = colors.to_rgba('cyan',alpha=1.)
                 style_dictionary['linestyle'] = '--'
                 style_dictionary['label'] =  f'V$_{{Disk_{no}}}$'
@@ -416,6 +423,11 @@ def set_RC_style(RC,input=False):
                 style_dictionary['color'] = colors.to_rgba('purple',alpha=1.)
                 style_dictionary['label'] = f'V$_{{Bulge_{no}}}$'
                 style_dictionary['zorder'] = 2
+            if rcs in ['SERSIC','SERSIC_DISK']:
+                style_dictionary['color'] = colors.to_rgba('blue',alpha=1.)
+                style_dictionary['linestyle'] = '--'
+                style_dictionary['label'] =  f'V$_{{Sersic_{no}}}$'
+                style_dictionary['zorder'] = 3
         else:
             raise InputError(f'The component {RC.component} in {RC.name} is not a component familiar to us')
         if not RC.component == 'All':    
@@ -507,7 +519,8 @@ def plot_curves(filename,RCs,total_RC,interactive = False, font = 'Times New Rom
     plt.rc('axes', linewidth=2)
     figure,  (ax1, ax2) = plt.subplots(nrows=2, ncols=1,figsize=(10,10), gridspec_kw={'height_ratios': [3, 1]})
     for name in RCs:
-        ax1 = plot_individual_RC(RCs[name],ax1)
+        if RCs[name].include:
+            ax1 = plot_individual_RC(RCs[name],ax1)
     ax1 = plot_individual_RC(total_RC,ax1)
     ax1 = plot_individual_RC(total_RC,ax1, input=True)
     ax2 = calculate_residual(total_RC,ax2)
@@ -642,7 +655,7 @@ rotmass_main.__doc__ =f'''
 
 def add_fitting_dict(name, parameters, component_type = 'stars', fitting_dictionary = {}):
     variable = None
-    #V_disk and V_Bulge are place holders for the values to be inserted in the final formulas
+    #V_disk and V_bulge, V_sersic are place holders for the values to be inserted in the final formulas
     base,number = get_uncounted(name)
     if base in ['EXPONENTIAL','DISK','DISK_GAS']:
         if component_type == 'stars':
@@ -651,6 +664,8 @@ def add_fitting_dict(name, parameters, component_type = 'stars', fitting_diction
             variable  = f'Gamma_gas_{number}'
     elif base in ['HERNQUIST','BULGE'] and component_type == 'stars':
         variable = f'Gamma_bulge_{number}'
+    elif base in ['SERSIC'] and component_type == 'stars':
+        variable = f'Gamma_sersic_{number}'
 
     if variable is None:
         variable = name
@@ -681,6 +696,10 @@ def set_fitting_parameters(rotmass_settings,fit_settings, baryonic_RCs,total_RC)
         add_fitting_dict(all_RCs[name].name,fit_settings[all_RCs[name].name],\
                          component_type=all_RCs[name].component,\
                         fitting_dictionary=fitting_dictionary)
+        #Check whether we want to include this RC tot the total
+        if not fit_settings[all_RCs[name].name][4]:
+            all_RCs[name].include=False
+     
         if no_dm:
             all_RCs[name].halo = rotmass_settings['HALO']
             all_RCs[name].curve = getattr(potentials, rotmass_settings['HALO'])()       
@@ -698,9 +717,12 @@ def set_fitting_parameters(rotmass_settings,fit_settings, baryonic_RCs,total_RC)
   
 
         all_RCs[name].fitting_variables= fitting_dictionary 
+        
+        
         all_RCs[name].check_unified(rotmass_settings.single_stellar_ML,\
                                     rotmass_settings.single_gas_ML)
-      
+        print(fitting_dictionary)
+
         total_RC.fitting_variables.update(all_RCs[name].fitting_variables)
       
     if not no_dm:

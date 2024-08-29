@@ -293,6 +293,7 @@ class Rotation_Curve:
             self.fitting_variables = fitting_variables
             self.curve = None
             self.individual_curve = None
+            self.include = True
             self.unit_dictionary = {'distance': u.Mpc,\
                               'values': u.km/u.s,\
                               'matched_values':  u.km/u.s,\
@@ -355,7 +356,8 @@ class Rotation_Curve:
 
                   for variable in   found_variables:
                         if variable in [f'Gamma_disk_{get_uncounted(self.name)[1]}', \
-                              f'Gamma_bulge_{get_uncounted(self.name)[1]}']:
+                              f'Gamma_bulge_{get_uncounted(self.name)[1]}',
+                              f'Gamma_sersic_{get_uncounted(self.name)[1]}']:
                               self.fitting_variables['ML_stellar'] =\
                                     self.fitting_variables[variable]
                               del self.fitting_variables[variable]
@@ -385,7 +387,6 @@ class Rotation_Curve:
                   self.matched_errors = None
             self.matched_radii= to_match.radii
             if not self.values is None:
-                  print(to_match.radii.value,len(self.radii.value),len(self.values.value))
                   self.matched_values = np.interp(to_match.radii.value,\
                         self.radii.value,self.values.value)*self.values.unit
             else:
@@ -589,7 +590,7 @@ def set_variables_and_ranges(RC):
       ranges = []
       sets = []    
       collected_variables = []
-      
+     
       for variable in RC.numpy_curve['variables']:
             if variable == 'r':
                   collected_variables.append('r')  

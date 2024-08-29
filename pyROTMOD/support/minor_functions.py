@@ -321,6 +321,7 @@ def get_correct_label(par,no,exponent = 0.):
     label_dictionary = {'Gamma_disk':[r'$\mathrm{M/L_{disk}}$', ''],
                          'Gamma_bulge':[r'$\mathrm{M/L_{bulge}}$', ''],
                          'Gamma_gas': [r'$\mathrm{M/L_{gas}}$',''],
+                         'Gamma_sersic': [r'$\mathrm{M/L_{gas}}$',''],
                          'ML_stellar':[r'$\mathrm{M/L_{optical}}$',''],
                          'ML_gas':[r'$\mathrm{M/L_{gas}}$',''],
                          'RHO': [r'$\mathrm{\rho_{c}}$',r'$\mathrm{(M_{\odot} \,\, pc^{-3})}$'],
