@@ -28,11 +28,6 @@ def build_curve(all_RCs,total_RC,debug=False,log=None):
     total_sympy_curve = None
     for name in all_RCs:
         RC_symbols = [x for x in list(all_RCs[name].curve.free_symbols) if str(x) != 'r']
-        print(f'##########################{name}##################')
-        print( all_RCs[name].fitting_variables)
-        print( all_RCs[name].curve)
-       
-        print(f'############################################')
         for symbol in RC_symbols:
             print()
             if symbol == V:
@@ -159,40 +154,6 @@ calculate_red_chisq.__doc__ =f'''
 '''
 
 
-
-'''
-def create_disk_var(collected_RCs,single_stellar_ML=True,single_gas_ML=True):
-    disk_var = {}
-    counters = {'GAS': 1, 'DISK': 1, 'BULGE': 1} 
-    for RC in collected_RCs:
-        key = collected_RCs[RC].name
-        if key != 'RADI':
-            bare,no = get_uncounted(key)
-            if collected_RCs[RC].component in ['stars']:
-                if bare in ['EXPONENTIAL','SERSIC']:
-                    disk_var[key] = [f'Gamma_disk_{counters["DISK"]}',f'V_disk_{counters["DISK"]}']
-                    counters['DISK'] += 1
-                elif bare in ['HERNQUIST','BULGE']:
-                    disk_var[key] = [f'Gamma_bulge_{counters["BULGE"]}',f'V_bulge_{counters["BULGE"]}']
-                    counters['BULGE'] += 1
-                if single_stellar_ML:
-                    disk_var[key][0]='ML_stars'
-            
-            elif bare in ['DISK_GAS']:
-                disk_var[key] = [f'Gamma_gas_{counters["GAS"]}',f'V_gas_{counters["GAS"]}']
-                counters['GAS'] += 1
-            elif bare in ['HERNQUIST','BULGE']:
-                disk_var[key] = [f'Gamma_bulge_{counters["BULGE"]}',f'V_bulge_{counters["BULGE"]}']
-                counters['BULGE'] += 1
-            if bare in ['EXPONENTIAL','SERSIC','HERNQUIST','BULGE']:
-                if single_stellar_ML:
-                    disk_var[key][0]='ML_optical'
-            if bare in ['DISK_GAS']:
-                if single_gas_ML: 
-                    disk_var[key][0] = 'ML_gas'
-    return disk_var
-'''
-
 def create_formula_code(initial_formula,replace_dict,function_name='python_formula' ,log=None,debug =False):
     lines=initial_formula.__doc__.split('\n')
 
@@ -235,102 +196,6 @@ create_formula_code.__doc__ =f'''
     create the code that can be ran through exec to get the function to be fitted.
     The input formula is already lambidified so this is merely a matter of  replacing the variables with the correct 
     values for each radius.
-
- CATEGORY:
-    rotmass
-
- INPUTS:
-
- OPTIONAL INPUTS:
-
- OUTPUTS:
-
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-    Unspecified
-
- NOTE:
-'''
-'''
-def get_baryonic_RC(radii,total_RC,derived_RCs,
-                    V_total_error=[0.,0.,0.],baryonic_error= {'Empty':True},
-                    log = None, debug=False,settings = None):
-    if 'Empty' not in baryonic_error:
-        baryonic_error['Empty']=False
-    #We can strip the total rc and the radius from their indicators
-    new_radii= np.array(radii[2:])
-    new_RC = np.array(total_RC[2:])
-    new_RC_error = np.array(V_total_error[2:])
-    #Radius of 0. messses thing up so lets interpolate to the second point
-    if new_radii[0] == 0.:
-        new_radii[0]=new_radii[1]/2.
-        new_RC[0]=(new_RC[0]+new_RC[1])/2.
-        if np.sum(new_RC_error) != 0.:
-            new_RC_error[0] = (new_RC_error[0]+new_RC_error[1])/2.
-
-
-    RC ={}
-    for x in range(len(derived_RCs)):
-        if not settings is None and derived_RCs[x][0] != 'RADI':
-            #if parameter 5 is set to false we do not want to include the rc
-            if not settings[derived_RCs[x][0]][4]:
-                continue
-            
-        component = ['Empty','Empty']
-        if derived_RCs[x][0] == 'RADI':
-            rad_in = np.array(derived_RCs[x][2:])
-            component = ['Empty','Empty']
-        elif derived_RCs[x][0][:6] in ['EXPONE','DISK_S','SERSIC']:
-            component = [derived_RCs[x][0],'MD']
-        elif derived_RCs[x][0][:3] in ['BUL','HER']:
-            component = [derived_RCs[x][0],'MB']
-        elif derived_RCs[x][0][:6] == 'DISK_G':
-            component =  [derived_RCs[x][0],'MG']
-        else:
-            if derived_RCs[x][0][:3] not in ['EXP','BUL','SER','DIS','HER']:
-                print_log(f"We do not recognize this type ({derived_RCs[x][0][:3]}) of RC and don't know what to do with it",log)
-                exit()
-   
-        if component[0] != 'Empty':
-            if component[0] not in RC:
-                RC[component[0]] = {'Type': component[1], 'RC': np.array(derived_RCs[x][2:])}
-                if x in baryonic_error:
-                    RC[component[0]]['Errors'] = np.array(baryonic_error[x][2:])
-                else:
-                    RC[component[0]]['Errors'] = np.zeros(len( RC[component[0]]['RC']))
-            else:
-                if x in baryonic_error:
-                    RC[component[0]]['Errors'] = np.array([np.sqrt(x*x_err/np.sqrt(x**2+y**2)+y*y_err/np.sqrt(x**2+y**2))\
-                                     for x,y,x_err,y_err in \
-                                        zip(RC[component[0]]['RC'],derived_RCs[x][2:],\
-                                     RC[component[0]]['Errors'],baryonic_error[x][2:])])
-
-                RC[component[0]]['RC'] = np.array([np.sqrt(x**2+y**2) for x,y in zip(RC[component[0]]['RC'],derived_RCs[x][2:])])
-
-
-    # if our requested radii do not correspond to the wanted radii we interpolat
-    for key in RC:
-        if len(RC[key]['RC']) > 0.:
-            if np.sum([float(x)-float(y) for x,y in zip(new_radii,rad_in)]) != 0.:
-                RC[key]['RC'] = np.array(np.interp(new_radii,rad_in,RC[key]['RC']),dtype=float)
-                RC[key]['Errors'] = np.array(np.interp(new_radii,rad_in,RC[key]['Errors']),dtype=float)
-        else:
-            raise InputError(f'The parameter {key} is requested to be added to the formula but the RC is missing')
-    if np.sum(new_RC_error) != 0.:
-        new_RC = [new_RC,new_RC_error]
-    else:
-        new_RC = [new_RC,np.zeros(len(new_RC))]
-    return new_radii, new_RC, RC
-
-get_baryonic_RC.__doc__ =f'''
-'''
- NAME:
-    get_baryonic_RC
-
- PURPOSE:
-    Define the baryonic RCs that are defined for the fit. and transform radii and total_RC to float numpy arrays
-    This combines the different components of the galfit or tirific fit to a single RC for Bulge, Disk and Gas disk
 
  CATEGORY:
     rotmass
