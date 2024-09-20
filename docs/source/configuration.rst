@@ -165,15 +165,21 @@ General Fitting Keywords
 
 **HALO**:
 
-   *str, optional, default =NFW'*
+  *str, optional, default =NFW'*
 
-   The requested DM halo potential. For now this is NFW, ISO, BURKERT for the NAFW profile, the pseudo isothermal halo profile and a Burkert profile.
+  The requested DM halo potential. For now this is NFW, ISO, BURKERT for the NAFW profile, the pseudo isothermal halo profile and a Burkert profile.
 
 **mcmc_steps**:
 
-    *int,optional, default= 2000*
+  *int, optional, default= 2000*
 
-    Number of integration steps per parameter for the emcee fitting.
+  Number of integration steps per parameter for the emcee fitting.
+
+**initial_minimizer**:
+  
+  *str, optional, default = 'differential_evolution'
+
+  The minimizer used in the initial estimates. This can be any lmfit minimizer.
 
 
 General Fitting Keywords

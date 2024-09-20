@@ -4,7 +4,7 @@ from dataclasses import dataclass,field
 from omegaconf import OmegaConf,open_dict,MissingMandatoryValue,ListConfig, MISSING
 from typing import List,Optional
 from datetime import datetime
-from pyROTMOD.support import get_uncounted
+from pyROTMOD.support.minor_functions import get_uncounted
 import os
 import numpy as np
 import pyROTMOD.rotmass.potentials as potentials
@@ -25,17 +25,29 @@ class RCConstruction:
     enable: bool = True
     optical_file: Optional[str] = None
     gas_file: Optional[str] = None
-    scaleheight: List = field(default_factory=lambda: [0., None]) #If 0 use infinitely thin disks, if vertical mode is none as wel #vertical options are  ['exp', 'sech-sq','sech'] These do not apply to parametrized functions.
-    gas_scaleheight: List = field(default_factory=lambda: [0., None]) #If 0 use infinitely thin disks, if vertical mode is none as wel #vertical options are  ['exp', 'sech-sq',''sech-simple'] set secon value to 'tir' to use tirific values
+    #Scale height for the optical profiles provided as  [value, error, unit, type]
+    #If value = 0 or or type = None use infinitely thin disks (inf_thin),
+    #Other type options are ['exp', 'sech-sq','sech', 'constant', 'lorentzian']. If a galfit fit provides a scale height this takes precedence
+    # 0 for a bulge profile will be a spherical bulge
+    # units can be 'PC', "KPC', "ARCSEC', 'ARCMIN', 'DEGREE'
+    scaleheight: List = field(default_factory=lambda: [0., None, 'KPC', 'inf_thin']) 
+    # truncation radius at which point the profile will gaussian tapered to 0.
+    # given as radius, softening_length as fraction of scalelength, unit
+    truncation_radius: List = field(default_factory=lambda: [None, 0.2,  'KPC']) 
+    # Same for gas, if read from def file this takes precedence
+    gas_scaleheight: List = field(default_factory=lambda: [0., None,  'KPC', 'inf_thin']) 
+    gas_truncation_radius: List = field(default_factory=lambda: [None, 0.2, 'KPC']) 
     axis_ratio: float = 1.
     exposure_time: float = 1.
     mass_to_light_ratio: float = 1.0
     band: str='SPITZER3.6'
+    gas_band: str = '21cm'
 
 @dataclass
 class Fitting:
     enable: bool = True
     negative_values: bool = False
+    initial_minimizer: str = 'differential_evolution'
     HALO: str = 'NFW'
     single_stellar_ML: bool = True
     single_gas_ML: bool = False
@@ -110,7 +122,7 @@ Exiting pyROTMOD.''')
     return cfg
 
 
-def read_fitting_config(cfg,baryonic_components,print_examples=False):
+def read_fitting_config(cfg,baryonic_RCs,print_examples=False):
     halo = 'NFW'
     try:
         halo = cfg.file_config.fitting_general.HALO
@@ -121,11 +133,11 @@ def read_fitting_config(cfg,baryonic_components,print_examples=False):
     except:
         pass
     if print_examples:
-        baryonic_components = {'DISK_GAS': [],'EXPONENTIAL_1':{},'HERNQUIST_1': []}
+        baryonic_components = {'DISK_GAS_1': [],'EXPONENTIAL_1':{},'HERNQUIST_1': []}
         cfg.fitting_general.HALO = halo
     halo_conf = f'{halo}_config'
     cfg_new = OmegaConf.structured(ExtendConfig)
-    cfg_new = add_dynamic(cfg_new,baryonic_components,halo = halo_conf)
+    cfg_new = add_dynamic(cfg_new,baryonic_RCs,halo = halo_conf)
     cfg_new = create_masked_copy(cfg_new,cfg.file_config)
     cfg_new = create_masked_copy(cfg_new,cfg.input_config) 
     cfg_new.fitting_general.HALO = halo
@@ -135,12 +147,12 @@ def add_dynamic(in_dict,in_components, halo = 'NFW'):
     halo_config = getattr(potentials,halo)
     with open_dict(in_dict):
         dict_elements = []
-        for component_full in in_components:
-            component,no = get_uncounted(component_full)
+        for name in in_components:
+            component,no = get_uncounted(in_components[name].name)
             if component in ['DISK_GAS']:
-                dict_elements.append([f'{component_full}',[1.33, None, None,True,True]])
+                dict_elements.append([f'{in_components[name].name}',[1.33, None, None,True,True]])
             elif component in ['DISK_STELLAR','EXPONENTIAL', 'SERSIC','BULGE_STELLAR','BULGE', 'HERNQUIST']:
-                dict_elements.append([f'{component_full}',[1., None, None,True,True]])  
+                dict_elements.append([f'{in_components[name].name}',[1., None, None,True,True]])  
             
         for key in halo_config.parameters:          
             dict_elements.append([f'{key}',halo_config.parameters[key]]) 

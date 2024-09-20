@@ -1,7 +1,7 @@
 # -*- coding: future_fstrings -*-
 
 import numpy as np
-import pyROTMOD.constants as cons
+import pyROTMOD.support.constants as cons
 from sympy import symbols, sqrt,atan,pi,log
 from dataclasses import dataclass,field
 from typing import List
@@ -13,7 +13,7 @@ from typing import List
 # Written by Aditya K.
 def ISO():
     r,RHO0,R_C = symbols('r RHO0 R_C')
-    iso = sqrt((4.*pi*cons.Gpot*RHO0*R_C**2)* (1- (R_C/r)*atan(r/R_C)))
+    iso = sqrt((4.*pi*cons.Gpot.value*RHO0*R_C**2)* (1- (R_C/r)*atan(r/R_C)))
     return iso
 
 class ISO_config:
@@ -25,16 +25,21 @@ def NFW():
     r,C,R200= symbols('r C R200')
     nfw = (R200/0.73)*sqrt( (R200/r)*((log(1+r*(C/R200))-(r*(C/R200)/(1+r*(C/R200))))/(log(1+C) - (C/(1+C)))))
     return nfw
-
+ 
 
 class NFW_config:
     parameters = {'C': [None, None, None, True,True],\
     'R200': [None, None, None, True,True]}
   
-# Where does this come from?
+  # if V and ML are in a potential it is assumed that this is an 
+  # alternative gravity where no additional RC is required beyond the baryonic RCs
 
+# This is the formula as stated in the ROTMASS documentation of Gipsy
 def MOND_CLASSIC():
     r, V,ML, a0 = symbols('r V ML a0')
+    #Vt(r)=2*r*a/(mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb))
+    #with default: a=3734
+    #V**2 = ML*V**2*sqrt(1+sqrt(1+(2*r*a/(ML*V**2))**2))/sqrt(2)  
     #Vt(r)=sqrt((mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb))*sqrt(1+sqrt(1+(2*r*a/(mg*abs(Vg)*Vg+md*Vd*abs(Vd)+mb*Vb*abs(Vb)))**2))/sqrt(2))
     mond = sqrt(ML*V*abs(V)*sqrt(1+sqrt(1+(2*r*(a0*3.0856776e11)/(ML*V*abs(V)))**2))/sqrt(2)) 
     #The factor 3.08e11 is to convert from cm/s**2 to km**2/(s**2*kpc)
@@ -53,7 +58,7 @@ class MOND_CLASSIC_config:
 # Written by Aditya K.
 def BURKERT():
     r,RHO0,R_C = symbols('r RHO0 R_C')
-    Burkert = sqrt((6.4*cons.Gpot*RHO0*((R_C**3)/r))*(log(1+(r/R_C)) - atan(r/R_C)  + 0.5*log( 1+ (r/R_C)**2) ))
+    Burkert = sqrt((6.4*cons.Gpot.value*RHO0*((R_C**3)/r))*(log(1+(r/R_C)) - atan(r/R_C)  + 0.5*log( 1+ (r/R_C)**2) ))
     return Burkert
 
 
@@ -69,7 +74,7 @@ def Fuzzy_DM():
     #rho_Fuzzy_DM = 1.9*(m*10**23)**(-2)*R_C**(-4) /(1+0.091*(r/R_C)**2)**8
     #MR=4/3.*pi*r**3*rho_Fuzzy_DM
     #m in 10^-23 eV
-    Fuzzy_DM = sqrt(cons.Gpot*4/3.*pi*r**2*(1.9*(m)**(-2)*R_C**(-4) /(1+0.091*(r/R_C)**2)**8)*10**9)
+    Fuzzy_DM = sqrt(cons.Gpot.value*4/3.*pi*r**2*(1.9*(m)**(-2)*R_C**(-4) /(1+0.091*(r/R_C)**2)**8)*10**9)
     return Fuzzy_DM
     #(m/s)^2*kpc/Msol  *kpc^2 * M/pc**3
     #1./pc = 1./(10^-3 kpc) =10^3 1./kpc

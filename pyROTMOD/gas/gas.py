@@ -1,10 +1,14 @@
 # -*- coding: future_fstrings -*-
 import numpy as np
-from pyROTMOD.support import print_log,read_columns
+from pyROTMOD.support.major_functions import read_columns
+from pyROTMOD.support.minor_functions import print_log, propagate_mean_error,\
+    translate_string_to_unit
+
+from pyROTMOD.support.errors import InputError
+from pyROTMOD.support.classes import Density_Profile,Rotation_Curve
+from astropy import units as unit
 #Function to convert column densities
-# levels should be n mJy/beam when flux is given
-class InputError(Exception):
-    pass
+
 def columndensity(levels,systemic = 100.,beam=[1.,1.],channel_width=1.,column= False,arcsquare=False,solar_mass_input =False,solar_mass_output=False, debug = False,log=None):
     if debug:
         print_log(f'''COLUMNDENSITY: Starting conversion from the following input.
@@ -91,14 +95,18 @@ columndensity.__doc__ = '''
 
 '''
 
-def get_individal_tirific_disk(disk,filename):
+def get_individual_tirific_disk(disk,filename,log=None, debug =False):
 
     if disk == 1:
+        RC = Rotation_Curve(type='random_disk')
+        sbr = Density_Profile(type='random_disk')
         ext1 =''
     else:
+        sbr = Density_Profile(type='random_disk')
         ext1=f'_{disk}'
     ext2 = f'_{disk+1}'
-
+    sbr.profile_type = 'sbr_dens'
+  
     if disk == 1: 
         Variables =  ['RADI','VROT','VROT_2','VROT_ERR',\
                       'VROT_2_ERR']
@@ -106,108 +114,136 @@ def get_individal_tirific_disk(disk,filename):
         Variables = []
     
     Variables =Variables + [f'SBR{ext1}',f'SBR{ext2}',f'Z0{ext1}',f'Z0{ext2}'\
-                      ,f'LTYPE{ext1}',f'LTYPE{ext2}',f'VSYS{ext1}']
+                    ,f'LTYPE{ext1}',f'LTYPE{ext2}',f'VSYS{ext1}',\
+                    f'SBR{ext1}_ERR',f'SBR{ext2}_ERR',f'Z0{ext1}_ERR',\
+                    f'Z0{ext2}_ERR']
     
     value_dictionary = load_tirific(filename, Variables=Variables, dict=True)  
-    scaleheight=[np.mean(value_dictionary[f'Z0{ext1}']),\
-                 np.mean(value_dictionary[f'Z0{ext2}'])]
+  
+    sbr.height = np.mean(value_dictionary[f'Z0{ext1}']+value_dictionary[f'Z0{ext2}'])*unit.arcsec
+  
+    if np.sum(value_dictionary[f'Z0{ext1}_ERR']+value_dictionary[f'Z0{ext2}_ERR']) != 0.:
+    
+        sbr.height_error = np.mean(value_dictionary[f'Z0{ext1}_ERR']+\
+                                value_dictionary[f'Z0{ext2}_ERR'])*unit.arcsec
+                                
    
     if  value_dictionary[f'LTYPE{ext1}'][0] != value_dictionary[f'LTYPE{ext2}'][0] :
         print_log(f'''Your def file has different vertical functions. 
 We always assume the function used in the first disk ({value_dictionary[f"LTYPE{ext1}"][0]}) instead of the second ({value_dictionary[f"LTYPE{ext2}"][0]})''',log)
     if value_dictionary[f'LTYPE{ext1}'][0] == 0.:
-        scaleheight.append('constant')
+        sbr.height_type = 'constant'
     elif value_dictionary[f'LTYPE{ext1}'][0] == 1.:
-        scaleheight.append('gaussian')
+        sbr.height_type = 'gaussian'
     elif value_dictionary[f'LTYPE{ext1}'][0] == 2:
-        scaleheight.append('sech-sq')
+        sbr.height_type = 'sech-sq'
     elif value_dictionary[f'LTYPE{ext1}'][0] == 3:
-        scaleheight.append('exp')
+        sbr.height_type = 'exp'
     elif value_dictionary[f'LTYPE{ext1}'][0] == 4:
-        scaleheight.append('lorentzian')
-    outdisk = int((disk+1)/2.)    
-    gas_density = [f'DISK_GAS_{outdisk}','M_SOLAR/PC^2']
+        sbr.height_type = 'lorentzian'
+    
     av = np.array([(x1+x2)/2.*1000. for x1,x2 in zip(\
         value_dictionary[f'SBR{ext1}'],value_dictionary[f'SBR{ext2}'])],dtype=float)
-    tmp = columndensity(av,arcsquare = True , solar_mass_output = True,\
-                         systemic= value_dictionary[f'VSYS{ext1}'][0])
-    for x in tmp:
-        gas_density.append(x)    
+   
+    sbr.values = np.array(columndensity(av,arcsquare = True , solar_mass_output = True,\
+                         systemic= value_dictionary[f'VSYS{ext1}'][0]),dtype=float)*unit.Msun/unit.pc**2
+    if np.sum(value_dictionary[f'SBR{ext1}_ERR']+value_dictionary[f'SBR{ext2}_ERR']) != 0.:
+        length = len(value_dictionary[f'SBR{ext1}_ERR']+value_dictionary[f'SBR{ext2}_ERR'])
+        av_errors = np.array([(x+y)/2.*1000. for x,y in zip(
+                            value_dictionary[f'SBR{ext1}_ERR'],\
+                            value_dictionary[f'SBR{ext2}_ERR'] )],dtype=float)
+        sbr.errors = np.array(columndensity(av_errors,arcsquare = True , solar_mass_output = True,\
+                         systemic= value_dictionary[f'VSYS{ext1}'][0]),dtype=float)*unit.Msun/unit.pc**2
+   
+    sbr.radii = np.array(value_dictionary['RADI'],dtype=float)*unit.arcsec
+    
     if disk == 1:
-        radii = ['RADI','ARCSEC']+list(value_dictionary['RADI'])
-        total_RC = ['V_OBS','KM/S']
-        for x1,x2 in zip(value_dictionary['VROT'],value_dictionary['VROT_2']):
-            total_RC.append((x1+x2)/2.)
-        total_RC_Err = ['V_OBS_ERR','KM/S']
+        RC.radii = np.array(value_dictionary['RADI'],dtype=float)*unit.arcsec
+        
+        RC.values =  np.array([(x1+x2)/2. for x1,x2 in\
+            zip(value_dictionary['VROT'],value_dictionary['VROT_2']) ],\
+            dtype=float)*unit.km/unit.s
+       
+        RC.errors = np.array([(x1+x2)/2. for x1,x2 in\
+            zip(value_dictionary['VROT_ERR'],value_dictionary['VROT_2_ERR']) ],\
+            dtype=float)*unit.km/unit.s
       
-        for x1,x2 in zip(value_dictionary['VROT_ERR'],value_dictionary['VROT_2_ERR']):
-            total_RC_Err.append((x1+x2)/2.)
-        return  radii, total_RC,total_RC_Err,scaleheight,gas_density
+        return  sbr, RC
     else:
-        return scaleheight,gas_density
+        return sbr
 
 
       
        
 
 
-def get_gas_profiles(filename,log=None, debug =False):
+def get_gas_profiles(cfg,log=None, debug =False):
+    filename = cfg.RC_Construction.gas_file
+  
     print_log(f"Reading the gas density profile from {filename}. \n",log,screen =True )
+
+    gas_density = {}
     if filename.split('.')[1].lower() == 'def':
         #we have a tirific file
         nur = load_tirific(filename, Variables=['NDISKS'])[0]
         disk = 1
+        count = 1
         while disk < nur:
             if disk == 1:
-                radii, total_RC,total_RC_Err,scaleheight,gas_density = \
-                    get_individal_tirific_disk(disk,filename)
-                scaleheight= [scaleheight]
-                gas_density= [gas_density] 
-            
+                sbr, RC = \
+                    get_individual_tirific_disk(disk,filename,\
+                                        debug = cfg.general.debug)
+                RC.name = 'V_OBS'
             else:
-                tmp_scaleheight,tmp_gas_density =  get_individal_tirific_disk(disk,filename)
-                scaleheight.append(tmp_scaleheight)
-                gas_density.append(tmp_gas_density)
+                sbr =  get_individual_tirific_disk(disk,filename,\
+                                        debug = cfg.general.debug)
+            sbr.name = f'DISK_GAS_{count}'
+            gas_density[f'DISK_GAS_{count}']= sbr    
+          
+            count += 1
             disk = disk+2
     else:
-        all_profiles = read_columns(filename,debug=debug,log=log)
-        found = False
-        gas_density =[]
-        total_RC = []
-        total_RC_Err = []
+        all_profiles = read_columns(filename,debug = cfg.general.debug,\
+                                    log=log)
+
         for type in all_profiles:
-            if all_profiles[type][0] == 'RADI':
-                radii = all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]
-            elif all_profiles[type][0].split('_')[0] == 'DISK' and \
-                all_profiles[type][0].split('_')[1] in ['G','GAS']:
-                if len(gas_density) < 1:
-                    gas_density = [all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]]
-                else:
-                    if all_profiles[type][1] == gas_density[-1][1]:
-                        gas_density.append([all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]])
-                        #gas_density[2:] = [float((x+y)/2.) for x,y in (all_profiles[type][2:],gas_density[2:])]
-                    else:
-                        raise InputError(f'We do not know how to mix units for the gas disk')
-            elif all_profiles[type][0] == 'V_OBS':
-                if len(total_RC) < 1:
-                    total_RC = all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]
-                else:
-                    if all_profiles[type][1] == gas_density[1]:
-                        total_RC[2:] = [float((x+y)/2.) for x,y in (all_profiles[type][2:],total_RC[2:])]
-                    else:
-                        raise InputError(f'We do not know how to mix units for the gas disk')
-            elif all_profiles[type][0] == 'V_OBS_ERR':
-                if len(total_RC_Err) < 1:
-                    total_RC_Err = all_profiles[type][:2]+[float(x) for x in all_profiles[type][2:]]
-                else:
-                    if all_profiles[type][1] == gas_density[1]:
-                        total_RC_Err[2:] = [float((x+y)/2.) for x,y in (all_profiles[type][2:],total_RC_Err[2:])]
-                    else:
-                        raise InputError(f'We do not know how to mix units for the gas disk')
-        scaleheight = [[0.,0.,None]]
-        gas_density = [gas_density]
-    print()
-    return radii, gas_density, total_RC,total_RC_Err,scaleheight
+            if type in ['V_OBS','V_ROT']:
+                RC = all_profiles[type]
+            #else:
+            #    gas_density[type] =  all_profiles[type]
+            #    gas_density[type].height = 0.
+            #    gas_density[type].height_type = 'inf_thin'
+  
+    RC.distance = cfg.general.distance * unit.Mpc
+    RC.band = cfg.RC_Construction.band   
+    RC.component = 'All' 
+    RC.extend = RC.radii[-1]   
+    RC.check_profile()
+    for name in gas_density:
+        gas_density[name].component = 'gas'
+        gas_density[name].band = cfg.RC_Construction.gas_band  
+        gas_density[name].distance = cfg.general.distance * unit.Mpc
+        if  gas_density[name].height is None:
+            if cfg.RC_Construction.gas_scaleheight[3] == 'tir':
+                raise InputError(f'The height for {gas_density[name].name} should have been set by the tirific file but it was not')
+            gas_density[name].height = cfg.RC_Construction.gas_scaleheight[0]\
+                *translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
+            if not cfg.RC_Construction.scaleheight[1] is None:
+                gas_density[name].height_error = cfg.RC_Construction.gas_scaleheight[1]\
+                    *translate_string_to_unit(cfg.RC_Construction.gas_scaleheight[2])
+        if gas_density[name].height_type is None:
+            gas_density[name].height_type = cfg.RC_Construction.gas_scaleheight[3]
+        if  gas_density[name].truncation_radius is None:
+            if not cfg.RC_Construction.gas_truncation_radius[0] is None:
+                gas_density[name].truncation_radius = cfg.RC_Construction.gas_truncation_radius[0]*\
+                    translate_string_to_unit(cfg.RC_Construction.gas_truncation_radius[2])
+                gas_density[name].softening_length = cfg.RC_Construction.gas_truncation_radius[1]
+       
+        gas_density[name].check_profile()  
+        gas_density[name].calculate_attr() 
+        gas_density[name].extend = gas_density[name].radii[-1] 
+      
+    return gas_density, RC
 
 
 def load_tirific(def_input,Variables = None,array = False,\
