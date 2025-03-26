@@ -6,8 +6,9 @@
 from pyROTMOD.conf.config_defaults import read_config,read_fitting_config
 from pyROTMOD.rotmod.rotmod import obtain_RCs, read_RCs
 from pyROTMOD.rotmass.rotmass import rotmass_main
-from pyROTMOD.support.minor_functions import check_arguments, check_input, \
-    add_font,print_log
+from pyROTMOD.support.minor_functions import check_input, \
+    add_font
+from pyROTMOD.support.log_functions import print_log
 import traceback
 import warnings
 import os
@@ -24,24 +25,24 @@ def warn_with_traceback(message, category, filename, lineno, file=None, line=Non
 
 def main():
     'The main should be simple'
-    argv = check_arguments()
-    cfg = read_config(argv)
-    if cfg.general.debug:
+    cfg = read_config()
+    if cfg.output.debug:
         warnings.showwarning = warn_with_traceback
-     
-    cfg, log= check_input(cfg)
+   
+    cfg = check_input(cfg)
     #Add the requested font and get the font name name
-    font_name = add_font(cfg.general.font)
+    font_name = add_font(cfg.input.font)
    
     if cfg.RC_Construction.enable:
-        print_log(f'We start to derive the RCs.\n',log)
-        derived_RCs,total_rc = obtain_RCs(cfg,log=log)
-        print_log(f'We managed to derive  the RCs.\n',log)
+        print_log(f'We start to derive the RCs.\n',cfg,case=['main','screen'])
+        derived_RCs,total_rc = obtain_RCs(cfg)
+        print_log(f'We managed to derive  the RCs.\n',cfg,case=['main','screen'])
     else:
         #If we have run before we can simple read from the RC file
-        print_log(f'We start to read the RCs.\n',log)
-        derived_RCs,total_rc = read_RCs(dir=cfg.general.output_dir, file=cfg.general.RC_file)
-        print_log(f'We managed to read the RCs.\n',log)
+        print_log(f'We start to read the RCs.\n',cfg,case=['main','screen'])  
+        total_rc, derived_RCs = read_RCs(file=f'{cfg.output.output_dir}{cfg.output.RC_file}'\
+            ,cfg=cfg)
+        print_log(f'We managed to read the RCs.\n',cfg,case=['main','screen'])
 
     #If there are profiles that are not proper we remove them
     names = [name for name in derived_RCs] 
@@ -53,19 +54,19 @@ def main():
     
     #We need to reset the configuration to include the profiles and the parameters to be fitted.
     cfg = read_fitting_config(cfg,derived_RCs)
-    cfg, log= check_input(cfg,fitting =True)   
+    cfg= check_input(cfg,fitting =True)   
 
    
     if cfg.fitting_general.enable:
-        if not os.path.isdir( f'{cfg.general.output_dir}{cfg.fitting_general.HALO}/'):
-            os.mkdir( f'{cfg.general.output_dir}{cfg.fitting_general.HALO}/')
+        if not os.path.isdir( f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/'):
+            os.mkdir( f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/')
         #radii = ensure_kpc_radii(derived_RCs[0],distance=cfg.general.distance,log=log )
         rotmass_main(derived_RCs, total_rc,\
-            out_dir = f'{cfg.general.output_dir}{cfg.fitting_general.HALO}/',\
-            rotmass_settings=cfg.fitting_general,log_directory=cfg.general.log_directory,\
+            out_dir = f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/',\
+            rotmass_settings=cfg.fitting_general,\
             rotmass_parameter_settings = cfg.fitting_parameters,\
             results_file = cfg.fitting_general.results_file,\
-            log=log,debug=cfg.general.debug, font=font_name)
+            cfg=cfg, font=font_name)
 
 if __name__ =="__main__":
     main()

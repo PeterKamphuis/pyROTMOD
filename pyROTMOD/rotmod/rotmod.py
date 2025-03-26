@@ -6,14 +6,15 @@ from scipy.integrate import quad
 #from astropy import units
 from astropy import units as unit
 from pyROTMOD.support.minor_functions import integrate_surface_density,\
-                        print_log,set_limits,plot_profiles,write_profiles
+    plot_profiles,write_profiles,set_limits
+from pyROTMOD.support.log_functions import print_log                        
 from pyROTMOD.support.major_functions import read_columns                     
-from pyROTMOD.optical.optical import get_optical_profiles,convert_luminosity_profiles
-from pyROTMOD.optical.profiles import calc_truncation_function
+from pyROTMOD.optical.optical import get_optical_profiles,convert_luminosity_profile
+from pyROTMOD.optical.profile_functions import calc_truncation_function
 from pyROTMOD.gas.gas import get_gas_profiles
 
-from pyROTMOD.support.errors import InputError, UnitError, RunTimeError
-from pyROTMOD.support.classes import Rotation_Curve
+from pyROTMOD.support.errors import InputError, RunTimeError, UnitError
+from pyROTMOD.support.classes import Rotation_Curve,Luminosity_Profile,SBR_Profile
 import pyROTMOD.support.constants as c
 import numpy as np
 import traceback
@@ -26,22 +27,70 @@ with warnings.catch_warnings():
     import matplotlib.pyplot as plt
 
 
-def bulge_RC(Density_In,RC_Out,log=None,debug=None):
+def bulge_RC(Density_In,RC_Out,cfg=None):
 
     if Density_In.type in ['bulge','sersic','hernquist','devauc']:
         print_log(f'''We have found an hernquist profile with the following values.
 The total mass of the disk is {Density_In.total_SB} a central mass density {Density_In.central_SB} .
 The scale length is {Density_In.scale_length} and the scale height {Density_In.height}.
 The axis ratio is {Density_In.axis_ratio}.
-''' ,log,debug=debug)
+''' ,cfg,case=['main'])
         RC_radii = check_radius(Density_In,RC_Out)
        
-        RC = hernquist_parameter_RC(RC_radii,Density_In,log = log,debug=debug)
+        RC = hernquist_parameter_RC(RC_radii,Density_In, cfg=cfg)
         RC_Out.radii = RC_radii
         RC_Out.values = RC
 
     else:
         raise InputError(f'We have not yet implemented the disk modelling of {Density_In.type}.')
+
+def combine_RCs(derived_RCs,input_RCs,cfg=None):
+    '''Combine the derived and the input RCs'''
+    if derived_RCs is None:
+        derived_RCs = {}
+    if input_RCs is None:
+        input_RCs = {}
+    for name in input_RCs:
+        derived_RCs[name] = input_RCs[name]
+    return derived_RCs
+
+def combine_SB_profiles(gas_profiles,optical_profiles,total_RC, cfg = None):
+    profiles = {}
+    if not gas_profiles is None:
+        for name in gas_profiles:
+            if not isinstance(gas_profiles[name], SBR_Profile) or not \
+                gas_profiles[name].profile_type == 'sbr_dens':
+                raise InputError(f'The input gas profile is not a SBR_profile or is a 3D profile')
+            if gas_profiles[name].values.unit != unit.Msun/unit.pc**2:
+                try:
+                    gas_profiles[name].values = gas_profiles[name].values.to(unit.Msun/unit.pc**2)
+                except unit.UnitConversionError:
+                    raise InputError(f'The units of {gas_profiles[name].name} are not M_SOLAR/PC^2.')
+            profiles[name] = gas_profiles[name]
+    if not optical_profiles is None:
+        for name in optical_profiles:
+            if optical_profiles[name].extend is None:
+                optical_profiles[name].extend = total_RC.radii[-1]
+            if isinstance(optical_profiles[name],Luminosity_Profile):
+                print_log(f'We have found a luminosity profile ({name}) and will deproject it.',\
+                    cfg,case=['main','screen'])
+                deprojected_profile = convert_luminosity_profile(\
+                    optical_profiles[name],cfg=cfg)
+                profiles[name] = deprojected_profile
+            else:
+                print_log(f'The profile is not a luminosity profile ({name}) assuming it is already deprojected.',\
+                    cfg,case=['main','screen'])
+                if optical_profiles[name].values.unit != unit.Msun/unit.pc**2:
+                    try:
+                        optical_profiles[name].values = optical_profiles[name].values.to(unit.Msun/unit.pc**2)
+                    except unit.UnitConversionError:
+                        raise InputError(f'The units of {optical_profiles[name].name} are not M_SOLAR/PC^2.')
+            
+                profiles[name] = optical_profiles[name]
+   
+    if len(profiles) == 0.:
+        profiles = None
+    return profiles
 
 def combined_rad_sech_square(z,x,y,h_z):
     return interg_function(z,x,y)*norm_sechsquare(z,h_z)
@@ -52,27 +101,19 @@ def combined_rad_exp(z,x,y,h_z):
 def combined_rad_sech_simple(z,x,y,h_z):
     return interg_function(z,x,y)*simple_sech(z,h_z)
 
-def convert_dens_rc( optical_profiles, gas_profiles, cfg = None,\
-    log= None, debug =False,output_dir='./'):
+def convert_dens_rc(profiles, cfg = None,output_dir='./'):
     #these should be dictionaries with their individual radii
     #organized in their typical profiles
     
     '''This function converts the mass profiles to rotation curves'''
    
     RCs = {}
-    profiles = {}
-    #combine the gas and optical
-    for name in optical_profiles:
-        profiles[f'{name}_opt'] = optical_profiles[name]
-    for name in gas_profiles:
-        profiles[f'{name}_gas'] = gas_profiles[name]
-
     ########################### First we convert the optical values and produce a RC at locations of the gas ###################
     for name in profiles:
         #if it is already a Rotation Curve we do not need to Converts
-        if isinstance(profiles[name], Rotation_Curve):
-            RCs[name] = profiles[name]
-            continue
+        if not isinstance(profiles[name], SBR_Profile):
+            raise InputError(f'We can only convert SBR_Profile to Rotation_Curve')
+            
         #Initiate a new Rotation_Curve with the info of the density profile
         RCs[name] = Rotation_Curve(name=profiles[name].name, distance = profiles[name].distance,\
             band= profiles[name].band, type=profiles[name].type,\
@@ -81,36 +122,34 @@ def convert_dens_rc( optical_profiles, gas_profiles, cfg = None,\
             profiles[name].softening_length )
         
         if profiles[name].type in ['expdisk','edgedisk']:
-            print_log(f'We have detected the input to be an disk',log)
-            exponential_RC(profiles[name],  RCs[name], log= log,debug=debug)
-        elif profiles[name].type in ['random_disk']: 
-            print_log(f'This is a random density disk',log)
-            random_RC(profiles[name], RCs[name],log= log,debug=debug) 
+            print_log(f'We have detected the input to be an disk',cfg,case=['main'])
+            exponential_RC(profiles[name],  RCs[name],cfg=cfg)
+        elif profiles[name].type in ['random_disk','random']: 
+            print_log(f'This is a random density disk',cfg,case=['main'])
+            random_RC(profiles[name], RCs[name],cfg=cfg) 
         elif profiles[name].type in ['sersic','devauc']:
                 #This should work fine for a devauc profile which is simply sersic with n= 4
-                if  0.75 < profiles[name].sersic_index < 1.25:
+                if  0.9 < profiles[name].sersic_index < 1.1:
                     print_log(f'''We have detected the input to be a sersic profile.
-this one is very close to a disk so we will transform to an exponential disk. \n''',log)
-                    exponential_RC(profiles[name],  RCs[name], log= log,debug=debug)
-                elif 3.75 < profiles[name].sersic_index < 4.25:
+this one is very close to a disk so we will transform to an exponential disk. \n''' ,cfg,case=['main'])
+                    exponential_RC(profiles[name],  RCs[name], cfg=cfg)
+                elif 3.9 < profiles[name].sersic_index < 4.1:
                     print_log(f'''We have detected the input to be a sersic profile.
-this one is very close to a bulge so we will transform to a hernquist profile. \n''',log)
-                    bulge_RC(profiles[name],  RCs[name], log= log,debug=debug)
+this one is very close to a bulge so we will transform to a hernquist profile. \n''',cfg,case=['main'])
+                    bulge_RC(profiles[name],  RCs[name], cfg=cfg)
                 else:
-                    print_log(f'''We have detected the input to be a density profile for a sersic profile.
-This is not something that pyROTMOD can deal with yet. If you know of a good python implementation of Baes & Gentile 2010.
-Please let us know and we'll give it a go.''',log)
-                    raise InputError('We have detected the input to be a density profile for a sersic profile. pyROTMOD cannot yet process this.')
-
+                    print_log(f'''This is a sersic density profile which we will treat as a random density disk ''',cfg,case=['main'])
+                    random_RC(profiles[name], RCs[name],cfg=cfg) 
+                  
         elif profiles[name].type in ['random_bulge','hernquist']:
                 #if not galfit_file:
                 #    found_RC = bulge_RC(kpc_radii,optical_radii,np.array(o))
                 #    print_log(f'We have detected the input to be a density profile for a bulge that is too complicated for us',log)
                 #else:
-                print_log(f'Assuming a classical bulge spherical profile in a Hernquist profile',log)
-                bulge_RC(profiles[name],  RCs[name], log= log,debug=debug) 
+                print_log(f'Assuming a classical bulge spherical profile in a Hernquist profile',cfg,case=['main'])
+                bulge_RC(profiles[name],  RCs[name], cfg=cfg) 
         else:
-                print_log(f'We do not know how to convert the mass density of {profiles[name].type}',log)
+                print_log(f'We do not know how to convert the mass density of {profiles[name].type}',cfg,case=['main','screen'])
     return RCs    
 convert_dens_rc.__doc__ =f'''
  NAME:
@@ -185,20 +224,20 @@ convert_dens_rc.__doc__ =f'''
 '''
 
            
-def random_RC(Density_In,RC_Out,log=None,debug=None):
+def random_RC(Density_In,RC_Out,cfg=None):
     print_log(f'''We are fitting a random density distribution disk following Cassertano 1983.
-''',log,debug=debug)
+''',cfg,case=['main'])
      
    
     #If the RC has already radii we assume we want it on that radii
-    RC_radii = check_radius(Density_In,RC_Out)
+    RC_radii = check_radius(Density_In,RC_Out,cfg=cfg)
 
-    RC = random_density_disk(RC_radii,Density_In, log=log, debug=debug)
+    RC = random_density_disk(RC_radii,Density_In, cfg=cfg)
     RC_Out.radii = RC_radii
     RC_Out.values = RC
     
 
-def check_radius(Density_In,RC_Out):
+def check_radius(Density_In,RC_Out,cfg=None):
     '''Check which radii we want to use for our output RC'''
       #If the RC has already radii we assume we want it on that radii
  
@@ -221,7 +260,7 @@ def check_height(Density_In):
         sech = True
     return sech
 
-def exponential_RC(Density_In,RC_Out,log=None,debug=None):
+def exponential_RC(Density_In,RC_Out,cfg=None):
    
     #If the RC has already radii we assume we want it on that radii
     RC_radii = check_radius(Density_In,RC_Out)
@@ -229,8 +268,8 @@ def exponential_RC(Density_In,RC_Out,log=None,debug=None):
 The total mass of the disk is {Density_In.total_SB} a central mass density {Density_In.central_SB} .
 The scale length is {Density_In.scale_length} and the scale height {Density_In.height}.
 The axis ratio is {Density_In.axis_ratio}.
-''' ,log,debug=debug)
-    RC = exponential_parameter_RC(RC_radii,Density_In,log = log)
+''' ,cfg,case=['main'])
+    RC = exponential_parameter_RC(RC_radii,Density_In,cfg=cfg)
     RC_Out.radii = RC_radii
     RC_Out.values = RC
    
@@ -293,7 +332,7 @@ def apply_truncation(RC, radii, parameters ):
         RC[index] = 0.
     return RC
 
-def exponential_parameter_RC(radii,parameters,  log= False, debug=False):
+def exponential_parameter_RC(radii,parameters, cfg=None):
     # All the checks on the components should be done previously so if we are missing something
     # this should just fail
     sech = check_height(parameters)
@@ -388,7 +427,7 @@ def get_rotmod_scalelength(radii,density):
     dens = np.exp((sy*sxx-sx*sxy)/det)
     return h,dens
 
-def hernquist_parameter_RC(radii,parameters,log= False, debug=False):
+def hernquist_parameter_RC(radii,parameters,cfg=None):
     '''This assumes a Hernquist potential where the scale length should correspond to hernquist scale length'''
     #The two is specified in https://docs.galpy.org/en/latest/reference/potentialhernquist.html?highlight=hernquist
     #It is assumed this hold with the the triaxial potential as well.
@@ -498,61 +537,66 @@ def norm_sechsquare(radii,h):
 
 '''This functions is the global function that creates and reads the RCs if the are not all read from file.
 Basically if the RC_Construction is enabled this function is called.'''
-def obtain_RCs(cfg,log=None):
+def obtain_RCs(cfg):
    
     ######################################### Read the gas profiles and RC ################################################
-    gas_profiles, total_rc  =\
-        get_gas_profiles(cfg,log=log)
-     ######################################### Read the optical profiles  #########################################
-    try:
-        optical_profiles,galfit_file = get_optical_profiles(cfg, extend = total_rc.extend,log=log)
-    except Exception as e:
-        print_log(f" We could not obtain the optical components and profiles because of {e}",log,debug=cfg.general.debug,screen=False)
-        traceback.print_exc()
-        raise InputError(f'We failed to retrieved the optical components from {cfg.RC_Construction.optical_file}')
-
-
-   
-   
-    for profile in gas_profiles:
-        print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(gas_profiles[profile].radii,gas_profiles[profile].values)[0]:.2e}
+    if not cfg.RC_Construction.gas_file is None:
+        gas_profiles, total_RC  =\
+            get_gas_profiles(cfg)
+        for profile in gas_profiles:
+            print_log(f'''We have found a gas disk with a total mass of  {integrate_surface_density(gas_profiles[profile].radii,gas_profiles[profile].values)[0]:.2e}
 and a central mass density {gas_profiles[profile].values[0]:.2f}.
-''' ,log,screen= True)
-    
-
-   
-    ########################################## Make a plot with the extracted profiles ######################3
-    plot_profiles(gas_profiles,optical_profiles,\
-        output_dir = cfg.general.output_dir, log=log)
-    
-    ########################################## Convert the luminosity  profiles to density profiles  ######################3
-    density_profiles = convert_luminosity_profiles(optical_profiles)
-   
-    ########################################## Make a plot with the desnity profiles ######################3
-    plot_profiles(gas_profiles,density_profiles,\
-        output_dir = cfg.general.output_dir, log=log)
-    ########################################## Make a nice file with all the different components as a column ######################3
-    write_profiles(gas_profiles,total_rc,optical_profiles= density_profiles,\
-        output_dir = cfg.general.output_dir, log=log, filename='Gas_Mass_Density_And_RC.txt')
+''' ,cfg,case=['main'])
+    else:
+        gas_profiles = None
+     ######################################### Read the optical profiles  #########################################
+    if not cfg.RC_Construction.optical_file is None:
+        try:
+            optical_profiles = get_optical_profiles(cfg)
+        except Exception as e:
+            print_log(f" We could not obtain the optical components and profiles because of {e}",\
+                cfg,case=['main','screen'])
+            traceback.print_exc()
+            raise InputError(f'We failed to retrieve the optical components from {cfg.RC_Construction.optical_file}')
+        plot_profiles(optical_profiles,output_file = f'{cfg.output.output_dir}/Sky_Profiles.png', cfg=cfg)
+    else:
+        optical_profiles = None
+    ################ We want the profiles to extend to the size of the total RC ###############################
+    if not cfg.input.RC_file is None:
+        total_RC, input_RCs = read_RCs(cfg=cfg,file= cfg.input.RC_file)
  
+
+    ################ Combine all profiles and make sure they are all in M_sun/pc^2 or Msun/pc^3 ############################
+    profiles = combine_SB_profiles(gas_profiles,optical_profiles,total_RC, cfg=cfg)
+
+    ########################################## Make a plot with the extracted SB profiles ######################3
+    if not profiles is None:
+        plot_profiles(profiles,output_file = f'{cfg.output.output_dir}/SBR_Profiles.png', cfg=cfg)
+    ########################################## Make a nice file with all the different components as a column ######################3
+        write_profiles(profiles,output_dir = cfg.output.output_dir, cfg=cfg,\
+            filename='SBR_Profiles.txt')
     ######################################### Convert to Rotation curves ################################################
-   
-    derived_RCs = convert_dens_rc(density_profiles, gas_profiles, cfg=cfg,\
-            output_dir=cfg.general.output_dir)
-   
-    write_profiles(derived_RCs,total_rc,\
-        output_dir = cfg.general.output_dir, log=log, filename=cfg.general.RC_file)
+        derived_RCs = convert_dens_rc(profiles, cfg=cfg)
+    ######################################### Read any RCs provided directly ################################################
+    else:
+        derived_RCs = None
+    ######################################### Combine the derived and the input RCs ################################################
+    derived_RCs = combine_RCs(derived_RCs,input_RCs,cfg=cfg)
+    ######################################### Write the RCs to a file ################################################
+  
+    write_profiles(derived_RCs,additional_input ={'VOBS': total_RC}, cfg=cfg,\
+        output_dir = cfg.output.output_dir, filename=cfg.output.RC_file)
     
 
-    return derived_RCs, total_rc
+    return derived_RCs, total_RC
 
-def random_density_disk(radii,density_profile, debug= None,log= None):
+def random_density_disk(radii,density_profile, cfg= None):
     print_log(f'''We are calculating the random disk with:
 h_z = {density_profile.height} and vertical mode = {density_profile.height_type}
-''',log)
+''', cfg, case=['main'])
     
     if density_profile.values.unit != unit.Msun/unit.pc**2:
-        raise UnitError(f'Your radius has to be in kpc for a rand density disk')
+        raise UnitError(f'Your profile has to be in Msun/pc^2 for a random density disk')
     else:
         density = np.array(density_profile.values.value) *1e6 # Apparently this is done in M-solar/kpc^2
     
@@ -656,24 +700,36 @@ def selected_vertical_dist(mode):
 def simple_sech(radii,h):
     return 2./h/np.pi/np.cosh(radii/h)
 
-def read_RCs(dir= './', file= 'You_Should_Set_A_File_RC.txt',debug=None,log=None):
+def read_RCs(file= 'You_Should_Set_A_File_RC.txt',cfg=None,
+            include_gas=True,include_optical=True):
     #read the file
-    all_RCs = read_columns(f'{dir}{file}',debug=debug,log=log)
+    all_columns = read_columns(f'{file}',cfg=cfg)
 
     #split out the totalrc
     input_RCs  ={}
     totalrc = None
 
-    for name in all_RCs:
+    for name in all_columns:
+        if not isinstance(all_columns[name],Rotation_Curve):
+            print_log(f'Ignoring {name} as it is not a Rotation_Curve. \n',cfg,case=['main','screen'])
+            continue
+        if all_columns[name].distance is None:
+            all_columns[name].distance = cfg.input.distance        
+        all_columns[name].check_profile()
         if name in ['V_OBS','VROT']:
-            totalrc = all_RCs[name]
+            totalrc = all_columns[name]
             totalrc.component='All'
         else:
-            input_RCs[name] = all_RCs[name]
-
-    return input_RCs,totalrc
-    #           RCs
-
+            if 'GAS' in name.upper():
+                if include_gas:
+                    input_RCs[name] = all_columns[name]
+                    input_RCs[name].component = 'Gas'
+            else:
+                if include_optical:
+                    input_RCs[name] = all_columns[name]
+                    input_RCs[name].component = 'Stars'
+    
+    return totalrc, input_RCs
 read_RCs.__doc__ =f'''
  NAME:
     read_RCs

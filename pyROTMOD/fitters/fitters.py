@@ -7,8 +7,9 @@ from pyROTMOD.support.errors import InitialGuessWarning
 import copy
 import lmfit
 import corner
-from pyROTMOD.support.minor_functions import print_log, get_uncounted,\
+from pyROTMOD.support.minor_functions import get_uncounted,\
     get_correct_label,get_exponent
+from pyROTMOD.support.log_functions import print_log
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import matplotlib
@@ -18,7 +19,7 @@ with warnings.catch_warnings():
 
 
 
-def set_initial_guesses(input_settings,log = None):
+def set_initial_guesses(input_settings,cfg = None):
     variables = copy.deepcopy(input_settings)
    
     for variable in variables:
@@ -42,17 +43,17 @@ def set_initial_guesses(input_settings,log = None):
         if variables[variable][3]:
             print_log(f'''Setting {variable} with value {variables[variable][0]} and fitting = {variables[variable][3]}.
 limits are between {variables[variable][1]} - {variables[variable][2]}
-''',log)
+''',cfg, case=['debug_add'])
     return variables
 
-def initial_guess(total_RC,debug =False,log=None,negative = False,\
+def initial_guess(total_RC, cfg=None, negative = False,\
                   minimizer = 'differential_evolution'):
-
     #First initiate the model with the numpy function we want to fit
     model = lmfit.Model(total_RC.numpy_curve['function'])
     #no_input = False
    
-    guess_variables = set_initial_guesses(total_RC.fitting_variables,log=log)
+    guess_variables = set_initial_guesses(total_RC.fitting_variables,cfg=cfg)
+
     for variable in total_RC.numpy_curve['variables']:
         if variable == 'r':
             #We don't need guesses for r
@@ -87,8 +88,7 @@ def initial_guess(total_RC,debug =False,log=None,negative = False,\
                 if counter > 501.:
                     raise InitialGuessWarning(f'We could not find errors and initial guesses for the function. Try smaller boundaries or set your initial values')
             else:
-                print_log(f'\n',log)
-                print_log(f'The initial guess is a succes. \n',log) 
+                print_log(f'The initial guess is a succes. \n',cfg, case=['debug_add']) 
                 for variable in guess_variables:
                     buffer = np.max([abs(initial_fit.params[variable].value*0.25)\
                                      ,10.*initial_fit.params[variable].stderr])
@@ -107,7 +107,7 @@ def initial_guess(total_RC,debug =False,log=None,negative = False,\
                 no_errors = False
     print_log(f'''INITIAL_GUESS: These are the statistics and values found through {minimizer} fitting of the residual.
 {initial_fit.fit_report()}
-''',log)
+''',cfg,case=['main'])
     return guess_variables,copy.deepcopy(total_RC.fitting_variables)
 initial_guess.__doc__ =f'''
  NAME:
@@ -143,7 +143,7 @@ def calculate_steps_burning(steps,function_variable_settings):
     return steps, int(steps/4.)
 
 def mcmc_run(total_RC,original_variable_settings,out_dir = None,\
-        log_directory=None,debug=False,negative=False,log=None,steps=2000.,\
+        negative=False,cfg=None,steps=2000.,\
         results_name = 'MCMC'):
     function_variable_settings = copy.deepcopy(total_RC.fitting_variables)
     steps,burning = calculate_steps_burning(steps,function_variable_settings)
@@ -168,10 +168,10 @@ def mcmc_run(total_RC,original_variable_settings,out_dir = None,\
                 if function_variable_settings[variable][3]:
                     print_log(f'''Setting {parameter} with value {function_variable_settings[variable][0]}.
         With the boundaries between {function_variable_settings[variable][1]} - {function_variable_settings[variable][2]}
-        ''',log)
+        ''',cfg, case=['main'])
                 else:
                     print_log(f'''Keeping {parameter} fixed at {function_variable_settings[variable][0]}.
-        ''',log)
+        ''',cfg, case=['main'])
                 model.set_param_hint(parameter,value=function_variable_settings[variable][0],\
                             min=function_variable_settings[variable][1],\
                             max=function_variable_settings[variable][2],
@@ -231,35 +231,35 @@ def mcmc_run(total_RC,original_variable_settings,out_dir = None,\
                             if triggered:
                                 if fixed_boundaries[parameter]:
                                     print_log(f''' The boundaries for {parameter} were too small, consider changing them
-    ''',log)
+    ''',cfg,case=['main'])
                                 else:
                                     print_log(f''' The boundaries for {parameter} were too small, we sampled an incorrect area
     Changing the parameter and its boundaries and trying again.
-    ''',log)
+    ''',cfg,case=['main'])
                                     parameters[parameter].value = result_emcee.params[parameter].value
                                     print_log(f''' Setting {parameter} = {parameters[parameter].value} between {parameters[parameter].min}-{parameters[parameter].max}
-    ''',log)
+    ''',    cfg,case=['main'])
                                     no_succes =True   
                             else:
                                 print_log(f'''{parameter} is fitted wel in the boundaries {parameters[parameter].min} - {parameters[parameter].max}.
-    ''',log)
+    ''',    cfg,case=['main'])
                         else:
                             count += 1
                             if count >= 10 :
                                 print_log(f''' Your boundaries are not converging. Condidering fitting less variables or manually fix the boundaries
-    ''',log)
+    ''',cfg,case=['main'])
                             else:
                                 print_log(f''' The boundaries for {parameter} were too small, we sampled an incorrect area
     Changing the parameter and its boundaries and trying again.
-    ''',log)
+    ''',cfg,case=['main'])
                                 parameters[parameter].value = result_emcee.params[parameter].value
                                 print_log(f''' Setting {parameter} = {parameters[parameter].value} between {parameters[parameter].min}-{parameters[parameter].max}
-    ''',log)
+    ''',    cfg,case=['main'])
                                 no_succes =True
                     added.append(parameter)
 
-    print_log(result_emcee.fit_report(),log,screen=False)
-    print_log('\n',log)
+    print_log(result_emcee.fit_report(),cfg,case=['main'])
+    print_log('\n',cfg,case=['main'])
 
     if out_dir:
         lab = []
@@ -280,7 +280,7 @@ def mcmc_run(total_RC,original_variable_settings,out_dir = None,\
                         title_kwargs={"fontsize": 15},labels=lab)
         fig.savefig(f"{out_dir}{results_name}_COV_Fits.pdf",dpi=300)
         plt.close()
-    print_log(f''' MCMC_RUN: We find the following parameters for this fit. \n''',log)
+    print_log(f''' MCMC_RUN: We find the following parameters for this fit. \n''',cfg,case=['main'])
     added= []
     for variable in function_variable_settings:
         parameter = variable
@@ -293,7 +293,7 @@ def mcmc_run(total_RC,original_variable_settings,out_dir = None,\
 
                 function_variable_settings[variable][0] = float(result_emcee.params[parameter].value)
                 print_log(f'''{parameter} = {result_emcee.params[parameter].value} +/- {result_emcee.params[parameter].stderr} within the boundary {result_emcee.params[parameter].min}-{result_emcee.params[parameter].max}
-''',log)
+''',cfg,case=['main'])
                 added.append(parameter)                
 
 

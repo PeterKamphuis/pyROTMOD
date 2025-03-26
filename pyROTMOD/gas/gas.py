@@ -5,7 +5,7 @@ from pyROTMOD.support.minor_functions import print_log, propagate_mean_error,\
     translate_string_to_unit
 
 from pyROTMOD.support.errors import InputError
-from pyROTMOD.support.classes import Density_Profile,Rotation_Curve
+from pyROTMOD.support.classes import SBR_Profile,Rotation_Curve
 from astropy import units as unit
 #Function to convert column densities
 
@@ -99,10 +99,10 @@ def get_individual_tirific_disk(disk,filename,log=None, debug =False):
 
     if disk == 1:
         RC = Rotation_Curve(type='random_disk')
-        sbr = Density_Profile(type='random_disk')
+        sbr = SBR_Profile(type='random_disk')
         ext1 =''
     else:
-        sbr = Density_Profile(type='random_disk')
+        sbr = SBR_Profile(type='random_disk')
         ext1=f'_{disk}'
     ext2 = f'_{disk+1}'
     sbr.profile_type = 'sbr_dens'
@@ -192,29 +192,29 @@ def get_gas_profiles(cfg,log=None, debug =False):
             if disk == 1:
                 sbr, RC = \
                     get_individual_tirific_disk(disk,filename,\
-                                        debug = cfg.general.debug)
+                                        debug = cfg.output.debug)
                 RC.name = 'V_OBS'
             else:
                 sbr =  get_individual_tirific_disk(disk,filename,\
-                                        debug = cfg.general.debug)
+                                        debug = cfg.output.debug)
             sbr.name = f'DISK_GAS_{count}'
             gas_density[f'DISK_GAS_{count}']= sbr    
           
             count += 1
             disk = disk+2
     else:
-        all_profiles = read_columns(filename,debug = cfg.general.debug,\
+        all_profiles = read_columns(filename,debug = cfg.output.debug,\
                                     log=log)
 
         for type in all_profiles:
             if type in ['V_OBS','V_ROT']:
                 RC = all_profiles[type]
-            #else:
-            #    gas_density[type] =  all_profiles[type]
-            #    gas_density[type].height = 0.
-            #    gas_density[type].height_type = 'inf_thin'
+            else:
+                gas_density[type] =  all_profiles[type]
+                gas_density[type].height = 0.
+                gas_density[type].height_type = 'inf_thin'
   
-    RC.distance = cfg.general.distance * unit.Mpc
+    RC.distance = cfg.input.distance * unit.Mpc
     RC.band = cfg.RC_Construction.band   
     RC.component = 'All' 
     RC.extend = RC.radii[-1]   
@@ -222,7 +222,7 @@ def get_gas_profiles(cfg,log=None, debug =False):
     for name in gas_density:
         gas_density[name].component = 'gas'
         gas_density[name].band = cfg.RC_Construction.gas_band  
-        gas_density[name].distance = cfg.general.distance * unit.Mpc
+        gas_density[name].distance = cfg.input.distance * unit.Mpc
         if  gas_density[name].height is None:
             if cfg.RC_Construction.gas_scaleheight[3] == 'tir':
                 raise InputError(f'The height for {gas_density[name].name} should have been set by the tirific file but it was not')

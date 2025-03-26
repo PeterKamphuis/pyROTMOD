@@ -8,7 +8,8 @@ import copy
 import pyROTMOD.rotmass.potentials as potentials
 import pyROTMOD.support.constants as cons
 from pyROTMOD.support.classes import Rotation_Curve
-from pyROTMOD.support.minor_functions import print_log,get_uncounted
+from pyROTMOD.support.minor_functions import get_uncounted
+from pyROTMOD.support.log_functions import print_log
 from pyROTMOD.fitters.fitters import initial_guess,mcmc_run
 from sympy import symbols, sqrt,lambdify
 
@@ -20,7 +21,7 @@ with warnings.catch_warnings():
     import matplotlib.colors as colors
 
 
-def build_curve(all_RCs,total_RC,debug=False,log=None):
+def build_curve(all_RCs,total_RC,cfg=None):
     # First set individual sympy symbols  and the curve for each RC
 
     ML, V = symbols('ML V')
@@ -34,7 +35,6 @@ def build_curve(all_RCs,total_RC,debug=False,log=None):
        
         print(f'############################################')
         for symbol in RC_symbols:
-            print()
             if symbol == V:
                 V_replace = symbols(f'V_{all_RCs[name].name}')
                 for attr in ['curve', 'individual_curve']:
@@ -47,6 +47,7 @@ def build_curve(all_RCs,total_RC,debug=False,log=None):
                     replace_dict['symbols'].append(V_replace)
             if symbol == ML:
                 for variable in all_RCs[name].fitting_variables:
+                    print(f'Why are {variable}' )
                     if variable.split('_')[0].lower() in ['gamma','ml']:    
                         ML_replace = symbols(variable)
                 for attr in ['curve', 'individual_curve']:
@@ -76,10 +77,10 @@ def build_curve(all_RCs,total_RC,debug=False,log=None):
 
     print_log(f'''BUILD_CURVE:: We are fitting this complete formula:
 {'':8s}{initial_formula.__doc__}
-''',log,debug=debug,screen =True)
+''',cfg,case=['main','screen'])
     # since lmfit is a piece of shit we have to constract or final formula through exec
     
-    clean_code = create_formula_code(initial_formula,replace_dict, function_name='total_numpy_curve',debug=debug,log=log)
+    clean_code = create_formula_code(initial_formula,replace_dict, function_name='total_numpy_curve',cfg=cfg)
     exec(clean_code,globals())
     total_RC.numpy_curve =  {'function': total_numpy_curve , 'variables': [str(x) for x in curve_symbols_out]}
     total_RC.curve = total_sympy_curve
@@ -120,7 +121,7 @@ build_curve.__doc__ =f'''
 
    
 
-def calculate_red_chisq(RC):
+def calculate_red_chisq(RC,cfg=None):
     free_parameters= 0.
     for var in RC.fitting_variables:
         if RC.fitting_variables[var][3]:
@@ -193,10 +194,12 @@ def create_disk_var(collected_RCs,single_stellar_ML=True,single_gas_ML=True):
     return disk_var
 '''
 
-def create_formula_code(initial_formula,replace_dict,function_name='python_formula' ,log=None,debug =False):
+def create_formula_code(initial_formula,replace_dict,\
+            function_name='python_formula' ,cfg=None):
     lines=initial_formula.__doc__.split('\n')
 
-    dictionary_trans = {'sqrt':'np.sqrt', 'arctan': 'np.arctan', 'pi': 'np.pi','log': 'np.log', 'abs': 'np.abs'}
+    dictionary_trans = {'sqrt':'np.sqrt', 'arctan': 'np.arctan', \
+                        'pi': 'np.pi','log': 'np.log', 'abs': 'np.abs'}
     found = False
     code =''
     for line in lines:
@@ -222,10 +225,10 @@ def create_formula_code(initial_formula,replace_dict,function_name='python_formu
             for key in replace_dict:
                 line = line.replace(key,'np.array(['+', '.join([str(i) for i in replace_dict[key]])+'],dtype=float)')
         clean_code += line+'\n'
-    if debug:
-        print_log(f''' This the code for the formula that is finally fitted.
+   
+    print_log(f''' This the code for the formula that is finally fitted.
 {clean_code}
-''',log,debug=True)
+''',cfg,case=['debug_add'])
     return clean_code
 create_formula_code.__doc__ =f'''
  NAME:
@@ -393,44 +396,47 @@ def set_RC_style(RC,input=False):
     if not input:
         #style_dictionary['alpha'] = 1.
 
-        if RC.component == 'All':
+        if RC.component.lower() == 'all':
             style_dictionary['color'] = colors.to_rgba('r',alpha=1.)
             style_dictionary['label'] =  r'V$_{Total}$'
             style_dictionary['zorder'] = 6
             style_dictionary['markerfacecolor'] = colors.to_rgba(style_dictionary['color'],alpha=0.5)
             style_dictionary['markeredgecolor'] = colors.to_rgba(style_dictionary['color'],alpha=0.75)
 
-        elif RC.component == 'DM':
+        elif RC.component.lower() == 'dm':
             style_dictionary['linestyle'] = '-.'
             style_dictionary['color'] = colors.to_rgba('b',alpha=1.)
             style_dictionary['label'] =  f'V$_{{{RC.halo}}}$'
             style_dictionary['zorder'] = 6
-        elif RC.component == 'gas':
+        elif RC.component.lower() == 'gas':
             rcs,no = get_uncounted(RC.name)
             style_dictionary['linestyle'] = ':'
             style_dictionary['color'] = colors.to_rgba('g',alpha=1.)
-            style_dictionary['label'] = f'V$_{{Gas_{no}}}$'
+            style_dictionary['label'] = f'V$_{{Gas\\_Disk_{no}}}$'
             style_dictionary['zorder'] = 4
-        elif RC.component == 'stars':
+        elif RC.component.lower() == 'stars':
             rcs,no = get_uncounted(RC.name)
             style_dictionary['linestyle'] = '--'
             if rcs in ['EXPONENTIAL','DISK']:
                 style_dictionary['color'] = colors.to_rgba('cyan',alpha=1.)
-                style_dictionary['linestyle'] = '--'
-                style_dictionary['label'] =  f'V$_{{Disk_{no}}}$'
+                style_dictionary['label'] =  f'V$_{{Stellar\\_Disk_{no}}}$'
                 style_dictionary['zorder'] = 3
-            if rcs in ['HERNQUIST','BULGE','SERSIC_BULGE']:
+            elif rcs in ['HERNQUIST','BULGE','SERSIC_BULGE']:
                 style_dictionary['color'] = colors.to_rgba('purple',alpha=1.)
-                style_dictionary['label'] = f'V$_{{Bulge_{no}}}$'
+                style_dictionary['label'] = f'V$_{{Stellar\\_Bulge_{no}}}$'
                 style_dictionary['zorder'] = 2
-            if rcs in ['SERSIC','SERSIC_DISK']:
+            elif rcs in ['SERSIC','SERSIC_DISK']:
                 style_dictionary['color'] = colors.to_rgba('blue',alpha=1.)
-                style_dictionary['linestyle'] = '--'
-                style_dictionary['label'] =  f'V$_{{Sersic_{no}}}$'
+                style_dictionary['label'] =  f'V$_{{Stellar\\_Sersic_{no}}}$'
                 style_dictionary['zorder'] = 3
+            else:
+                style_dictionary['color'] = colors.to_rgba('orange',alpha=1.)
+                style_dictionary['label'] =  f'V$_{{Stellar\\_Random_{no}}}$'
+                style_dictionary['zorder'] = 3
+
         else:
             raise InputError(f'The component {RC.component} in {RC.name} is not a component familiar to us')
-        if not RC.component == 'All':    
+        if not RC.component.lower() == 'all':    
             style_dictionary['markerfacecolor'] = colors.to_rgba(style_dictionary['color'],alpha=0.25)
             style_dictionary['markeredgecolor'] = colors.to_rgba(style_dictionary['color'],alpha=0.5)
             style_dictionary['ms'] = 8
@@ -566,33 +572,30 @@ def update_RCs(update,RCs,total_RC):
 
 
 def rotmass_main(baryonic_RCs, total_RC,no_negative =True,out_dir = None,\
-                interactive = False,rotmass_settings = None,log_directory=None,\
+                interactive = False,rotmass_settings = None,cfg=None,\
                 rotmass_parameter_settings = None,\
-                results_file = 'Final_Results',log=None,debug = False, font = 'Times New Roman'):
+                results_file = 'Final_Results', font = 'Times New Roman'):
 
     # First combine all RCs that need to be included in the total fit in a single dictionary
     # With their parameters and individual RC curves set 
     all_RCs = set_fitting_parameters(rotmass_settings,rotmass_parameter_settings,\
                                     baryonic_RCs,total_RC)
-    screen = False
-    if debug:
-        screen =True
+  
     for names in all_RCs:
-        print_log(f'For {names} we find the following parameters and fit variables:',log, screen =screen)
+        print_log(f'For {names} we find the following parameters and fit variables:',\
+            cfg,case=['main'])
         for attr in vars(all_RCs[names]):
-            print_log(f'{"":8s} {attr} = {getattr(all_RCs[names],attr)}',log, screen=screen)
+            print_log(f'{"":8s} {attr} = {getattr(all_RCs[names],attr)}',\
+                     cfg,case=['main'])
 
     # Construct the function to be fitted, note that the actual fit_curve is
-    build_curve(all_RCs,total_RC,debug=debug,log=log)
-  
-       
-                        
+    build_curve(all_RCs,total_RC,cfg=cfg)                      
     if interactive:
         #We want to bring up a GUI to allow for the fitting
         print_log(f'''Unfortunately the interactive function of fitting is not yet implemented. Feel free to write a GUI.
 For now you can set, fix and apply boundaries in the yml input file.
 for your current settings the variables are {','.join(total_RC.numpy_curve['variables'])}
-''',log,screen=True)
+''',cfg,case=['main'])
         exit()
         #Start GUI with default settings or input yml settings. these are already in function_parameters
     else:
@@ -602,7 +605,7 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
 
     
     # calculate the initial guesses
-    initial_guesses, original_settings = initial_guess(total_RC,debug=debug,log=log,\
+    initial_guesses, original_settings = initial_guess(total_RC,cfg=cfg,\
             negative=rotmass_settings.negative_values,\
             minimizer = rotmass_settings.initial_minimizer)
     update_RCs(initial_guesses,all_RCs,total_RC) 
@@ -612,13 +615,13 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
   
     
     variable_fits,emcee_results = mcmc_run(total_RC,original_settings,\
-                            out_dir = out_dir, debug=debug,log=log,\
+                            out_dir = out_dir, cfg=cfg,\
                             negative=rotmass_settings.negative_values,\
                             steps=rotmass_settings.mcmc_steps,
                             results_name= results_file)
     update_RCs(variable_fits,all_RCs,total_RC) 
     
-    print_log('Plotting and writing',log)
+    print_log('Plotting and writing',cfg,case=['main'])
     plot_curves(f'{out_dir}/{results_file}_Final_Curves.pdf', \
         all_RCs,total_RC,font=font)      
     
@@ -657,18 +660,17 @@ def add_fitting_dict(name, parameters, component_type = 'stars', fitting_diction
     variable = None
     #V_disk and V_bulge, V_sersic are place holders for the values to be inserted in the final formulas
     base,number = get_uncounted(name)
+    component_type = component_type.lower() 
+
     if base in ['EXPONENTIAL','DISK','DISK_GAS']:
-        if component_type == 'stars':
-            variable  = f'Gamma_disk_{number}'
-        elif component_type == 'gas':
-            variable  = f'Gamma_gas_{number}'
+        variable  = f'Gamma_disk_{component_type}_{number}'
     elif base in ['HERNQUIST','BULGE'] and component_type == 'stars':
-        variable = f'Gamma_bulge_{number}'
+        variable = f'Gamma_bulge_{component_type}_{number}'
     elif base in ['SERSIC'] and component_type == 'stars':
-        variable = f'Gamma_sersic_{number}'
+        variable = f'Gamma_sersic_{component_type}_{number}'
 
     if variable is None:
-        variable = name
+        variable = f'Gamma_random_{component_type}_{number}'
     fitting_dictionary[variable] = parameters
    
 def set_fitting_parameters(rotmass_settings,fit_settings, baryonic_RCs,total_RC):
@@ -721,9 +723,8 @@ def set_fitting_parameters(rotmass_settings,fit_settings, baryonic_RCs,total_RC)
         
         all_RCs[name].check_unified(rotmass_settings.single_stellar_ML,\
                                     rotmass_settings.single_gas_ML)
-        print(fitting_dictionary)
-
-        total_RC.fitting_variables.update(all_RCs[name].fitting_variables)
+        if all_RCs[name].include:
+            total_RC.fitting_variables.update(all_RCs[name].fitting_variables)
       
     if not no_dm:
         #We need add the DM RC and the parameters

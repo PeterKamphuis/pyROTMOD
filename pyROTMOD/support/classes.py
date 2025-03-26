@@ -1,13 +1,16 @@
 from pyROTMOD.support.errors import InputError,RunTimeError,UnitError
 from pyROTMOD.support.minor_functions import check_quantity,convertskyangle\
       ,get_uncounted,isquantity
+from pyROTMOD.support.log_functions import print_log
 from pyROTMOD.optical.conversions import mag_to_lum
 from pyROTMOD.optical.profiles import exponential_luminosity,edge_luminosity,\
-      sersic_luminosity,fit_profile,calculate_central_SB,calculate_total_SB,\
-      calculate_R_effective,calculate_scale_length,calculate_axis_ratio,\
-      sersic_profile,edge_profile,exponential_profile,truncate_density_profile,\
+      sersic_luminosity,sersic_profile,edge_profile,exponential_profile,\
       hernquist_profile,hernquist_luminosity
-
+from pyROTMOD.optical.profile_functions import fit_profile,\
+      truncate_density_profile
+from pyROTMOD.optical.calculate_profile_components import calculate_central_SB,\
+      calculate_total_SB,calculate_R_effective,calculate_L_effective,\
+      calculate_scale_length,calculate_axis_ratio,calculate_hernquist_scale_length
 import astropy.units as u 
 import numpy as np
 import copy
@@ -17,7 +20,8 @@ class Component:
       #These should be set with a unit
       def __init__(self, type = None, name = None, central_SB = None,\
             total_SB = None, R_effective = None, scale_length = None,\
-            height_type = None, height = None,\
+            height_type = None, height = None,L_effective=None,\
+            hernquist_scale_length = None,\
             height_error = None ,sersic_index = None, central_position = None, \
             axis_ratio = None, PA = None ,background = None, dx = None,\
             dy = None, truncation_radius = None, extend = None,softening_length =None):
@@ -26,8 +30,10 @@ class Component:
             self.central_SB = central_SB 
             self.total_SB = total_SB
             self.R_effective = R_effective
+            self.L_effective = L_effective
             self.extend = extend
             self.scale_length = scale_length
+            self.hernquist_scale_length = hernquist_scale_length
             self.truncation_radius = truncation_radius
             self.softening_length = softening_length
             self.height_type = height_type
@@ -41,6 +47,7 @@ class Component:
             self.dx = dx
             self.dy = dy
             self.unit_dictionary = {'scale_length': u.kpc,\
+                              'hernquist_scale_length': u.kpc,\
                               'total_SB': {'density':u.Msun,\
                                     'sbr_lum':u.Lsun,
                                     'sbr_dens':u.Msun},\
@@ -65,35 +72,41 @@ class Component:
                               continue
                               #raise InputError(f'We cannot derive {attr} please set it')
                         elif attr in ['axis_ratio']:
-                              calculate_axis_ratio(self)
-                              
+                              calculate_axis_ratio(self)    
                         elif attr in ['central_SB']:
                               calculate_central_SB(self)
                         elif attr in ['total_SB']:
                               calculate_total_SB(self)
                         elif attr in ['R_effective']:
                               calculate_R_effective(self)
+                        elif attr in ['L_effective']:
+                              calculate_L_effective(self)
                         elif attr in ['scale_length']:
                               calculate_scale_length(self)
+                        elif attr in ['hernquist_scale_length']:
+                              calculate_hernquist_scale_length(self)
       def print(self):
             for attr, value in self.__dict__.items():
                   print(f' {attr} = {value} \n')  
 
 
 
-class Density_Profile(Component):
-      allowed_units = ['L_SOLAR/PC^2','M_SOLAR/PC^2','MAG/ARCSEC^2']
-      allowed_radii_unit = ['ARCSEC','ARCMIN','DEGREE','KPC','PC']
+class SBR_Profile(Component):
+      '''These are in plane the surface brightness profiles
+      The Tilted ring Model provides these directly but for fits made to the 
+      sky images they first have to be obtained by conversion the difference 
+      between a 3d density and 2d surface brightness profile is determined by the units
+      type name translation indicates the required units
+      '''
+      allowed_units = ['L_SOLAR/PC^2','M_SOLAR/PC^2','M_SOLAR/PC^3']
+      allowed_radii_unit = ['KPC','PC']
       #allowed_types = ['EXPONENTIAL','SERSIC','DISK','BULGE','HERNQUIST']
-      type_name_translation = {'random_disk': 'DISK', # --> to be converted with cassertano 
-                              'random_bulge': 'BULGE', # --> to be converted with cassertano 
-                              'expdisk': 'EXPONENTIAL', # --> to be converted with Nagai-Miyamoto
-                              'edgedisk': 'EXPONENTIAL', # --> to be converted with Nagai-Miyamoto       
-                              'sky': 'SKY', # Not to be converted
-                              'sersic': 'SERSIC', #to be converted with NM if n == 0.75 < n 1.25 n, hernquits if 3.75 < n < 4.25, baars and gentile else   
-                              'devauc': 'HERNQUIST', # To be converted with hernquist
-                              'sersic_disk': 'SERSIC_DISK', #Disk instance of a sersic  n == 0.75 < n <1.25
-                              'sersic_bulge': 'SERSIC_BULGE' #Bulge instance of a sersic  n == 3.75 < n <4.25
+      type_name_translation = {'random_disk': ['DISK',u.Msun/u.pc**2], # --> to be converted with cassertano 
+                              'random_bulge': ['BULGE',u.Msun/u.pc**2], # --> to be converted with cassertano 
+                              'expdisk': ['EXPONENTIAL',u.Msun/u.pc**2], # --> to be converted with Nagai-Miyamoto
+                              'edgedisk': ['EXPONENTIAL',u.Msun/u.pc**2], # --> to be converted with Nagai-Miyamoto       
+                              'sersic': ['SERSIC',u.Msun/u.pc**2], #to be converted with NM if n == 0.9 < n 1.1 n, hernquist if 3.9 < n < 4.1, and Einosto if else    
+                              'devauc': ['HERNQUIST',u.Msun/u.pc**2], # To be converted with hernquist
                               }
       allowed_height_types = ['constant','gaussian','sech_sq','lorentzian','exp','inf_thin']
       def __init__(self, values = None, errors = None, radii = None,
@@ -101,7 +114,7 @@ class Density_Profile(Component):
                   height_type = None, band = None, \
                   height_error =None ,name =None, MLratio= None, 
                   distance = None,component = None, central_SB = None,\
-                  total_SB = None, R_effective = None,\
+                  total_SB = None, R_effective = None,L_effective=None,\
                   scale_length = None, truncation_radius = None,\
                   sersic_index = None, central_position = None, \
                   axis_ratio = None, PA = None ,background = None,\
@@ -117,7 +130,7 @@ class Density_Profile(Component):
             self.values = values
             self.errors = errors  
             #The density profiles can be sbr_dens or density
-            self.profile_type = 'density'
+            self.profile_type = 'sbr_dens'
             self.radii = radii
             self.component = component # stars, gas or DM
             self.band = band
@@ -135,43 +148,7 @@ class Density_Profile(Component):
             for attr, value in self.__dict__.items():
                   print(f' {attr} = {value} \n')
             
-      def calculate_attr(self,debug = False, log = None, apply =False): 
-            '''Calculate the various attributes from fitting a profile 
-            If apply = True we replace values with the fitted profile to
-            '''
-            #First check that the calues are appropriate
-            self.check_profile()
-            # Copy the components already present
-            components = Component()
-            for attr, value in components.__dict__.items():
-                  setattr(components,attr, getattr(self,attr))
-
-            #Fit the profile
-            succes, components, profile = fit_profile(self.radii, \
-                  self.values,name=self.type, debug=debug,log=log, \
-                  components = components,profile_type = self.profile_type)
-            #If the fit is succesful copy the new attributes nad 
-            # if apply the profile
-            if succes is True:
-                  for attr, value in components.__dict__.items():
-                        setattr(self,attr, value)
-                  if apply:
-                        self.values = profile 
-            elif succes == 'process':
-                  for attr, value in components[0].__dict__.items():
-                        value = [value, getattr(components[1],attr)]
-                        setattr(self,attr, value)
-                  if apply:
-                        self.type = 'EXP+HERN'
-                        self.values = profile 
-                  #This means the profiles is best fitted with a bulge + exp profile    
-            else:
-                  if self.name.split('_')[0] in ['EXPONENTIAL','DENSITY','DISK','SERSIC']:
-                        self.type = 'random_disk'
-                  else:
-                        self.type = 'random_bulge'
-           
-            self.check_attr()
+    
      
       def check_attr(self):
             
@@ -179,7 +156,8 @@ class Density_Profile(Component):
             if not self.radii is None:
                  set_requested_units(self,'radii')
 
-            
+            if self.type is None:
+                  set_type(self)
             for attr, value in Component().__dict__.items():
                   value = getattr(self,attr)
                   if not value is None:
@@ -201,9 +179,9 @@ class Density_Profile(Component):
             self.values = check_quantity(self.values)
             self.errors = check_quantity(self.errors)
             self.radii = check_quantity(self.radii)
-            for attr in ['radii','values','radii']:
+            for attr in ['radii','values']:
                   set_requested_units(self,attr)
-     
+           
       def check_radius(self):
             self.radii = check_radii(self)
            
@@ -212,26 +190,45 @@ class Density_Profile(Component):
       def create_profile(self):
             self.check_radius()
             self.check_attr()
-           
+      
             #Changing the units in the profiles important that you only trust values with quantities
             if self.type in ['expdisk']:
                   self.values = exponential_profile(self)
+                  self.profile_type='density'
             elif self.type in ['edgedisk']:
                   self.values = edge_profile(self)
+                  self.profile_type='density'
             elif self.type in ['sersic','devauc']:
                   self.values = sersic_profile(self)
+                  self.profile_type='density'
+            elif self.type in ['bulge']:
+                  self.values = hernquist_profile(self)
+                  self.profile_type='density'
             if not self.type in ['sky','psf']: 
                   self.check_profile()
                   truncate_density_profile(self)
-     
-class Luminosity_Profile(Density_Profile):
+
+class Luminosity_Profile(SBR_Profile):
+      '''These are on sky luminosity profiles they have to be converted to density or SBR profiles'''
+      allowed_units = ['L_SOLAR/PC^2','MAG/ARCSEC^2','JY/BEAM']
+      allowed_radii_unit = ['ARCSEC','ARCMIN','DEGREE','KPC','PC']
+      #allowed_types = ['EXPONENTIAL','SERSIC','DISK','BULGE','HERNQUIST']
+      type_name_translation = {'random_disk': 'DISK', # --> no conversion has to be fitted
+                              'random_bulge': 'BULGE', # -->  no conversion has to be fitted
+                              'expdisk': 'EXPONENTIAL', # --> converted with an exponential
+                              'edgedisk': 'EXPONENTIAL', # --> converted with an exponential
+                              'sersic': 'SERSIC', #to be converted with exponential if n == 0.9 < n 1.1 n, hernquist if 3.9 < n < 4.1, and baas & gentile an else    
+                              'devauc': 'HERNQUIST', # To be converted with hernquist
+                              'sky': 'SKY', # No conversion
+                              'psf': 'PSF' # No conversion
+                              }
       def __init__(self, values = None, errors = None, radii = None,
                   type = None, height = None,\
                   height_type = None, band = None, \
                   height_error =None ,name =None, MLratio= None, 
                   distance = None,component = None, central_SB = None,\
                   total_SB = None, R_effective = None,\
-                  scale_length = None,\
+                  scale_length = None,L_effective=None,\
                   sersic_index = None, central_position = None, \
                   axis_ratio = None, PA = None ,background = None,\
                   dx = None, dy = None,softening_length =None ):
@@ -241,7 +238,7 @@ class Luminosity_Profile(Density_Profile):
                   height_error = height_error, central_SB = central_SB,\
                   total_SB = total_SB, R_effective = R_effective,\
                   scale_length = scale_length, distance =distance,\
-                  MLratio=MLratio,\
+                  MLratio=MLratio,L_effective=L_effective,\
                   sersic_index = sersic_index, central_position = central_position, \
                   axis_ratio = axis_ratio, PA = PA ,background = background, \
                   dx = dx, dy = dy,softening_length = softening_length )
@@ -264,9 +261,28 @@ class Luminosity_Profile(Density_Profile):
             if not self.type in ['sky','psf']: 
                   self.check_profile()
                   truncate_density_profile(self)
-     
+
+      def calculate_attr(self,cfg = None): 
+            '''Calculate the various attributes from fitting a profile 
+            If apply = True we replace values with the fitted profile to
+            '''
+            #First check that the calues are appropriate
+            if self.name is None:
+                  if not self.type is None:     
+                        self.name = f'{self.type}' 
+            print_log(f'First we check the profile.',cfg ,case=['debug_add'])
+            self.check_profile()
+
+            #Fit the profile
+            print_log(f'Fitting profile {self.name}',cfg ,case=['debug_add'])
+            succes = fit_profile(self, cfg=cfg)
+            #If the fit is succesful copy the new attributes and 
+            # if apply the profil
+          
+            self.check_attr()
 
 class Rotation_Curve:
+      '''Class for storing rotation Curves'''
       allowed_units = ['KM/S', 'M/S'] 
       allowed_radii_unit = ['ARCSEC','ARCMIN','DEGREE','KPC','PC']
       def __init__(self, values = None, errors = None, radii = None, band=None,\
@@ -436,16 +452,17 @@ def check_radii(self):
 def set_requested_units(self,req_attr):
       #If value is None skip
       #make sure that we not feed back
+    
       value = getattr(self,req_attr) 
-
+     
       try:
             requested_unit = self.unit_dictionary[req_attr]
       except KeyError:
             requested_unit = None
-
+     
       if isinstance(requested_unit,dict):
             requested_unit = requested_unit[self.profile_type]
-      
+   
       #if the value is none or the reuested unit is unknown we leave
       if requested_unit is None or\
             value is None:
@@ -454,13 +471,12 @@ def set_requested_units(self,req_attr):
             raise UnitError(f'{req_attr} in {self.name} has no unit, please assign a unit when filling it (value = {value})')
   
       new_value = None
-      
+    
       while new_value is None:      
             #If the unit is already the required one return the value 
             if value.unit == requested_unit:
                   new_value = value
                   break
-     
             # see if we can simply convert
             try: 
                   new_value = value.to(requested_unit)
@@ -468,6 +484,8 @@ def set_requested_units(self,req_attr):
             except:
                   pass
             # Now it gets more tricky
+            # if we have a dimensionless unit we can convert it to the requested unit
+           
             requested = 1.*requested_unit
             if req_attr == 'softening_length' and value.unit == u.dimensionless_unscaled:
                   if not self.scale_length is None:
@@ -506,17 +524,22 @@ def set_requested_units(self,req_attr):
                   (value.unit == u.Lsun/u.pc**3 and requested_unit == u.Msun/u.pc**3):
                   new_value = self.MLratio*value
                   break
-            
 
-                  
-                  
+            new_value = 'Something went wrong'
+               
       if new_value.unit != requested_unit:
             raise InputError(f'For {req_attr} in {self.name} we do not know how convert {value.unit} to {requested.unit}')
       else:
             setattr(self,req_attr,new_value) 
       
-          
-
+def set_type(profile):
+      bare_name = get_uncounted(profile.name)[0]                
+      for name in profile.type_name_translation:
+            if bare_name.upper() == profile.type_name_translation[name][0]:
+                  profile.type = name
+                  return
+      profile.type = 'random'
+      
 
 def calculate_confidence_area(RC, ranges = [None]): 
     if any(x is None for x in ranges):
