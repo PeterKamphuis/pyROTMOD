@@ -4,7 +4,7 @@ from pyROTMOD.support.errors import InputError,UnitError
 from pyROTMOD.support.minor_functions import integrate_surface_density,\
     strip_unit,get_uncounted
 from pyROTMOD.support.log_functions import print_log
-from pyROTMOD.optical.profiles import exponential,hernquist,sersic
+from pyROTMOD.optical.profiles import exponential,hernquist,sersic,hernexp
 from pyROTMOD.optical.calculate_profile_components import calculate_R_effective,\
     calculate_total_SB
 from astropy import units as unit
@@ -103,8 +103,9 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
                 'out':['Total_SB','scale_length_hernquist','Central_SB','scale_length'],
                 'out_units':[profile_to_fit.total_SB.unit,unit.kpc,\
                                 profile_to_fit.values.unit,unit.kpc],
-                'function': lambda r,Ltotal,hern_length,central,h:\
-                        hernquist(r,Ltotal,hern_length) + exponential(r,central,h),
+                #'function': lambda r,Ltotal,hern_length,central,h:\
+                #        hernquist(r,Ltotal,hern_length) + exponential(r,central,h),
+                'function': hernexp,
                 'separate_functions': [hernquist,exponential],
                 'Type':'hernq+expdisk',
                 'max_red_sqr': 3000,

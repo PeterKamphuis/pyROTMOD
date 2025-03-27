@@ -10,10 +10,10 @@ import pyROTMOD.support.constants as cons
 from pyROTMOD.support.classes import Rotation_Curve
 from pyROTMOD.support.minor_functions import get_uncounted
 from pyROTMOD.support.log_functions import print_log
-from pyROTMOD.fitters.fitters import initial_guess,mcmc_run, gp_fitter,build_GP_function
+from pyROTMOD.fitters.fitters import initial_guess,mcmc_run, gp_run
 from sympy import symbols, sqrt,lambdify
 
-
+from jax import numpy as jnp
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import matplotlib
@@ -65,7 +65,11 @@ def build_curve(all_RCs, total_RC, cfg=None):
     #make sure that r is always the first input on the function and we will replace the RCs
 
     curve_symbols_out = [x for x in list(total_sympy_curve.free_symbols) if str(x) not in ['r']+[str(y) for y in replace_dict['symbols']] ]
-    curve_symbols_out.insert(0,symbols('r'))
+    if cfg.fitting_general.use_gp:
+        #For the partial filling in the GP it is useful to have r at the end
+        curve_symbols_out.append(symbols('r'))
+    else:
+        curve_symbols_out.insert(0,symbols('r'))
     curve_symbols_in = replace_dict['symbols']+curve_symbols_out
    
     initial_formula = lambdify(curve_symbols_in, total_sympy_curve ,"numpy")
@@ -74,11 +78,17 @@ def build_curve(all_RCs, total_RC, cfg=None):
 {'':8s}{initial_formula.__doc__}
 ''',cfg,case=['main','screen'])
     # since lmfit is a piece of shit we have to construct our final formula through exec
-    
+   
     clean_code = create_formula_code(initial_formula,replace_dict,total_RC,\
         function_name='total_numpy_curve',cfg=cfg)
     exec(clean_code,globals())
-    total_RC.numpy_curve =  {'function': total_numpy_curve , 'variables': [str(x) for x in curve_symbols_out]}
+    
+    total_RC.numpy_curve =  {'function': total_numpy_curve , 'variables': [str(x) for x in curve_symbols_out]}    
+        #if we want to use gaussian processes we want create a function that 
+        #supplies correct output for any input. we do this by replacing V input in replace_dict
+        # interpolate
+
+    
     total_RC.curve = total_sympy_curve
     # This piece of code can be used to check the exec made fit function
     #curve_lamb = lambda *curve_symbols_out: initial_formula(*values_to_be_replaced, *curve_symbols_out)
@@ -155,36 +165,53 @@ calculate_red_chisq.__doc__ =f'''
  NOTE:
 '''
 
-
-
-def inject_GP(total_RC,header = False):
-    if header:
-        code= f'''from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel\n'''
-   
-    else:
-        code = f'''{'':6s}# Define the Gaussian Process kernel
-{'':6s}x = r.reshape(-1, 1) 
-{'':6s}kernel = ConstantKernel(amplitude, (0.1, 2)) * RBF(length_scale=length_scale,\\
-{'':12s}length_scale_bounds=(0.5, 10.))
-{'':6s}# Initialize the Gaussian Process Regressor
-{'':6s}yerr=np.array([{', '.join([str(i.value) for i in total_RC.errors])}],dtype=float)
-{'':6s}gp = GaussianProcessRegressor(kernel=kernel, alpha=yerr**2, n_restarts_optimizer=3, normalize_y=True)
-{'':6s}# Evaluate the model using the current parameters
-{'':6s}# Fit the GP to the residuals (data - model)
-{'':6s}gp.fit(x, vmodelled)
-{'':6s}# Predict the residuals
-{'':6s}y_pred = gp.predict(x, return_std=False)
-{'':6s}return y_pred
 '''
+
+from jax import numpy as jnp
+from tinygp import GaussianProcess, kernels
+
+def inject_GP(total_RC, header=False):
+    if header:
+        code = f''from jax import numpy as jnp
+from tinygp import GaussianProcess, kernels\n''
+    else:
+        code = f''{'':6s}# Define the Gaussian Process kernel
+{'':6s}x = jnp.array(r).reshape(-1, 1)
+{'':6s}kernel = kernels.ExpSquared(scale=length_scale) * amplitude
+{'':6s}# Initialize the Gaussian Process
+{'':6s}yerr = jnp.array([{', '.join([str(i.value) for i in total_RC.errors])}], dtype=float)
+{'':6s}gp = GaussianProcess(kernel, x, diag=yerr**2)
+{'':6s}# Predict the residuals
+{'':6s}y_pred = gp.condition(vmodelled, x).gp.loc
+{'':6s}return y_pred
+''
     return code
+'''
+
+
+def inject_interp_array(array,rad):
+    array1=f'jnp.array([{", ".join([str(i) for i in array])}])'
+    array2=f'jnp.array([{", ".join([str(i) for i in rad])}])'
+    total = f'jnp.interp(r,{array2},{array1})'
+    return total
+
+def inject_simple_array(array,rad):
+    return f'np.array([{", ".join([str(i) for i in array])}])'
 
 def create_formula_code(initial_formula,replace_dict,total_RC,\
             function_name='python_formula' ,cfg=None):
     lines=initial_formula.__doc__.split('\n')
-
-    dictionary_trans = {'sqrt':'np.sqrt', 'arctan': 'np.arctan', \
+    if cfg.fitting_general.use_gp:
+        dictionary_trans = {'sqrt':'jnp.sqrt', 'arctan': 'jnp.arctan', \
+                        'pi': 'jnp.pi','log': 'jnp.log', 'abs': 'jnp.abs'}
+        array_name = inject_interp_array
+        #'jnp.array'
+    else:
+        dictionary_trans = {'sqrt':'np.sqrt', 'arctan': 'np.arctan', \
                         'pi': 'np.pi','log': 'np.log', 'abs': 'np.abs'}
+        array_name = inject_simple_array
+        #simp'np.array'
+    rad = total_RC.radii.value
     found = False
     code =''
     for line in lines:
@@ -199,9 +226,8 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
                     break
     
     clean_code = ''
-    if cfg.fitting_general.use_gp:
-        clean_code += inject_GP(total_RC,header=True)
-
+    
+    
     for i,line in enumerate(code.split('\n')):
         if i == 0:
             #This is the header line of the code
@@ -209,19 +235,15 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
             for key in replace_dict:
                 if key != 'symbols':
                     line = line.replace(key+',','')
-            if cfg.fitting_general.use_gp:
-                line = line.replace('):',', amplitude, length_scale):')
             line += '\n'
         if i == 1:
             for key in dictionary_trans:
                 line = line.replace(key,dictionary_trans[key])
             for key in replace_dict:
-                line = line.replace(key,'np.array(['+', '.join([str(i) for i in replace_dict[key]])+'],dtype=float)')
+                line = line.replace(key,array_name(replace_dict[key],rad))
+                  
             line = f'''{'':6s}{line.replace('return','vmodelled = ').strip()}\n'''
-            if cfg.fitting_general.use_gp:
-                line += inject_GP(total_RC)
-            else:
-                line += f'{'':6s}return vmodelled \n'
+            line += f'{"":6s}return vmodelled \n'
         clean_code += line
 
     print_log(f''' This the code for the formula that is finally fitted.
@@ -492,12 +514,6 @@ def rotmass_main(baryonic_RCs, total_RC,no_negative =True,out_dir = None,\
     # Construct the function to be fitted, note that the actual fit_curve is
     build_curve(all_RCs,total_RC,cfg=cfg)                      
     
-    if cfg.fitting_general.use_gp:
-        #We want to use a Gaussian Process to fit the data
-        total_RC.fitting_variables['amplitude'] = [1.,0.1,2.,True,True]
-        total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
-        total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['amplitude','length_scale']
-
        
     if interactive:
         #We want to bring up a GUI to allow for the fitting
@@ -512,32 +528,35 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
         plot_curves(f'{out_dir}/{results_file}_Input_Curves.pdf', all_RCs,\
             total_RC,font= font)
 
-    # Try to evaluate
-    '''
-    total_RC.fitting_variables['R200'][0] = 100.
-    total_RC.fitting_variables['C'][0] = 10.
-    print(total_fix_curve(total_RC.radii.value,\
-         total_RC.fitting_variables['Gamma_disk_gas_1'][0],total_RC.fitting_variables['R200'][0],\
-         total_RC.fitting_variables['Gamma_random_stars_1'][0],total_RC.fitting_variables['C'][0],\
-         total_RC.fitting_variables['amplitude'][0],total_RC.fitting_variables['length_scale'][0]))
-    exit()
-    '''
+    
     # calculate the initial guesses
-    initial_guesses, original_settings = initial_guess(total_RC,cfg=cfg,\
+
+    if cfg.fitting_general.use_gp:
+        total_RC.fitting_variables['amplitude'] = [1.,0.1,2.,True,True]
+        total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
+        total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['amplitude','length_scale']
+
+        variable_fits,emcee_results = gp_run(total_RC,\
+                                out_dir = out_dir, cfg=cfg,\
+                                negative=rotmass_settings.negative_values,\
+                                steps=rotmass_settings.mcmc_steps,
+                                results_name= results_file)
+    else:
+        initial_guesses, original_settings = initial_guess(total_RC,cfg=cfg,\
             negative=rotmass_settings.negative_values,\
             minimizer = rotmass_settings.initial_minimizer)
     
-    update_RCs(initial_guesses,all_RCs,total_RC) 
+        update_RCs(initial_guesses,all_RCs,total_RC) 
+        
+        plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
+            all_RCs,total_RC,font=font)
     
-    plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
-        all_RCs,total_RC,font=font)
-  
-    
-    variable_fits,emcee_results = mcmc_run(total_RC,original_settings,\
-                            out_dir = out_dir, cfg=cfg,\
-                            negative=rotmass_settings.negative_values,\
-                            steps=rotmass_settings.mcmc_steps,
-                            results_name= results_file)
+        
+        variable_fits,emcee_results = mcmc_run(total_RC,original_settings,\
+                                out_dir = out_dir, cfg=cfg,\
+                                negative=rotmass_settings.negative_values,\
+                                steps=rotmass_settings.mcmc_steps,
+                                results_name= results_file)
     update_RCs(variable_fits,all_RCs,total_RC) 
     
     print_log('Plotting and writing',cfg,case=['main'])

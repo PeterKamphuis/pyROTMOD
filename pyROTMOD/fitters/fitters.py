@@ -6,6 +6,7 @@ import warnings
 from pyROTMOD.support.errors import InitialGuessWarning
 import copy
 import lmfit
+import inspect
 import corner
 from pyROTMOD.support.minor_functions import get_uncounted,\
     get_correct_label,get_exponent
@@ -14,9 +15,10 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import matplotlib
     matplotlib.use('pdf')
-    import matplotlib.pyplot as plt
-
-    
+    import matplotlib.pyplot as plt    
+from jax import numpy as jnp
+from tinygp import GaussianProcess, kernels
+from functools import partial
 
 def set_initial_guesses(input_settings,cfg = None):
     variables = copy.deepcopy(input_settings)
@@ -44,6 +46,7 @@ def set_initial_guesses(input_settings,cfg = None):
 limits are between {variables[variable][1]} - {variables[variable][2]}
 ''',cfg, case=['debug_add'])
     return variables
+
 
 def initial_guess(total_RC, cfg=None, negative = False,\
                   minimizer = 'differential_evolution'):
@@ -78,6 +81,9 @@ def initial_guess(total_RC, cfg=None, negative = False,\
             warnings.filterwarnings("ignore", message="invalid value encountered in sqrt")
             warnings.filterwarnings("ignore", message="invalid value encountered in divide")
             print(f'Starting the fit')
+           
+
+           
             initial_fit = model.fit(data=total_RC.values.value, \
                 params=parameters, r=total_RC.radii.value, method= minimizer\
                 ,nan_policy='omit',scale_covar=False)
@@ -148,6 +154,217 @@ def calculate_steps_burning(steps,function_variable_settings):
     steps=int(steps*free_variables)
     return steps, int(steps/4.)
 
+def build_GP(total_RC, fitting_variables, cfg=None):
+    kernel = (
+        fitting_variables['amplitude'][0]
+        * kernels.ExpSquared(
+            fitting_variables['length_scale'][0],
+            distance=kernels.distance.L1Distance()
+        )
+    )
+    yerr = jnp.array(total_RC.errors.value)
+    x = jnp.array(total_RC.radii.value)
+    params = [fitting_variables[par][0] for par in
+              inspect.signature(total_RC.numpy_curve['function']).parameters
+              if str(par) != 'r']
+    function_fill = partial(total_RC.numpy_curve['function'], *params) 
+    gp = GaussianProcess(kernel, x, diag=yerr**2,mean=function_fill)
+    return gp
+
+
+def gp_run(total_RC,out_dir = None,\
+        negative=False,cfg=None,steps=2000.,results_name = 'GP_MCMC'):
+    
+    guess_variables = set_initial_guesses(total_RC.fitting_variables,cfg=cfg)  
+    steps,burning = calculate_steps_burning(steps,guess_variables)
+   
+    fixed_boundaries = {}
+    added = []
+    for variable in guess_variables:
+            parameter = variable
+            if parameter not in added:
+                if guess_variables[variable][1] is not None or \
+                    guess_variables[variable][2] is not None:
+                        fixed_boundaries[parameter] = True
+                else:
+                    fixed_boundaries[parameter] = False
+                if guess_variables[variable][1] == guess_variables[variable][2]:
+                    guess_variables[variable][1] = guess_variables[variable][1]*0.9
+                    guess_variables[variable][2] = guess_variables[variable][2]*1.1
+                if guess_variables[variable][3]:
+                    print_log(f'''Setting {parameter} with value {guess_variables[variable][0]}.
+With the boundaries between {guess_variables[variable][1]} - {guess_variables[variable][2]}
+''',cfg, case=['main'])
+                else:
+                    print_log(f'''Keeping {parameter} fixed at {guess_variables[variable][0]}.
+        ''',cfg, case=['main'])
+                model.set_param_hint(parameter,value=function_variable_settings[variable][0],\
+                            min=function_variable_settings[variable][1],\
+                            max=function_variable_settings[variable][2],
+                            vary=function_variable_settings[variable][3])
+                added.append(parameter)
+    parameters = model.make_params()
+  
+      #First set the model
+    gp = build_GP(total_RC,guess_variables,cfg=cfg)
+   
+
+    emcee_kws = dict(steps=steps, burn=burning, thin=10, is_weighted=True,\
+        workers=cfg.input.ncpu)
+    #,\
+    #    workers = cfg.input.ncpu)
+    no_succes =True
+    count = 0
+    while no_succes:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
+            warnings.filterwarnings("ignore", message="invalid value encountered in sqrt")
+            warnings.filterwarnings("ignore", message="invalid value encountered in log")
+            warnings.filterwarnings("ignore", message="invalid value encountered in divide")
+            warnings.filterwarnings("ignore", message="invalid value encountered in multiply")
+            warnings.filterwarnings("ignore", message="overflow encountered in power")
+            result_emcee = model.fit(data=total_RC.values.value, \
+                r=total_RC.radii.value, params=parameters, method='emcee'\
+                ,nan_policy='omit',fit_kws=emcee_kws,weights=1./total_RC.errors.value)
+            no_succes=False
+
+            triggered =False
+            # we have to check that our results are only limited by the boundaries in the user has set them
+            added = []
+            for variable in original_variable_settings:
+                parameter = variable
+                if parameter not in added:
+                    if function_variable_settings[variable][3]:
+                        prev_bound = [parameters[parameter].min,parameters[parameter].max]
+                        change = np.nanmax([10.*result_emcee.params[parameter].stderr,\
+                                                0.25*result_emcee.params[parameter].value])    
+
+                        mini = result_emcee.params[parameter].value-3.*result_emcee.params[parameter].stderr
+                        if not negative and mini < 0.:
+                            mini = 0.
+                        if mini < result_emcee.params[parameter].min:
+                            triggered =True
+                            
+                            parameters[parameter].min = result_emcee.params[parameter].value -\
+                                change  
+                            if not negative and parameters[parameter].min < 0.:
+                                    parameters[parameter].min = 0.
+                            if original_variable_settings[variable][1]:
+                                if original_variable_settings[variable][1] > parameters[parameter].min:
+                                    parameters[parameter].min=original_variable_settings[variable][1]
+
+                        triggered = False
+                        if result_emcee.params[parameter].value+\
+                            3.*result_emcee.params[parameter].stderr >\
+                            result_emcee.params[parameter].max:
+                            triggered =True
+                            parameters[parameter].max = result_emcee.params[parameter].value\
+                                +change
+                            if original_variable_settings[variable][2]:
+                                if original_variable_settings[variable][2] < parameters[parameter].max:
+                                    parameters[parameter].max=original_variable_settings[variable][2]
+
+                        if np.array_equal(prev_bound, [parameters[parameter].min,parameters[parameter].max]) or fixed_boundaries[parameter] :
+                            if triggered:
+                                if fixed_boundaries[parameter]:
+                                    print_log(f''' The boundaries for {parameter} were too small, consider changing them
+    ''',cfg,case=['main'])
+                                else:
+                                    print_log(f''' The boundaries for {parameter} were too small, we sampled an incorrect area
+    Changing the parameter and its boundaries and trying again.
+    ''',cfg,case=['main'])
+                                    parameters[parameter].value = result_emcee.params[parameter].value
+                                    print_log(f''' Setting {parameter} = {parameters[parameter].value} between {parameters[parameter].min}-{parameters[parameter].max}
+    ''',    cfg,case=['main'])
+                                    no_succes =True   
+                            else:
+                                print_log(f'''{parameter} is fitted wel in the boundaries {parameters[parameter].min} - {parameters[parameter].max}.
+    ''',    cfg,case=['main'])
+                        else:
+                            count += 1
+                            if count >= 10 :
+                                print_log(f''' Your boundaries are not converging. Condidering fitting less variables or manually fix the boundaries
+    ''',cfg,case=['main'])
+                            else:
+                                print_log(f''' The boundaries for {parameter} were too small, we sampled an incorrect area
+    Changing the parameter and its boundaries and trying again.
+    ''',cfg,case=['main'])
+                                parameters[parameter].value = result_emcee.params[parameter].value
+                                print_log(f''' Setting {parameter} = {parameters[parameter].value} between {parameters[parameter].min}-{parameters[parameter].max}
+    ''',    cfg,case=['main'])
+                                no_succes =True
+                    added.append(parameter)
+
+    print_log(result_emcee.fit_report(),cfg,case=['main'])
+    print_log('\n',cfg,case=['main'])
+
+    if out_dir:
+        lab = []
+        added  = []
+        for parameter_mc in result_emcee.params:
+            if result_emcee.params[parameter_mc].vary:
+                for x in function_variable_settings:
+                    parameter = x
+                    if parameter_mc == parameter and parameter not in added:
+                        strip_parameter,no = get_uncounted(parameter) 
+                        edv,correction = get_exponent(np.mean(result_emcee.flatchain[parameter_mc]),threshold=3.)
+                        result_emcee.flatchain[parameter_mc] = result_emcee.flatchain[parameter_mc]*correction
+                        lab.append(get_correct_label(strip_parameter,no,exponent= edv))
+                        added.append(parameter)  
+                              
+      
+        fig = corner.corner(result_emcee.flatchain, quantiles=[0.16, 0.5, 0.84],show_titles=True,
+                        title_kwargs={"fontsize": 15},labels=lab)
+        fig.savefig(f"{out_dir}{results_name}_COV_Fits.pdf",dpi=300)
+        plt.close()
+    print_log(f''' MCMC_RUN: We find the following parameters for this fit. \n''',cfg,case=['main'])
+    added= []
+    for variable in function_variable_settings:
+        parameter = variable
+        if parameter not in added:
+            if function_variable_settings[variable][3]:
+                function_variable_settings[variable][1] = float(result_emcee.params[parameter].value-\
+                                        result_emcee.params[parameter].stderr)
+                function_variable_settings[variable][2] = float(result_emcee.params[parameter].value+\
+                                        result_emcee.params[parameter].stderr)
+
+                function_variable_settings[variable][0] = float(result_emcee.params[parameter].value)
+                print_log(f'''{parameter} = {result_emcee.params[parameter].value} +/- {result_emcee.params[parameter].stderr} within the boundary {result_emcee.params[parameter].min}-{result_emcee.params[parameter].max}
+''',cfg,case=['main'])
+                added.append(parameter)                
+
+
+
+
+    return function_variable_settings,result_emcee
+
+gp_run.__doc__ =f'''
+ NAME:
+    mcmc_run
+
+ PURPOSE:
+    run emcee under the lmfit package to fine tune the initial guesses.
+
+ CATEGORY:
+    rotmass
+
+ INPUTS:
+    rotmass_settings = the original settings from the yaml including all the defaults.
+ OPTIONAL INPUTS:
+
+ OUTPUTS:
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    Unspecified
+
+ NOTE:
+'''
+
+
+
+
 def mcmc_run(total_RC,original_variable_settings,out_dir = None,\
         negative=False,cfg=None,steps=2000.,\
         results_name = 'MCMC'):
@@ -173,8 +390,8 @@ def mcmc_run(total_RC,original_variable_settings,out_dir = None,\
                     function_variable_settings[variable][2] = function_variable_settings[variable][2]*1.1
                 if function_variable_settings[variable][3]:
                     print_log(f'''Setting {parameter} with value {function_variable_settings[variable][0]}.
-        With the boundaries between {function_variable_settings[variable][1]} - {function_variable_settings[variable][2]}
-        ''',cfg, case=['main'])
+With the boundaries between {function_variable_settings[variable][1]} - {function_variable_settings[variable][2]}
+''',cfg, case=['main'])
                 else:
                     print_log(f'''Keeping {parameter} fixed at {function_variable_settings[variable][0]}.
         ''',cfg, case=['main'])
@@ -184,7 +401,11 @@ def mcmc_run(total_RC,original_variable_settings,out_dir = None,\
                             vary=function_variable_settings[variable][3])
                 added.append(parameter)
     parameters = model.make_params()
-    emcee_kws = dict(steps=steps, burn=burning, thin=10, is_weighted=True)
+  
+    emcee_kws = dict(steps=steps, burn=burning, thin=10, is_weighted=True,\
+        workers=cfg.input.ncpu)
+    #,\
+    #    workers = cfg.input.ncpu)
     no_succes =True
     count = 0
     while no_succes:
@@ -193,8 +414,11 @@ def mcmc_run(total_RC,original_variable_settings,out_dir = None,\
             warnings.filterwarnings("ignore", message="invalid value encountered in sqrt")
             warnings.filterwarnings("ignore", message="invalid value encountered in log")
             warnings.filterwarnings("ignore", message="invalid value encountered in divide")
-            result_emcee = model.fit(data=total_RC.values.value, r=total_RC.radii.value, params=parameters, method='emcee',nan_policy='omit',
-                             fit_kws=emcee_kws,weights=1./total_RC.errors.value)
+            warnings.filterwarnings("ignore", message="invalid value encountered in multiply")
+            warnings.filterwarnings("ignore", message="overflow encountered in power")
+            result_emcee = model.fit(data=total_RC.values.value, \
+                r=total_RC.radii.value, params=parameters, method='emcee'\
+                ,nan_policy='omit',fit_kws=emcee_kws,weights=1./total_RC.errors.value)
             no_succes=False
 
             triggered =False
@@ -330,100 +554,5 @@ mcmc_run.__doc__ =f'''
 
  NOTE:
 '''
-
-
-
-def build_GP_function(total_RC, cfg=None):
-    '''Build a gaussian regression function'''
-     
-    #define the errors 
-    y_err = total_RC.errors.value if total_RC.errors is not None\
-        else np.ones_like(total_RC.values.value)
-    # Extract the function and variables from .numpy_curve
-    numpy_function = total_RC.numpy_curve["function"]
-    numpy_variables = total_RC.numpy_curve["variables"]
-
-    # Define the objective function to minimize
-    def gp_function(r,*numpy_variables,amplitude,length_scale):
-        # Define the Gaussian Process kernel
-        kernel = C(amplitude, (1e-3, 1e3)) * RBF(length_scale=length_scale,\
-                                             length_scale_bounds=(1e-2, 1e2))
-        # Initialize the Gaussian Process Regressor
-        gp = GaussianProcessRegressor(kernel=kernel, alpha=y_err**2,\
-                                      n_restarts_optimizer=10, normalize_y=True)
-
-        # Evaluate the model using the current parameters
-        y_model = numpy_function(r, *numpy_variables)
-        # Fit the GP to the residuals (data - model)
-        gp.fit(r, y_model)
-        # Predict the residuals
-        y_pred = gp.predict(r, return_std=False)
-        return y_pred
-    total_RC.numpy_curve["function"] = gp_function
-    total_RC.numpy_curve["variables"] = numpy_variables + ["amplitude", "length_scale"]
-  
-  
-def gp_fitter(total_RC, cfg=None):
-    """
-    Perform Gaussian Process regression using scikit-learn.
-    """
-    from sklearn.gaussian_process import GaussianProcessRegressor
-    from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
-
-    # Extract data from the rotation curve
-    x = total_RC.radii.value.reshape(-1, 1)  # Reshape for sklearn
-    y = total_RC.values.value
-    y_err = total_RC.errors.value if total_RC.errors is not None else np.ones_like(y)
-
-    # Define the Gaussian Process kernel
-    amp = 1.0
-    length = 2*(x[-2]-x[-1])
-    kernel = C(amp, (1e-3, 1e3)) *\
-          RBF(length_scale=length, length_scale_bounds=(1e-2, 1e2))
-    # Initialize the Gaussian Process Regressor
-    gp = GaussianProcessRegressor(kernel=kernel, alpha=y_err**2,\
-                         n_restarts_optimizer=10, normalize_y=True)
-
-    # Fit the GP model to the data
-    gp.fit(x, y)
-
-    # Predict the mean and standard deviation of the GP
-    y_pred, sigma = gp.predict(x, return_std=True)
-
-    # Log the results
-    print_log(f"GP_FITTER:: Gaussian Process regression completed with kernel: {gp.kernel_}", cfg, case=["main", "screen"])
-
-    # Return the GP results
-    return {"mean": y_pred, "std": sigma, "gp_model": gp}
-gp_fitter.__doc__ = f'''
- NAME:
-    gp_fitter
-
- PURPOSE:
-    Perform Gaussian Process fitting using lmfit.
-
- CATEGORY:
-    fitters
-
- INPUTS:
-    total_RC - The total rotation curve object containing radii, values, and errors.
-    cfg - Configuration object for logging.
-    kernel_type - Type of kernel to use for GP (default: "RBF").
-
- OUTPUTS:
-    A dictionary containing the mean, standard deviation, and the lmfit result object.
-
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-    lmfit
-
- NOTE:
-    Ensure lmfit is installed before using this function.
-'''
-
-
-
-
 
 

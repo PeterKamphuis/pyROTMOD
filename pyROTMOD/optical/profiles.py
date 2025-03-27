@@ -213,6 +213,14 @@ exponential_profile.__doc__ = f'''
 
  NOTE:
 '''
+ 
+# if we do not define these functions they cannot be pickled and not multiproceessed 
+def hernexp( r,Ltotal,hern_length,central,h):
+    '''
+    This is the sum of a Hernquist and an exponential profile
+    '''
+    return hernquist(r,Ltotal,hern_length) + exponential(r,central,h)
+
 
 def hernquist(r,total_l,h):
     '''

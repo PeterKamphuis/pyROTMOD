@@ -7,13 +7,16 @@ from datetime import datetime
 from pyROTMOD.support.minor_functions import get_uncounted
 import os
 import sys
-import numpy as np
+import psutil
 import pyROTMOD.rotmass.potentials as potentials
 import pyROTMOD
 
 @dataclass
 class Input:
-    ncpu: int = 6
+    try:
+        ncpu: int = len(psutil.Process().cpu_affinity())
+    except AttributeError:
+        ncpu: int = psutil.cpu_count()-1
     RC_file: Optional[str] = None
     distance: Optional[float] = None  #This uses the vsys from the gas input file
     font: str = "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf"
