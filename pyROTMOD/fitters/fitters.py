@@ -16,8 +16,7 @@ with warnings.catch_warnings():
     matplotlib.use('pdf')
     import matplotlib.pyplot as plt
 
-
-
+    
 
 def set_initial_guesses(input_settings,cfg = None):
     variables = copy.deepcopy(input_settings)
@@ -51,13 +50,20 @@ def initial_guess(total_RC, cfg=None, negative = False,\
     #First initiate the model with the numpy function we want to fit
     model = lmfit.Model(total_RC.numpy_curve['function'])
     #no_input = False
-   
+  
     guess_variables = set_initial_guesses(total_RC.fitting_variables,cfg=cfg)
-
+      #Test that the models works
+  
     for variable in total_RC.numpy_curve['variables']:
         if variable == 'r':
             #We don't need guesses for r
             continue
+        print_log(f'''INITIAL_GUESS: Setting the parameter {variable} with the following values:
+    Value: {guess_variables[variable][0]}
+    Min: {guess_variables[variable][1]}
+    Max: {guess_variables[variable][2]}
+    Vary: {guess_variables[variable][3]}
+    ''',cfg,case=['debug_add'])
         model.set_param_hint(variable,value=guess_variables[variable][0],\
             min=guess_variables[variable][1],\
             max=guess_variables[variable][2],\
@@ -71,7 +77,7 @@ def initial_guess(total_RC, cfg=None, negative = False,\
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="invalid value encountered in sqrt")
             warnings.filterwarnings("ignore", message="invalid value encountered in divide")
-
+            print(f'Starting the fit')
             initial_fit = model.fit(data=total_RC.values.value, \
                 params=parameters, r=total_RC.radii.value, method= minimizer\
                 ,nan_policy='omit',scale_covar=False)
@@ -323,6 +329,97 @@ mcmc_run.__doc__ =f'''
     Unspecified
 
  NOTE:
+'''
+
+
+
+def build_GP_function(total_RC, cfg=None):
+    '''Build a gaussian regression function'''
+     
+    #define the errors 
+    y_err = total_RC.errors.value if total_RC.errors is not None\
+        else np.ones_like(total_RC.values.value)
+    # Extract the function and variables from .numpy_curve
+    numpy_function = total_RC.numpy_curve["function"]
+    numpy_variables = total_RC.numpy_curve["variables"]
+
+    # Define the objective function to minimize
+    def gp_function(r,*numpy_variables,amplitude,length_scale):
+        # Define the Gaussian Process kernel
+        kernel = C(amplitude, (1e-3, 1e3)) * RBF(length_scale=length_scale,\
+                                             length_scale_bounds=(1e-2, 1e2))
+        # Initialize the Gaussian Process Regressor
+        gp = GaussianProcessRegressor(kernel=kernel, alpha=y_err**2,\
+                                      n_restarts_optimizer=10, normalize_y=True)
+
+        # Evaluate the model using the current parameters
+        y_model = numpy_function(r, *numpy_variables)
+        # Fit the GP to the residuals (data - model)
+        gp.fit(r, y_model)
+        # Predict the residuals
+        y_pred = gp.predict(r, return_std=False)
+        return y_pred
+    total_RC.numpy_curve["function"] = gp_function
+    total_RC.numpy_curve["variables"] = numpy_variables + ["amplitude", "length_scale"]
+  
+  
+def gp_fitter(total_RC, cfg=None):
+    """
+    Perform Gaussian Process regression using scikit-learn.
+    """
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
+
+    # Extract data from the rotation curve
+    x = total_RC.radii.value.reshape(-1, 1)  # Reshape for sklearn
+    y = total_RC.values.value
+    y_err = total_RC.errors.value if total_RC.errors is not None else np.ones_like(y)
+
+    # Define the Gaussian Process kernel
+    amp = 1.0
+    length = 2*(x[-2]-x[-1])
+    kernel = C(amp, (1e-3, 1e3)) *\
+          RBF(length_scale=length, length_scale_bounds=(1e-2, 1e2))
+    # Initialize the Gaussian Process Regressor
+    gp = GaussianProcessRegressor(kernel=kernel, alpha=y_err**2,\
+                         n_restarts_optimizer=10, normalize_y=True)
+
+    # Fit the GP model to the data
+    gp.fit(x, y)
+
+    # Predict the mean and standard deviation of the GP
+    y_pred, sigma = gp.predict(x, return_std=True)
+
+    # Log the results
+    print_log(f"GP_FITTER:: Gaussian Process regression completed with kernel: {gp.kernel_}", cfg, case=["main", "screen"])
+
+    # Return the GP results
+    return {"mean": y_pred, "std": sigma, "gp_model": gp}
+gp_fitter.__doc__ = f'''
+ NAME:
+    gp_fitter
+
+ PURPOSE:
+    Perform Gaussian Process fitting using lmfit.
+
+ CATEGORY:
+    fitters
+
+ INPUTS:
+    total_RC - The total rotation curve object containing radii, values, and errors.
+    cfg - Configuration object for logging.
+    kernel_type - Type of kernel to use for GP (default: "RBF").
+
+ OUTPUTS:
+    A dictionary containing the mean, standard deviation, and the lmfit result object.
+
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    lmfit
+
+ NOTE:
+    Ensure lmfit is installed before using this function.
 '''
 
 

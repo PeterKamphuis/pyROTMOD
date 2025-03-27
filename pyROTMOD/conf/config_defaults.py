@@ -63,6 +63,8 @@ class Fitting:
     single_gas_ML: bool = False
     mcmc_steps: int= 2000 #Amount of steps per parameter, burn is a quarter
     results_file: str = 'Final_Results'
+    use_gp: bool = True
+    gp_kernel_type: str = 'RBF'
 
 @dataclass
 class ExtendConfig:

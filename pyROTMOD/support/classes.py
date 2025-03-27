@@ -626,8 +626,9 @@ def set_variables_and_ranges(RC):
                         err = RC.errors.to(RC.values.unit).value
                   else:
                         err =0.
-                  ranges.append([(RC.values.value-err), RC.values.value+err])  
+                  ranges.append([(RC.values.value-err), RC.values.value+err])        
             else:
+                  print(RC.name)
                   sets.append(RC.fitting_variables[variable][0])
                   ranges.append([RC.fitting_variables[variable][0],RC.fitting_variables[variable][0]])
                   collected_variables.append(variable)

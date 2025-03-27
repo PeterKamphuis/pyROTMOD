@@ -10,8 +10,9 @@ import pyROTMOD.support.constants as cons
 from pyROTMOD.support.classes import Rotation_Curve
 from pyROTMOD.support.minor_functions import get_uncounted
 from pyROTMOD.support.log_functions import print_log
-from pyROTMOD.fitters.fitters import initial_guess,mcmc_run
+from pyROTMOD.fitters.fitters import initial_guess,mcmc_run, gp_fitter,build_GP_function
 from sympy import symbols, sqrt,lambdify
+
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -20,8 +21,7 @@ with warnings.catch_warnings():
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
 
-
-def build_curve(all_RCs,total_RC,cfg=None):
+def build_curve(all_RCs, total_RC, cfg=None):
     # First set individual sympy symbols  and the curve for each RC
 
     ML, V = symbols('ML V')
@@ -78,9 +78,10 @@ def build_curve(all_RCs,total_RC,cfg=None):
     print_log(f'''BUILD_CURVE:: We are fitting this complete formula:
 {'':8s}{initial_formula.__doc__}
 ''',cfg,case=['main','screen'])
-    # since lmfit is a piece of shit we have to constract or final formula through exec
+    # since lmfit is a piece of shit we have to construct our final formula through exec
     
-    clean_code = create_formula_code(initial_formula,replace_dict, function_name='total_numpy_curve',cfg=cfg)
+    clean_code = create_formula_code(initial_formula,replace_dict,total_RC,\
+        function_name='total_numpy_curve',cfg=cfg)
     exec(clean_code,globals())
     total_RC.numpy_curve =  {'function': total_numpy_curve , 'variables': [str(x) for x in curve_symbols_out]}
     total_RC.curve = total_sympy_curve
@@ -193,8 +194,48 @@ def create_disk_var(collected_RCs,single_stellar_ML=True,single_gas_ML=True):
                     disk_var[key][0] = 'ML_gas'
     return disk_var
 '''
-
-def create_formula_code(initial_formula,replace_dict,\
+def inject_GP(total_RC,header = False):
+    if header:
+        code= f'''from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel\n'''
+   
+    else:
+        code = f'''{'':6s}# Define the Gaussian Process kernel
+{'':6s}x = r.reshape(-1, 1) 
+{'':6s}kernel = ConstantKernel(amplitude, (0.1, 2)) * RBF(length_scale=length_scale,\\
+{'':12s}length_scale_bounds=(0.5, 10.))
+{'':6s}# Initialize the Gaussian Process Regressor
+{'':6s}yerr=np.array([{', '.join([str(i.value) for i in total_RC.errors])}],dtype=float)
+{'':6s}gp = GaussianProcessRegressor(kernel=kernel, alpha=yerr**2, n_restarts_optimizer=3, normalize_y=True)
+{'':6s}# Evaluate the model using the current parameters
+{'':6s}# Fit the GP to the residuals (data - model)
+{'':6s}gp.fit(x, vmodelled)
+{'':6s}# Predict the residuals
+{'':6s}y_pred = gp.predict(x, return_std=False)
+{'':6s}return y_pred
+'''
+    return code
+'''
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel  
+def total_fix_curve(  r, Gamma_disk_gas_1, R200, Gamma_random_stars_1, C, amplitude, length_scale):
+      vmodelled =  1.36986301369863*np.sqrt(0.5329*Gamma_disk_gas_1*np.array([0.0, 0.0, 1.92, 2.29, 2.64, 3.0, 3.34, 3.68, 4.02, 4.37, 4.75, 5.15, 5.51, 5.76, 5.98, 6.21, 6.42, 6.61, 6.81, 7.01, 7.27, 7.54, 7.81, 8.25, 8.77, 9.31, 9.95, 10.97, 11.96, 13.06, 14.06, 15.05, 16.15, 17.15, 18.14, 19.24, 20.24, 21.03, 21.83, 25.72, 27.81, 29.41, 30.7, 31.7, 33.29, 34.99, 36.58, 38.38, 39.97, 41.47, 42.57, 43.96, 45.06, 45.76, 46.15, 46.65, 46.95, 46.75, 46.25, 45.95, 45.66, 45.26, 44.76, 44.16, 43.36, 42.67, 41.87, 41.07, 40.27, 39.87, 39.87, 39.87, 39.87],dtype=float)*np.abs(np.array([0.0, 0.0, 1.92, 2.29, 2.64, 3.0, 3.34, 3.68, 4.02, 4.37, 4.75, 5.15, 5.51, 5.76, 5.98, 6.21, 6.42, 6.61, 6.81, 7.01, 7.27, 7.54, 7.81, 8.25, 8.77, 9.31, 9.95, 10.97, 11.96, 13.06, 14.06, 15.05, 16.15, 17.15, 18.14, 19.24, 20.24, 21.03, 21.83, 25.72, 27.81, 29.41, 30.7, 31.7, 33.29, 34.99, 36.58, 38.38, 39.97, 41.47, 42.57, 43.96, 45.06, 45.76, 46.15, 46.65, 46.95, 46.75, 46.25, 45.95, 45.66, 45.26, 44.76, 44.16, 43.36, 42.67, 41.87, 41.07, 40.27, 39.87, 39.87, 39.87, 39.87],dtype=float)) + 0.5329*Gamma_random_stars_1*np.array([28.640988504435995, 42.37428270523847, 56.5142007321376, 67.95111146271299, 75.6208163409298, 76.43561490616177, 77.67299025092555, 77.61444847353968, 77.89364053937678, 78.16944614640173, 79.6990653095104, 83.15879050633988, 85.4347402617112, 88.14680038166327, 90.93250258782875, 94.62531630767262, 97.50354113560999, 99.59692644016523, 102.25708745031713, 105.34859326427062, 106.64813549098774, 107.94525637539053, 106.79974402352117, 105.26898723604249, 103.91788904731635, 102.60651127130429, 101.43811931404422, 100.45538199284786, 99.4726446716515, 98.9075190047938, 99.15763753644602, 99.38501801976622, 99.57852616027458, 99.72111980301447, 99.86371344575436, 99.97289737006378, 99.43366002442666, 98.84049894422581, 98.35518533315239, 95.1929292546584, 92.78769584456353, 89.89636434164498, 86.61419041437766, 83.31827375451263, 80.21077888266026, 77.23866764401193, 74.44700873421979, 71.8001963514665, 69.44941953091015, 67.19834691817836, 65.1503924723636, 63.27980208197861, 61.51991096822656, 59.895813352094365, 58.4232271433056, 57.02550876807857, 55.73015010830325, 54.52491336861224, 53.42314130546898, 52.370213338640234, 51.37986949256677, 50.465704706594614, 49.58455996905621, 48.7507449097473, 47.97603603919546, 47.22378367656292, 46.51119610489494, 45.844907524945626, 45.195109539655135, 44.5733941327892, 43.989404154763776, 43.419164055520675, 43.2579],dtype=float)*np.abs(np.array([28.640988504435995, 42.37428270523847, 56.5142007321376, 67.95111146271299, 75.6208163409298, 76.43561490616177, 77.67299025092555, 77.61444847353968, 77.89364053937678, 78.16944614640173, 79.6990653095104, 83.15879050633988, 85.4347402617112, 88.14680038166327, 90.93250258782875, 94.62531630767262, 97.50354113560999, 99.59692644016523, 102.25708745031713, 105.34859326427062, 106.64813549098774, 107.94525637539053, 106.79974402352117, 105.26898723604249, 103.91788904731635, 102.60651127130429, 101.43811931404422, 100.45538199284786, 99.4726446716515, 98.9075190047938, 99.15763753644602, 99.38501801976622, 99.57852616027458, 99.72111980301447, 99.86371344575436, 99.97289737006378, 99.43366002442666, 98.84049894422581, 98.35518533315239, 95.1929292546584, 92.78769584456353, 89.89636434164498, 86.61419041437766, 83.31827375451263, 80.21077888266026, 77.23866764401193, 74.44700873421979, 71.8001963514665, 69.44941953091015, 67.19834691817836, 65.1503924723636, 63.27980208197861, 61.51991096822656, 59.895813352094365, 58.4232271433056, 57.02550876807857, 55.73015010830325, 54.52491336861224, 53.42314130546898, 52.370213338640234, 51.37986949256677, 50.465704706594614, 49.58455996905621, 48.7507449097473, 47.97603603919546, 47.22378367656292, 46.51119610489494, 45.844907524945626, 45.195109539655135, 44.5733941327892, 43.989404154763776, 43.419164055520675, 43.2579],dtype=float)) + R200**3*(-C*r/(R200*(C*r/R200 + 1)) + np.log(C*r/R200 + 1))/(r*(-C/(C + 1) + np.log(C + 1))))
+      x = r.reshape(-1, 1) 
+      # Define the Gaussian Process kernel
+      kernel = ConstantKernel(amplitude, (1e-3, 1e3)) * RBF(length_scale=length_scale,\
+            length_scale_bounds=(1e-2, 1e2))
+      # Initialize the Gaussian Process Regressor
+      yerr=np.array([2.83, 2.46, 1.12, 1.25, 2.93, 1.25, 1.25, 1.6, 1.03, 1.12, 1.6, 1.8, 1.6, 1.41, 1.41, 1.6, 1.41, 1.25, 1.6, 2.02, 2.02, 1.6, 1.0, 1.12, 1.41, 1.12, 1.6, 2.69, 2.69, 3.16, 3.4, 3.4, 2.93, 2.46, 2.46, 3.4, 5.1, 5.1, 4.85, 5.36, 2.57, 0.22, 0.88, 0.45, 0.55, 0.45, 0.24, 1.45, 1.12, 1.68, 2.56, 1.24, 0.21, 1.13, 2.23, 2.68, 2.68, 3.37, 3.81, 2.56, 0.56, 0.79, 0.67, 2.35, 4.13, 3.91, 6.38, 8.39, 7.83, 6.26, 5.6, 5.24, 3.12],dtype=float)
+      gp = GaussianProcessRegressor(kernel=kernel, alpha=yerr**2,\
+                                     n_restarts_optimizer=10, normalize_y=True)
+      # Evaluate the model using the current parameters
+      # Fit the GP to the residuals (data - model)
+      gp.fit(x, vmodelled)
+      # Predict the residuals
+      y_pred = gp.predict(x, return_std=False)
+      return y_pred
+'''
+def create_formula_code(initial_formula,replace_dict,total_RC,\
             function_name='python_formula' ,cfg=None):
     lines=initial_formula.__doc__.split('\n')
 
@@ -212,23 +253,37 @@ def create_formula_code(initial_formula,replace_dict,\
                 code += line+'\n'
                 if line.split()[0].lower() == 'return':
                     break
+    
     clean_code = ''
+    if cfg.fitting_general.use_gp:
+        clean_code += inject_GP(total_RC,header=True)
+
     for i,line in enumerate(code.split('\n')):
         if i == 0:
+            #This is the header line of the code
             line = line.replace('_lambdifygenerated',function_name)
             for key in replace_dict:
                 if key != 'symbols':
                     line = line.replace(key+',','')
+            if cfg.fitting_general.use_gp:
+                line = line.replace('):',', amplitude, length_scale):')
+            line += '\n'
         if i == 1:
             for key in dictionary_trans:
                 line = line.replace(key,dictionary_trans[key])
             for key in replace_dict:
                 line = line.replace(key,'np.array(['+', '.join([str(i) for i in replace_dict[key]])+'],dtype=float)')
-        clean_code += line+'\n'
-   
+            line = f'''{'':6s}{line.replace('return','vmodelled = ').strip()}\n'''
+            if cfg.fitting_general.use_gp:
+                line += inject_GP(total_RC)
+            else:
+                line += f'{'':6s}return vmodelled \n'
+        clean_code += line
+
     print_log(f''' This the code for the formula that is finally fitted.
 {clean_code}
-''',cfg,case=['debug_add'])
+''',cfg,case=['debug_add','screen'])
+   
     return clean_code
 create_formula_code.__doc__ =f'''
  NAME:
@@ -445,8 +500,6 @@ def set_RC_style(RC,input=False):
 
 
 def plot_individual_RC(RC,ax1,input=False):
-   
-   
     if input:
         plot_values = RC.values
     else:
@@ -590,6 +643,14 @@ def rotmass_main(baryonic_RCs, total_RC,no_negative =True,out_dir = None,\
 
     # Construct the function to be fitted, note that the actual fit_curve is
     build_curve(all_RCs,total_RC,cfg=cfg)                      
+    
+    if cfg.fitting_general.use_gp:
+        #We want to use a Gaussian Process to fit the data
+        total_RC.fitting_variables['amplitude'] = [1.,0.1,2.,True,True]
+        total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
+        total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['amplitude','length_scale']
+
+       
     if interactive:
         #We want to bring up a GUI to allow for the fitting
         print_log(f'''Unfortunately the interactive function of fitting is not yet implemented. Feel free to write a GUI.
@@ -603,11 +664,21 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
         plot_curves(f'{out_dir}/{results_file}_Input_Curves.pdf', all_RCs,\
             total_RC,font= font)
 
-    
+    # Try to evaluate
+    '''
+    total_RC.fitting_variables['R200'][0] = 100.
+    total_RC.fitting_variables['C'][0] = 10.
+    print(total_fix_curve(total_RC.radii.value,\
+         total_RC.fitting_variables['Gamma_disk_gas_1'][0],total_RC.fitting_variables['R200'][0],\
+         total_RC.fitting_variables['Gamma_random_stars_1'][0],total_RC.fitting_variables['C'][0],\
+         total_RC.fitting_variables['amplitude'][0],total_RC.fitting_variables['length_scale'][0]))
+    exit()
+    '''
     # calculate the initial guesses
     initial_guesses, original_settings = initial_guess(total_RC,cfg=cfg,\
             negative=rotmass_settings.negative_values,\
             minimizer = rotmass_settings.initial_minimizer)
+    
     update_RCs(initial_guesses,all_RCs,total_RC) 
     
     plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
@@ -630,7 +701,6 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
     write_output_file(variable_fits,emcee_results,output_dir=out_dir,\
                 results_file = results_file, red_chisq = red_chisq)
 
-
 rotmass_main.__doc__ =f'''
  NAME:
     rotmass_main
@@ -642,17 +712,30 @@ rotmass_main.__doc__ =f'''
     rotmass
 
  INPUTS:
-
- OPTIONAL INPUTS:
+    baryonic_RCs - Dictionary of baryonic rotation curves.
+    total_RC - The total rotation curve object.
+    no_negative - Whether to disallow negative values in the fit.
+    out_dir - Directory to save output files.
+    interactive - Whether to enable interactive mode (not implemented).
+    rotmass_settings - Settings for the rotation curve fitting.
+    cfg - Configuration object for logging.
+    rotmass_parameter_settings - Parameter settings for the fit.
+    results_file - Name of the results file.
+    font - Font to use for plots.
+    use_gp - Whether to use Gaussian Process fitting for data correlations.
+    gp_kernel - Kernel type for Gaussian Process fitting (default: "RBF").
 
  OUTPUTS:
+    None
 
  OPTIONAL OUTPUTS:
+    Saves plots and results to the specified output directory.
 
  PROCEDURES CALLED:
-    Unspecified
+    build_curve, initial_guess, mcmc_run, gp_fitter, plot_curves, write_output_file
 
  NOTE:
+    Ensure all required modules and dependencies are installed.
 '''
 
 
