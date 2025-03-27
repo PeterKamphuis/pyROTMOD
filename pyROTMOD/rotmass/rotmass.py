@@ -29,11 +29,6 @@ def build_curve(all_RCs, total_RC, cfg=None):
     total_sympy_curve = None
     for name in all_RCs:
         RC_symbols = [x for x in list(all_RCs[name].curve.free_symbols) if str(x) != 'r']
-        print(f'##########################{name}##################')
-        print( all_RCs[name].fitting_variables)
-        print( all_RCs[name].curve)
-       
-        print(f'############################################')
         for symbol in RC_symbols:
             if symbol == V:
                 V_replace = symbols(f'V_{all_RCs[name].name}')
@@ -162,38 +157,6 @@ calculate_red_chisq.__doc__ =f'''
 
 
 
-'''
-def create_disk_var(collected_RCs,single_stellar_ML=True,single_gas_ML=True):
-    disk_var = {}
-    counters = {'GAS': 1, 'DISK': 1, 'BULGE': 1} 
-    for RC in collected_RCs:
-        key = collected_RCs[RC].name
-        if key != 'RADI':
-            bare,no = get_uncounted(key)
-            if collected_RCs[RC].component in ['stars']:
-                if bare in ['EXPONENTIAL','SERSIC']:
-                    disk_var[key] = [f'Gamma_disk_{counters["DISK"]}',f'V_disk_{counters["DISK"]}']
-                    counters['DISK'] += 1
-                elif bare in ['HERNQUIST','BULGE']:
-                    disk_var[key] = [f'Gamma_bulge_{counters["BULGE"]}',f'V_bulge_{counters["BULGE"]}']
-                    counters['BULGE'] += 1
-                if single_stellar_ML:
-                    disk_var[key][0]='ML_stars'
-            
-            elif bare in ['DISK_GAS']:
-                disk_var[key] = [f'Gamma_gas_{counters["GAS"]}',f'V_gas_{counters["GAS"]}']
-                counters['GAS'] += 1
-            elif bare in ['HERNQUIST','BULGE']:
-                disk_var[key] = [f'Gamma_bulge_{counters["BULGE"]}',f'V_bulge_{counters["BULGE"]}']
-                counters['BULGE'] += 1
-            if bare in ['EXPONENTIAL','SERSIC','HERNQUIST','BULGE']:
-                if single_stellar_ML:
-                    disk_var[key][0]='ML_optical'
-            if bare in ['DISK_GAS']:
-                if single_gas_ML: 
-                    disk_var[key][0] = 'ML_gas'
-    return disk_var
-'''
 def inject_GP(total_RC,header = False):
     if header:
         code= f'''from sklearn.gaussian_process import GaussianProcessRegressor
@@ -215,26 +178,7 @@ from sklearn.gaussian_process.kernels import RBF, ConstantKernel\n'''
 {'':6s}return y_pred
 '''
     return code
-'''
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel  
-def total_fix_curve(  r, Gamma_disk_gas_1, R200, Gamma_random_stars_1, C, amplitude, length_scale):
-      vmodelled =  1.36986301369863*np.sqrt(0.5329*Gamma_disk_gas_1*np.array([0.0, 0.0, 1.92, 2.29, 2.64, 3.0, 3.34, 3.68, 4.02, 4.37, 4.75, 5.15, 5.51, 5.76, 5.98, 6.21, 6.42, 6.61, 6.81, 7.01, 7.27, 7.54, 7.81, 8.25, 8.77, 9.31, 9.95, 10.97, 11.96, 13.06, 14.06, 15.05, 16.15, 17.15, 18.14, 19.24, 20.24, 21.03, 21.83, 25.72, 27.81, 29.41, 30.7, 31.7, 33.29, 34.99, 36.58, 38.38, 39.97, 41.47, 42.57, 43.96, 45.06, 45.76, 46.15, 46.65, 46.95, 46.75, 46.25, 45.95, 45.66, 45.26, 44.76, 44.16, 43.36, 42.67, 41.87, 41.07, 40.27, 39.87, 39.87, 39.87, 39.87],dtype=float)*np.abs(np.array([0.0, 0.0, 1.92, 2.29, 2.64, 3.0, 3.34, 3.68, 4.02, 4.37, 4.75, 5.15, 5.51, 5.76, 5.98, 6.21, 6.42, 6.61, 6.81, 7.01, 7.27, 7.54, 7.81, 8.25, 8.77, 9.31, 9.95, 10.97, 11.96, 13.06, 14.06, 15.05, 16.15, 17.15, 18.14, 19.24, 20.24, 21.03, 21.83, 25.72, 27.81, 29.41, 30.7, 31.7, 33.29, 34.99, 36.58, 38.38, 39.97, 41.47, 42.57, 43.96, 45.06, 45.76, 46.15, 46.65, 46.95, 46.75, 46.25, 45.95, 45.66, 45.26, 44.76, 44.16, 43.36, 42.67, 41.87, 41.07, 40.27, 39.87, 39.87, 39.87, 39.87],dtype=float)) + 0.5329*Gamma_random_stars_1*np.array([28.640988504435995, 42.37428270523847, 56.5142007321376, 67.95111146271299, 75.6208163409298, 76.43561490616177, 77.67299025092555, 77.61444847353968, 77.89364053937678, 78.16944614640173, 79.6990653095104, 83.15879050633988, 85.4347402617112, 88.14680038166327, 90.93250258782875, 94.62531630767262, 97.50354113560999, 99.59692644016523, 102.25708745031713, 105.34859326427062, 106.64813549098774, 107.94525637539053, 106.79974402352117, 105.26898723604249, 103.91788904731635, 102.60651127130429, 101.43811931404422, 100.45538199284786, 99.4726446716515, 98.9075190047938, 99.15763753644602, 99.38501801976622, 99.57852616027458, 99.72111980301447, 99.86371344575436, 99.97289737006378, 99.43366002442666, 98.84049894422581, 98.35518533315239, 95.1929292546584, 92.78769584456353, 89.89636434164498, 86.61419041437766, 83.31827375451263, 80.21077888266026, 77.23866764401193, 74.44700873421979, 71.8001963514665, 69.44941953091015, 67.19834691817836, 65.1503924723636, 63.27980208197861, 61.51991096822656, 59.895813352094365, 58.4232271433056, 57.02550876807857, 55.73015010830325, 54.52491336861224, 53.42314130546898, 52.370213338640234, 51.37986949256677, 50.465704706594614, 49.58455996905621, 48.7507449097473, 47.97603603919546, 47.22378367656292, 46.51119610489494, 45.844907524945626, 45.195109539655135, 44.5733941327892, 43.989404154763776, 43.419164055520675, 43.2579],dtype=float)*np.abs(np.array([28.640988504435995, 42.37428270523847, 56.5142007321376, 67.95111146271299, 75.6208163409298, 76.43561490616177, 77.67299025092555, 77.61444847353968, 77.89364053937678, 78.16944614640173, 79.6990653095104, 83.15879050633988, 85.4347402617112, 88.14680038166327, 90.93250258782875, 94.62531630767262, 97.50354113560999, 99.59692644016523, 102.25708745031713, 105.34859326427062, 106.64813549098774, 107.94525637539053, 106.79974402352117, 105.26898723604249, 103.91788904731635, 102.60651127130429, 101.43811931404422, 100.45538199284786, 99.4726446716515, 98.9075190047938, 99.15763753644602, 99.38501801976622, 99.57852616027458, 99.72111980301447, 99.86371344575436, 99.97289737006378, 99.43366002442666, 98.84049894422581, 98.35518533315239, 95.1929292546584, 92.78769584456353, 89.89636434164498, 86.61419041437766, 83.31827375451263, 80.21077888266026, 77.23866764401193, 74.44700873421979, 71.8001963514665, 69.44941953091015, 67.19834691817836, 65.1503924723636, 63.27980208197861, 61.51991096822656, 59.895813352094365, 58.4232271433056, 57.02550876807857, 55.73015010830325, 54.52491336861224, 53.42314130546898, 52.370213338640234, 51.37986949256677, 50.465704706594614, 49.58455996905621, 48.7507449097473, 47.97603603919546, 47.22378367656292, 46.51119610489494, 45.844907524945626, 45.195109539655135, 44.5733941327892, 43.989404154763776, 43.419164055520675, 43.2579],dtype=float)) + R200**3*(-C*r/(R200*(C*r/R200 + 1)) + np.log(C*r/R200 + 1))/(r*(-C/(C + 1) + np.log(C + 1))))
-      x = r.reshape(-1, 1) 
-      # Define the Gaussian Process kernel
-      kernel = ConstantKernel(amplitude, (1e-3, 1e3)) * RBF(length_scale=length_scale,\
-            length_scale_bounds=(1e-2, 1e2))
-      # Initialize the Gaussian Process Regressor
-      yerr=np.array([2.83, 2.46, 1.12, 1.25, 2.93, 1.25, 1.25, 1.6, 1.03, 1.12, 1.6, 1.8, 1.6, 1.41, 1.41, 1.6, 1.41, 1.25, 1.6, 2.02, 2.02, 1.6, 1.0, 1.12, 1.41, 1.12, 1.6, 2.69, 2.69, 3.16, 3.4, 3.4, 2.93, 2.46, 2.46, 3.4, 5.1, 5.1, 4.85, 5.36, 2.57, 0.22, 0.88, 0.45, 0.55, 0.45, 0.24, 1.45, 1.12, 1.68, 2.56, 1.24, 0.21, 1.13, 2.23, 2.68, 2.68, 3.37, 3.81, 2.56, 0.56, 0.79, 0.67, 2.35, 4.13, 3.91, 6.38, 8.39, 7.83, 6.26, 5.6, 5.24, 3.12],dtype=float)
-      gp = GaussianProcessRegressor(kernel=kernel, alpha=yerr**2,\
-                                     n_restarts_optimizer=10, normalize_y=True)
-      # Evaluate the model using the current parameters
-      # Fit the GP to the residuals (data - model)
-      gp.fit(x, vmodelled)
-      # Predict the residuals
-      y_pred = gp.predict(x, return_std=False)
-      return y_pred
-'''
+
 def create_formula_code(initial_formula,replace_dict,total_RC,\
             function_name='python_formula' ,cfg=None):
     lines=initial_formula.__doc__.split('\n')
@@ -293,102 +237,6 @@ create_formula_code.__doc__ =f'''
     create the code that can be ran through exec to get the function to be fitted.
     The input formula is already lambidified so this is merely a matter of  replacing the variables with the correct 
     values for each radius.
-
- CATEGORY:
-    rotmass
-
- INPUTS:
-
- OPTIONAL INPUTS:
-
- OUTPUTS:
-
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-    Unspecified
-
- NOTE:
-'''
-'''
-def get_baryonic_RC(radii,total_RC,derived_RCs,
-                    V_total_error=[0.,0.,0.],baryonic_error= {'Empty':True},
-                    log = None, debug=False,settings = None):
-    if 'Empty' not in baryonic_error:
-        baryonic_error['Empty']=False
-    #We can strip the total rc and the radius from their indicators
-    new_radii= np.array(radii[2:])
-    new_RC = np.array(total_RC[2:])
-    new_RC_error = np.array(V_total_error[2:])
-    #Radius of 0. messses thing up so lets interpolate to the second point
-    if new_radii[0] == 0.:
-        new_radii[0]=new_radii[1]/2.
-        new_RC[0]=(new_RC[0]+new_RC[1])/2.
-        if np.sum(new_RC_error) != 0.:
-            new_RC_error[0] = (new_RC_error[0]+new_RC_error[1])/2.
-
-
-    RC ={}
-    for x in range(len(derived_RCs)):
-        if not settings is None and derived_RCs[x][0] != 'RADI':
-            #if parameter 5 is set to false we do not want to include the rc
-            if not settings[derived_RCs[x][0]][4]:
-                continue
-            
-        component = ['Empty','Empty']
-        if derived_RCs[x][0] == 'RADI':
-            rad_in = np.array(derived_RCs[x][2:])
-            component = ['Empty','Empty']
-        elif derived_RCs[x][0][:6] in ['EXPONE','DISK_S','SERSIC']:
-            component = [derived_RCs[x][0],'MD']
-        elif derived_RCs[x][0][:3] in ['BUL','HER']:
-            component = [derived_RCs[x][0],'MB']
-        elif derived_RCs[x][0][:6] == 'DISK_G':
-            component =  [derived_RCs[x][0],'MG']
-        else:
-            if derived_RCs[x][0][:3] not in ['EXP','BUL','SER','DIS','HER']:
-                print_log(f"We do not recognize this type ({derived_RCs[x][0][:3]}) of RC and don't know what to do with it",log)
-                exit()
-   
-        if component[0] != 'Empty':
-            if component[0] not in RC:
-                RC[component[0]] = {'Type': component[1], 'RC': np.array(derived_RCs[x][2:])}
-                if x in baryonic_error:
-                    RC[component[0]]['Errors'] = np.array(baryonic_error[x][2:])
-                else:
-                    RC[component[0]]['Errors'] = np.zeros(len( RC[component[0]]['RC']))
-            else:
-                if x in baryonic_error:
-                    RC[component[0]]['Errors'] = np.array([np.sqrt(x*x_err/np.sqrt(x**2+y**2)+y*y_err/np.sqrt(x**2+y**2))\
-                                     for x,y,x_err,y_err in \
-                                        zip(RC[component[0]]['RC'],derived_RCs[x][2:],\
-                                     RC[component[0]]['Errors'],baryonic_error[x][2:])])
-
-                RC[component[0]]['RC'] = np.array([np.sqrt(x**2+y**2) for x,y in zip(RC[component[0]]['RC'],derived_RCs[x][2:])])
-
-
-    # if our requested radii do not correspond to the wanted radii we interpolat
-    for key in RC:
-        if len(RC[key]['RC']) > 0.:
-            if np.sum([float(x)-float(y) for x,y in zip(new_radii,rad_in)]) != 0.:
-                RC[key]['RC'] = np.array(np.interp(new_radii,rad_in,RC[key]['RC']),dtype=float)
-                RC[key]['Errors'] = np.array(np.interp(new_radii,rad_in,RC[key]['Errors']),dtype=float)
-        else:
-            raise InputError(f'The parameter {key} is requested to be added to the formula but the RC is missing')
-    if np.sum(new_RC_error) != 0.:
-        new_RC = [new_RC,new_RC_error]
-    else:
-        new_RC = [new_RC,np.zeros(len(new_RC))]
-    return new_radii, new_RC, RC
-
-get_baryonic_RC.__doc__ =f'''
-'''
- NAME:
-    get_baryonic_RC
-
- PURPOSE:
-    Define the baryonic RCs that are defined for the fit. and transform radii and total_RC to float numpy arrays
-    This combines the different components of the galfit or tirific fit to a single RC for Bulge, Disk and Gas disk
 
  CATEGORY:
     rotmass
