@@ -68,6 +68,7 @@ class Fitting:
     results_file: str = 'Final_Results'
     use_gp: bool = True
     gp_kernel_type: str = 'RBF'
+    gp_backend : str = 'tinygp' # sklearn or tinygp
 
 @dataclass
 class ExtendConfig:

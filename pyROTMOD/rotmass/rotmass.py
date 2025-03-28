@@ -29,6 +29,10 @@ def build_curve(all_RCs, total_RC, cfg=None):
     total_sympy_curve = None
     for name in all_RCs:
         RC_symbols = [x for x in list(all_RCs[name].curve.free_symbols) if str(x) != 'r']
+        print_log(f'''##########################{name}##################
+all_RCs[name].fitting_variables
+all_RCs[name].curve
+############################################''',cfg,case=['debug_add'])
         for symbol in RC_symbols:
             if symbol == V:
                 V_replace = symbols(f'V_{all_RCs[name].name}')
@@ -65,7 +69,7 @@ def build_curve(all_RCs, total_RC, cfg=None):
     #make sure that r is always the first input on the function and we will replace the RCs
 
     curve_symbols_out = [x for x in list(total_sympy_curve.free_symbols) if str(x) not in ['r']+[str(y) for y in replace_dict['symbols']] ]
-    if cfg.fitting_general.use_gp:
+    if cfg.fitting_general.use_gp and cfg.fitting_general.gp_backend == 'tinygp':
         #For the partial filling in the GP it is useful to have r at the end
         curve_symbols_out.append(symbols('r'))
     else:
@@ -84,9 +88,7 @@ def build_curve(all_RCs, total_RC, cfg=None):
     exec(clean_code,globals())
     
     total_RC.numpy_curve =  {'function': total_numpy_curve , 'variables': [str(x) for x in curve_symbols_out]}    
-        #if we want to use gaussian processes we want create a function that 
-        #supplies correct output for any input. we do this by replacing V input in replace_dict
-        # interpolate
+        
 
     
     total_RC.curve = total_sympy_curve
@@ -165,30 +167,28 @@ calculate_red_chisq.__doc__ =f'''
  NOTE:
 '''
 
-'''
 
-from jax import numpy as jnp
-from tinygp import GaussianProcess, kernels
-
-def inject_GP(total_RC, header=False):
+def inject_GP(total_RC,header = False):
     if header:
-        code = f''from jax import numpy as jnp
-from tinygp import GaussianProcess, kernels\n''
+        code= f'''from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel\n'''
+   
     else:
-        code = f''{'':6s}# Define the Gaussian Process kernel
-{'':6s}x = jnp.array(r).reshape(-1, 1)
-{'':6s}kernel = kernels.ExpSquared(scale=length_scale) * amplitude
-{'':6s}# Initialize the Gaussian Process
-{'':6s}yerr = jnp.array([{', '.join([str(i.value) for i in total_RC.errors])}], dtype=float)
-{'':6s}gp = GaussianProcess(kernel, x, diag=yerr**2)
+        code = f'''{'':6s}# Define the Gaussian Process kernel
+{'':6s}x = r.reshape(-1, 1) 
+{'':6s}kernel = ConstantKernel(amplitude, (0.1, 2)) * RBF(length_scale=length_scale,\\
+{'':12s}length_scale_bounds=(0.5, 10.))
+{'':6s}# Initialize the Gaussian Process Regressor
+{'':6s}yerr=np.array([{', '.join([str(i.value) for i in total_RC.errors])}],dtype=float)
+{'':6s}gp = GaussianProcessRegressor(kernel=kernel, alpha=yerr**2, n_restarts_optimizer=3, normalize_y=True)
+{'':6s}# Evaluate the model using the current parameters
+{'':6s}# Fit the GP to the residuals (data - model)
+{'':6s}gp.fit(x, vmodelled)
 {'':6s}# Predict the residuals
-{'':6s}y_pred = gp.condition(vmodelled, x).gp.loc
+{'':6s}y_pred = gp.predict(x, return_std=False)
 {'':6s}return y_pred
-''
-    return code
 '''
-
-
+    return code
 def inject_interp_array(array,rad):
     array1=f'jnp.array([{", ".join([str(i) for i in array])}])'
     array2=f'jnp.array([{", ".join([str(i) for i in rad])}])'
@@ -201,12 +201,14 @@ def inject_simple_array(array,rad):
 def create_formula_code(initial_formula,replace_dict,total_RC,\
             function_name='python_formula' ,cfg=None):
     lines=initial_formula.__doc__.split('\n')
-    if cfg.fitting_general.use_gp:
+    if cfg.fitting_general.use_gp and cfg.fitting_general.gp_backend == 'tinygp':
         dictionary_trans = {'sqrt':'jnp.sqrt', 'arctan': 'jnp.arctan', \
                         'pi': 'jnp.pi','log': 'jnp.log', 'abs': 'jnp.abs'}
         array_name = inject_interp_array
         #'jnp.array'
     else:
+        if cfg.fitting_general.use_gp:
+            clean_code += inject_GP(total_RC,header=True)
         dictionary_trans = {'sqrt':'np.sqrt', 'arctan': 'np.arctan', \
                         'pi': 'np.pi','log': 'np.log', 'abs': 'np.abs'}
         array_name = inject_simple_array
@@ -226,7 +228,8 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
                     break
     
     clean_code = ''
-    
+    if cfg.fitting_general.use_gp and cfg.fitting_general.gp_backend == 'sklearn':
+            clean_code += inject_GP(total_RC,header=True)
     
     for i,line in enumerate(code.split('\n')):
         if i == 0:
@@ -243,7 +246,10 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
                 line = line.replace(key,array_name(replace_dict[key],rad))
                   
             line = f'''{'':6s}{line.replace('return','vmodelled = ').strip()}\n'''
-            line += f'{"":6s}return vmodelled \n'
+            if cfg.fitting_general.use_gp and cfg.fitting_general.gp_backend == 'sklearn':
+                line += inject_GP(total_RC)
+            else:
+                line += f'{'':6s}return vmodelled \n'
         clean_code += line
 
     print_log(f''' This the code for the formula that is finally fitted.
@@ -535,7 +541,7 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
         total_RC.fitting_variables['amplitude'] = [1.,0.1,2.,True,True]
         total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
         total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['amplitude','length_scale']
-
+    if cfg.fitting_general.use_gp and cfg.fitting_general.gp_backend == 'tinygp':
         variable_fits,emcee_results = gp_run(total_RC,\
                                 out_dir = out_dir, cfg=cfg,\
                                 negative=rotmass_settings.negative_values,\
