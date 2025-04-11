@@ -24,13 +24,15 @@ class Input:
 @dataclass
 class Output:
     RC_file: str = f'RCs_For_Fitting.txt'
+    results_base: str = 'Final_Results'
     log: str = 'log.txt'
     output_dir: str = f'{os.getcwd()}/pyROTMOD_products/'
     log_directory: str = f'{output_dir}Logs/{datetime.now().strftime("%H:%M:%S-%d-%m-%Y")}/'
     debug: bool = False
     debug_functions: List = field(default_factory=lambda: ['ALL'])
     verbose: bool = False
-    
+    chain_data: bool = False #If True we save the chain data in a file
+   
 @dataclass
 class RCConstruction:
     enable: bool = True
@@ -60,16 +62,18 @@ class RCConstruction:
 class Fitting:
     enable: bool = True
     negative_values: bool = False
-    initial_minimizer: str = 'differential_evolution'
+    initial_minimizer: str = 'differential_evolution' #Not  functioning for numpyro backend
     HALO: str = 'NFW'
     single_stellar_ML: bool = True
     single_gas_ML: bool = False
-    mcmc_steps: int= 2000 #Amount of steps per parameter, burn is a quarter
-    results_file: str = 'Final_Results'
-    use_gp: bool = True
+    mcmc_steps: int= 2000 #Amount of steps per parameter
+    burn: int = 500 #Number of steps to discard in MCMC chain per   free parameter
+    numpyro_chains: Optional[int] = None # If not set it will be set to the number of available cpus
+    use_gp: bool = True    #numpyro uses tingp and lmfit uses sklearn
     gp_kernel_type: str = 'RBF'
-    gp_backend : str = 'tinygp' # sklearn or tinygp
-
+    backend : str = 'numpyro' # lmfit or numpyro
+    max_iterations: int = 5
+    
 @dataclass
 class ExtendConfig:
     print_examples: bool=False

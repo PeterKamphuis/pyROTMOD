@@ -310,7 +310,7 @@ def get_correct_label(par,no,exponent = 0.):
     morph_type ='unknown'
     component_type = 'unknown'
     if len(split_parameter) > 1:
-        if split_parameter[0] in ['effective','R']:
+        if split_parameter[0] in ['effective','R','length']:
             pass
         else:
             par = split_parameter[0]
@@ -325,6 +325,8 @@ def get_correct_label(par,no,exponent = 0.):
                         'R_C': [r'$ \mathrm{R_{c}}$','(kpc)'],
                         'C':[r'C',''],
                         'R200':[r'$ \mathrm{R_{200}}$','(kpc)'],
+                        'lgC':[r'log10(C)',''],
+                        'lgR200':[r'log10($ \mathrm{R_{200}}$)','(kpc)'],
                         'm': [r'Axion Mass','(eV)'],
                         'central': [r'Central SBR',r'$\mathrm{(M_{\odot}\,\,pc^{-2})}$'],
                         'h': [r'Scale Length','(kpc)'],
@@ -333,7 +335,9 @@ def get_correct_label(par,no,exponent = 0.):
                         'effective_luminosity': [r'$\mathrm{L_{e}}$',r'$\mathrm{(M_{\odot})}$'] ,
                         'effective_radius': [r'$\mathrm{R_{e}}}$','(kpc)'] ,
                         'n': [r'Sersic Index',''],
-                        'a0': [r'$\mathrm{a_{0}}$',r'$\mathrm{(cm\,\,s^{-2})}$']
+                        'a0': [r'$\mathrm{a_{0}}$',r'$\mathrm{(cm\,\,s^{-2})}$'],
+                        'amplitude': [r'GP log10(Amplitude)',''],
+                        'length_scale': [r'GP Length Scale','(RC step)'],
                         }
     if par in label_dictionary:
         string = label_dictionary[par][0] 
@@ -343,12 +347,17 @@ def get_correct_label(par,no,exponent = 0.):
     else:
         print(f''' The parameter {par} has been stripped
 Unfortunately we can not find it in the label dictionary.''')
-        raise RunTimeError(f'{par} is not in label dictionary')
-    
+        string = f'{"_".join(split_parameter)}'
+       
     return string   
 
-
-
+def get_output_name(cfg,profile_name =None):
+    name = f'{cfg.output.results_base}_{cfg.fitting_general.backend}'
+    if cfg.fitting_general.use_gp:
+        name += '_GP'
+    if profile_name is not None:
+        name += f'_{profile_name}'    
+    return name
 '''Stripe any possible _counters from the key'''
 def get_uncounted(key):
     number = None
@@ -506,8 +515,12 @@ def get_accepted_unit(search_dictionary,attr, acceptable_units = \
     return funit
 
 def get_exponent(level,threshold = 2.):
-    logexp = int(np.floor(np.log10(level)))
-    correction = 1./(10**(logexp))
+   
+    if np.isnan(level) or level == 0.:
+        logexp= 0.
+    else:
+        logexp = int(np.floor(np.log10(abs(level))))
+        correction = 1./(10**(logexp))
     if abs(logexp) <= threshold:
         logexp = 0.
         correction=1.
@@ -702,6 +715,9 @@ def select_axis_label(input):
                         'M_SOLAR/PC^3': r'$\mathrm{Density\,\,  (M_{\odot}\,\,  pc^{-3})}$',
                         'SomethingIsWrong': None}
     return translation_dict[input]
+
+
+
 
 '''Translate strings to astropy units and vice versa (invert =True)'''
 def translate_string_to_unit(input,invert=False):

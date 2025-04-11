@@ -61,12 +61,7 @@ def main():
         if not os.path.isdir( f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/'):
             os.mkdir( f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/')
         #radii = ensure_kpc_radii(derived_RCs[0],distance=cfg.general.distance,log=log )
-        rotmass_main(derived_RCs, total_rc,\
-            out_dir = f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/',\
-            rotmass_settings=cfg.fitting_general,\
-            rotmass_parameter_settings = cfg.fitting_parameters,\
-            results_file = cfg.fitting_general.results_file,\
-            cfg=cfg, font=font_name)
+        rotmass_main(cfg, derived_RCs, total_rc)
 
 if __name__ =="__main__":
     main()

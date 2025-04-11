@@ -15,6 +15,7 @@ import astropy.units as u
 import numpy as np
 import copy
 import warnings
+import inspect
 
 class Component:
       #These should be set with a unit
@@ -86,11 +87,47 @@ class Component:
                         elif attr in ['hernquist_scale_length']:
                               calculate_hernquist_scale_length(self)
       def print(self):
-            for attr, value in self.__dict__.items():
-                  print(f' {attr} = {value} \n')  
+            print_class(self)
+          
 
-
-
+class Parameter:
+      def __init__(self, name = None, value = None, stddev = None, unit = None,
+            min = None, max = None, variable = False, include = True,fixed_boundaries = False):
+            self.name = name
+            self.value = value
+            self.stddev = stddev
+            self.unit = unit
+            self.min = min
+            self.max = max
+            self.fixed_boundaries = fixed_boundaries
+            self.variable = variable
+            self.include = include
+      def print(self):
+            print_class(self)
+      def fill_empty(self):
+            #If the value is None we set it to a random number between min and max
+            #if the min and max are None we set them to 0.1 and 1000.
+            if self.min is None:
+                  if self.value is not None and self.value != 0.:
+                        self.min = self.value/5.
+                  else:      
+                        self.min = 0.1
+            if self.max is None:
+                  if self.value is not None and self.value != 0.:
+                        self.max = self.value*5.
+                  else:
+                        self.max = 1000.
+            if self.min == self.max:
+                  self.min = self.min*0.9
+                  self.max = self.max*0.9
+           
+            if self.stddev is None:
+                  self.stddev = (self.max-self.min)/5.
+            if self.value is None:
+                  #no_input = True
+                  self.value = float(np.random.rand()*\
+                        (self.max-self.min)+self.min)
+                
 class SBR_Profile(Component):
       '''These are in plane the surface brightness profiles
       The Tilted ring Model provides these directly but for fits made to the 
@@ -144,9 +181,7 @@ class SBR_Profile(Component):
             self.unit_dictionary['distance'] = u.Mpc
             self.unit_dictionary['MLratio'] = u.Msun/u.Lsun
 
-      def print(self):
-            for attr, value in self.__dict__.items():
-                  print(f' {attr} = {value} \n')
+      
             
     
      
@@ -324,7 +359,8 @@ class Rotation_Curve:
                               'calculated_errors': u.km/u.s,\
                             }
       
-
+      def print(self):
+            print_class(self)
       def calculate_RC(self):
             #Note that the units are assumed to be correct from the function
             if not self.numpy_curve is None:
@@ -446,8 +482,10 @@ def check_radii(self):
             while tmp_radii[-1]*un < max_rad:
                   tmp_radii.append(tmp_radii[-1]+ring_width)
       return np.array(tmp_radii,dtype=float)*un
-
-
+#print all attributes of class
+def print_class(self):
+      for attr, value in self.__dict__.items():
+            print(f' {attr} = {value} \n')  
 #Has to be here to avoid circular imports
 def set_requested_units(self,req_attr):
       #If value is None skip
@@ -531,6 +569,20 @@ def set_requested_units(self,req_attr):
             raise InputError(f'For {req_attr} in {self.name} we do not know how convert {value.unit} to {requested.unit}')
       else:
             setattr(self,req_attr,new_value) 
+def set_parameter_from_cfg(var_name,var_settings):
+      # Using a dictionary make the parameter always to be added
+    if not var_settings[1] is None and not var_settings[2] is None:
+        fixed_bounds = True
+    else:
+        fixed_bounds = False
+    return Parameter(name=var_name,
+        value = var_settings[0],
+        stddev = None,
+        min=var_settings[1],
+        max=var_settings[2],
+        variable=var_settings[3],
+        include=var_settings[4],
+        fixed_boundaries=fixed_bounds)
       
 def set_type(profile):
       bare_name = get_uncounted(profile.name)[0]                
@@ -552,6 +604,8 @@ def calculate_confidence_area(RC, ranges = [None]):
             set_in = [np.array(x,dtype=float) for x in set_in]
             with warnings.catch_warnings():
                   warnings.simplefilter("ignore")
+
+               
                   curve_calc = RC.numpy_curve['function'](*set_in)
                   #if np.isnan(curve_calc[0]):
                   #      curve_calc[0] = 0.
@@ -613,7 +667,7 @@ def set_variables_and_ranges(RC):
       ranges = []
       sets = []    
       collected_variables = []
-     
+      req_var = list(copy.deepcopy(RC.numpy_curve['variables']))
       for variable in RC.numpy_curve['variables']:
             if variable == 'r':
                   collected_variables.append('r')  
@@ -626,17 +680,43 @@ def set_variables_and_ranges(RC):
                         err = RC.errors.to(RC.values.unit).value
                   else:
                         err =0.
-                  ranges.append([(RC.values.value-err), RC.values.value+err])        
+                  ranges.append([(RC.values.value-err), RC.values.value+err])
+            elif variable not in [str(x) for x in 
+                  inspect.signature(RC.numpy_curve['function']).parameters]: 
+                  if variable.lower() in ['amplitude','length_scale']:
+                        req_var.remove(variable)
+                  else:
+                        print(f'Variable |{variable}| is not in the function signature')
+                        print([f'|{str(x)}|' for x in 
+                              inspect.signature(RC.numpy_curve['function']).parameters])       
             else:
-                  print(RC.name)
-                  sets.append(RC.fitting_variables[variable][0])
-                  ranges.append([RC.fitting_variables[variable][0],RC.fitting_variables[variable][0]])
+                  sets.append(RC.fitting_variables[variable].value)
                   collected_variables.append(variable)
-                  if RC.fitting_variables[variable][3]:
-                        if RC.fitting_variables[variable][1] != None:
-                              ranges[-1][0] = RC.fitting_variables[variable][1] 
-                        if RC.fitting_variables[variable][2] != None:
-                              ranges[-1][1] = RC.fitting_variables[variable][2] 
+                  range_isbadname = [RC.fitting_variables[variable].value,RC.fitting_variables[variable].value]
+                  if RC.fitting_variables[variable].variable:
+                        if not RC.fitting_variables[variable].stddev is None:
+                              #Too accomadate non ngeative we make sure the lower range is always >= min
+                              if (RC.fitting_variables[variable].value-
+                                    RC.fitting_variables[variable].stddev < 
+                                    RC.fitting_variables[variable].min):
+                                    range_isbadname[0] = RC.fitting_variables[variable].min
+                              else:
+                                    range_isbadname[0] = RC.fitting_variables[variable].value-\
+                                          RC.fitting_variables[variable].stddev
+                              if (RC.fitting_variables[variable].value+
+                                    RC.fitting_variables[variable].stddev > 
+                                    RC.fitting_variables[variable].max):
+                                    range_isbadname[1] = RC.fitting_variables[variable].max
+                              else:
+                                    range_isbadname[1] = RC.fitting_variables[variable].value+\
+                                          RC.fitting_variables[variable].stddev
+                        else:
+                              if not RC.fitting_variables[variable].min is None:
+                                    range_isbadname[0] = RC.fitting_variables[variable].min
+                              if not RC.fitting_variables[variable].max is None:
+                                    range_isbadname[1] = RC.fitting_variables[variable].max
+                  ranges.append(range_isbadname)              
+                
             
       for x in sets:
             if x is None:
@@ -663,9 +743,9 @@ def set_variables_and_ranges(RC):
                         ranges[-1][1] = function_variable_settings[fits_variable]['Settings'][2] 
             '''
    
-      if not np.array_equal(RC.numpy_curve['variables'],collected_variables):
+      if not np.array_equal(req_var,collected_variables):
             print(f'''We have messed up the collection of variables for the curve {RC.numpy_curve['function'].__name__}
-requested variables = {RC.numpy_curve['variables']}
+requested variables = {req_var}
 collected variables = {collected_variables}''' )
             raise RunTimeError(f'Ordering Error in variables collection')
       return sets,ranges

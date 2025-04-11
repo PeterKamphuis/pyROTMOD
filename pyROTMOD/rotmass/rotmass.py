@@ -7,10 +7,10 @@ from pyROTMOD.support.errors import InputError,RunTimeError
 import copy
 import pyROTMOD.rotmass.potentials as potentials
 import pyROTMOD.support.constants as cons
-from pyROTMOD.support.classes import Rotation_Curve
-from pyROTMOD.support.minor_functions import get_uncounted
+from pyROTMOD.support.classes import Rotation_Curve,Parameter,set_parameter_from_cfg
+from pyROTMOD.support.minor_functions import get_uncounted,add_font,get_output_name
 from pyROTMOD.support.log_functions import print_log
-from pyROTMOD.fitters.fitters import initial_guess,mcmc_run, gp_run
+from pyROTMOD.fitters.fitters import initial_guess,lmfit_run, numpyro_run
 from sympy import symbols, sqrt,lambdify
 
 from jax import numpy as jnp
@@ -30,9 +30,9 @@ def build_curve(all_RCs, total_RC, cfg=None):
     for name in all_RCs:
         RC_symbols = [x for x in list(all_RCs[name].curve.free_symbols) if str(x) != 'r']
         print_log(f'''##########################{name}##################
-all_RCs[name].fitting_variables
-all_RCs[name].curve
-############################################''',cfg,case=['debug_add'])
+{'':8s}{[all_RCs[name].fitting_variables[x].print() for x in all_RCs[name].fitting_variables]}
+{'':8s}{all_RCs[name].curve}
+{'':8s}############################################''',cfg,case=['debug_add'])
         for symbol in RC_symbols:
             if symbol == V:
                 V_replace = symbols(f'V_{all_RCs[name].name}')
@@ -46,7 +46,6 @@ all_RCs[name].curve
                     replace_dict['symbols'].append(V_replace)
             if symbol == ML:
                 for variable in all_RCs[name].fitting_variables:
-                    print(f'Why are {variable}' )
                     if variable.split('_')[0].lower() in ['gamma','ml']:    
                         ML_replace = symbols(variable)
                 for attr in ['curve', 'individual_curve']:
@@ -69,8 +68,8 @@ all_RCs[name].curve
     #make sure that r is always the first input on the function and we will replace the RCs
 
     curve_symbols_out = [x for x in list(total_sympy_curve.free_symbols) if str(x) not in ['r']+[str(y) for y in replace_dict['symbols']] ]
-    if cfg.fitting_general.use_gp and cfg.fitting_general.gp_backend == 'tinygp':
-        #For the partial filling in the GP it is useful to have r at the end
+    if cfg.fitting_general.backend.lower() == 'numpyro':
+        #For the partial filling it is useful to have r at the end
         curve_symbols_out.append(symbols('r'))
     else:
         curve_symbols_out.insert(0,symbols('r'))
@@ -85,6 +84,7 @@ all_RCs[name].curve
    
     clean_code = create_formula_code(initial_formula,replace_dict,total_RC,\
         function_name='total_numpy_curve',cfg=cfg)
+   
     exec(clean_code,globals())
     
     total_RC.numpy_curve =  {'function': total_numpy_curve , 'variables': [str(x) for x in curve_symbols_out]}    
@@ -132,7 +132,7 @@ build_curve.__doc__ =f'''
 def calculate_red_chisq(RC,cfg=None):
     free_parameters= 0.
     for var in RC.fitting_variables:
-        if RC.fitting_variables[var][3]:
+        if RC.fitting_variables[var].variable:
             free_parameters  += 1.
     if RC.errors is None:
         raise InputError(f'In the RC {RC.name} we cannot calculate a chi^2 as we have no errors. ')
@@ -183,9 +183,12 @@ from sklearn.gaussian_process.kernels import RBF, ConstantKernel\n'''
 {'':6s}gp = GaussianProcessRegressor(kernel=kernel, alpha=yerr**2, n_restarts_optimizer=3, normalize_y=True)
 {'':6s}# Evaluate the model using the current parameters
 {'':6s}# Fit the GP to the residuals (data - model)
-{'':6s}gp.fit(x, vmodelled)
-{'':6s}# Predict the residuals
-{'':6s}y_pred = gp.predict(x, return_std=False)
+{'':6s}if any(np.isnan(vmodelled)):
+{'':12s}y_pred = np.array([np.nan for x in vmodelled])
+{'':6s}else: 
+{'':12s}gp.fit(x, vmodelled)
+{'':12s}# Predict the residuals
+{'':12s}y_pred = gp.predict(x, return_std=False)
 {'':6s}return y_pred
 '''
     return code
@@ -201,14 +204,13 @@ def inject_simple_array(array,rad):
 def create_formula_code(initial_formula,replace_dict,total_RC,\
             function_name='python_formula' ,cfg=None):
     lines=initial_formula.__doc__.split('\n')
-    if cfg.fitting_general.use_gp and cfg.fitting_general.gp_backend == 'tinygp':
+    if cfg.fitting_general.backend.lower() == 'numpyro':
         dictionary_trans = {'sqrt':'jnp.sqrt', 'arctan': 'jnp.arctan', \
                         'pi': 'jnp.pi','log': 'jnp.log', 'abs': 'jnp.abs'}
         array_name = inject_interp_array
         #'jnp.array'
     else:
-        if cfg.fitting_general.use_gp:
-            clean_code += inject_GP(total_RC,header=True)
+        
         dictionary_trans = {'sqrt':'np.sqrt', 'arctan': 'np.arctan', \
                         'pi': 'np.pi','log': 'np.log', 'abs': 'np.abs'}
         array_name = inject_simple_array
@@ -228,7 +230,7 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
                     break
     
     clean_code = ''
-    if cfg.fitting_general.use_gp and cfg.fitting_general.gp_backend == 'sklearn':
+    if cfg.fitting_general.use_gp and cfg.fitting_general.backend.lower() == 'lmfit':
             clean_code += inject_GP(total_RC,header=True)
     
     for i,line in enumerate(code.split('\n')):
@@ -238,6 +240,8 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
             for key in replace_dict:
                 if key != 'symbols':
                     line = line.replace(key+',','')
+            if cfg.fitting_general.use_gp and cfg.fitting_general.backend.lower() == 'lmfit':
+                line = line.replace('):',', amplitude, length_scale):')
             line += '\n'
         if i == 1:
             for key in dictionary_trans:
@@ -246,7 +250,7 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
                 line = line.replace(key,array_name(replace_dict[key],rad))
                   
             line = f'''{'':6s}{line.replace('return','vmodelled = ').strip()}\n'''
-            if cfg.fitting_general.use_gp and cfg.fitting_general.gp_backend == 'sklearn':
+            if cfg.fitting_general.use_gp and cfg.fitting_general.backend == 'lmfit':
                 line += inject_GP(total_RC)
             else:
                 line += f'{'':6s}return vmodelled \n'
@@ -283,31 +287,33 @@ create_formula_code.__doc__ =f'''
  NOTE:
 '''
 
-def write_output_file(final_variable_fits,result_emcee,output_dir='./',\
-                results_file = 'Final_Results.txt', red_chisq= None):
+def write_output_file(cfg,final_variable_fits,BIC,output_dir='./',\
+                results_file = None, red_chisq= None):
+    if results_file is None:
+        results_file = f'{get_output_name(cfg)}_results.txt'
     #variables_fitted = [x for x in final_variable_fits]
     variable_line = f'{"Variable":>15s} {"Value":>15s} {"Error":>15s} {"Lower Bound":>15s} {"Upper Bound":>15s} \n'
     with open(f'{output_dir}{results_file}.txt','w') as file:
         file.write('# These are the results from pyROTMOD. \n')
         file.write('# An error designated as Fixed indicates a parameter that is not fitted. \n')
         file.write(f'# The Reduced Xi^2 for this fit is {red_chisq}.\n')
-        file.write(f'# The Bayesian Information Criterion for this fit is {result_emcee.bic}.\n')
+        file.write(f'# The Bayesian Information Criterion for this fit is {BIC}.\n')
         file.write(variable_line)
         added = []
         for variable in final_variable_fits:
             if variable not in added:
-                if final_variable_fits[variable][4]:
-                    if 0.001 < result_emcee.params[variable].value < 10000.:
+                if final_variable_fits[variable].include:
+                    if 0.001 < final_variable_fits[variable].value < 10000.:
                         form = ">15.4f"
                     else:
                         form = ">15.4e"
-                    variable_line = f'{variable:>15s} {result_emcee.params[variable].value:{form}}'
-                    min = result_emcee.params[variable].min
-                    max = result_emcee.params[variable].max
-                    if not final_variable_fits[variable][3]:
+                    variable_line = f'{variable:>15s} {final_variable_fits[variable].value:{form}}'
+                    min =final_variable_fits[variable].min
+                    max = final_variable_fits[variable].max
+                    if not final_variable_fits[variable].variable:
                         variable_line += f' {"Fixed":>15s} {min:{form}} {max:{form}} \n'
                     else:
-                        err = result_emcee.params[variable].stderr
+                        err = final_variable_fits[variable].stddev
                         variable_line += f' {err:{form}} {min:{form}} {max:{form}} \n'
                     file.write(variable_line)
                     added.append(variable)
@@ -494,28 +500,28 @@ def update_RCs(update,RCs,total_RC):
     for variable in update:
         for name in RCs:
             if variable in [key for key in RCs[name].fitting_variables]:
-                RCs[name].fitting_variables[variable] = update[variable]                
-        total_RC.fitting_variables[variable] = update[variable]        
+                RCs[name].fitting_variables[variable] = update[variable]
+                    
+        total_RC.fitting_variables[variable] = update[variable]  
+        print(f'WE ARE UPDATING {variable} TO')      
+        print(update[variable].print())
 
 
 
-
-def rotmass_main(baryonic_RCs, total_RC,no_negative =True,out_dir = None,\
-                interactive = False,rotmass_settings = None,cfg=None,\
-                rotmass_parameter_settings = None,\
-                results_file = 'Final_Results', font = 'Times New Roman'):
-
+def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
+    out_dir = f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/'
+    original_fitting_settings = copy.deepcopy(total_RC.fitting_variables)
+    results_file = get_output_name(cfg,profile_name = total_RC.name)
+    font = add_font(cfg.input.font)        
     # First combine all RCs that need to be included in the total fit in a single dictionary
     # With their parameters and individual RC curves set 
-    all_RCs = set_fitting_parameters(rotmass_settings,rotmass_parameter_settings,\
-                                    baryonic_RCs,total_RC)
+    all_RCs = set_fitting_parameters(cfg,baryonic_RCs,total_RC)
   
     for names in all_RCs:
-        print_log(f'For {names} we find the following parameters and fit variables:',\
-            cfg,case=['main'])
-        for attr in vars(all_RCs[names]):
-            print_log(f'{"":8s} {attr} = {getattr(all_RCs[names],attr)}',\
-                     cfg,case=['main'])
+        print_log(f'''For {names} we find the following parameters and fit variables:
+{all_RCs[names].print()}
+''',cfg,case=['debug_add'])
+        
 
     # Construct the function to be fitted, note that the actual fit_curve is
     build_curve(all_RCs,total_RC,cfg=cfg)                      
@@ -533,36 +539,33 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
 
         plot_curves(f'{out_dir}/{results_file}_Input_Curves.pdf', all_RCs,\
             total_RC,font= font)
-
-    
+   
     # calculate the initial guesses
 
-    if cfg.fitting_general.use_gp:
-        total_RC.fitting_variables['amplitude'] = [1.,0.1,2.,True,True]
-        total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
+    if cfg.fitting_general.use_gp :
+        #total_RC.fitting_variables['amplitude'] = [1.,0.1,10.,True,True]
+        #total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
+        total_RC.fitting_variables['amplitude'] = Parameter(name='amplitude'
+            ,value= 1.2, min= -3. ,max = 3., variable = True, include = True, 
+            fixed_boundaries= False)
+        total_RC.fitting_variables['length_scale'] = Parameter(name='length_scale'
+            ,value= 1., min= 0.5 ,max = 5., variable = True, include = True ,
+            fixed_boundaries= False)
+        
         total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['amplitude','length_scale']
-    if cfg.fitting_general.use_gp and cfg.fitting_general.gp_backend == 'tinygp':
-        variable_fits,emcee_results = gp_run(total_RC,\
-                                out_dir = out_dir, cfg=cfg,\
-                                negative=rotmass_settings.negative_values,\
-                                steps=rotmass_settings.mcmc_steps,
-                                results_name= results_file)
+    if cfg.fitting_general.backend.lower() == 'numpyro':
+        variable_fits,BIC = numpyro_run(cfg,total_RC, out_dir = out_dir)
     else:
-        initial_guesses, original_settings = initial_guess(total_RC,cfg=cfg,\
-            negative=rotmass_settings.negative_values,\
-            minimizer = rotmass_settings.initial_minimizer)
-    
+        initial_guesses = initial_guess(cfg, total_RC)
+        original_settings = copy.deepcopy(total_RC.fitting_variables)
+        for variable in original_settings:
+            original_settings[variable].fill_empty()
         update_RCs(initial_guesses,all_RCs,total_RC) 
         
         plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
             all_RCs,total_RC,font=font)
-    
-        
-        variable_fits,emcee_results = mcmc_run(total_RC,original_settings,\
-                                out_dir = out_dir, cfg=cfg,\
-                                negative=rotmass_settings.negative_values,\
-                                steps=rotmass_settings.mcmc_steps,
-                                results_name= results_file)
+       
+        variable_fits,BIC = lmfit_run(cfg, total_RC, original_settings,out_dir = out_dir)
     update_RCs(variable_fits,all_RCs,total_RC) 
     
     print_log('Plotting and writing',cfg,case=['main'])
@@ -571,8 +574,8 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
     
     red_chisq = calculate_red_chisq(total_RC)
 
-    write_output_file(variable_fits,emcee_results,output_dir=out_dir,\
-                results_file = results_file, red_chisq = red_chisq)
+    write_output_file(cfg,variable_fits,BIC,output_dir=out_dir, 
+        red_chisq = red_chisq, results_file=f'{results_file}_results.txt')
 
 rotmass_main.__doc__ =f'''
  NAME:
@@ -613,6 +616,7 @@ rotmass_main.__doc__ =f'''
 
 
 def add_fitting_dict(name, parameters, component_type = 'stars', fitting_dictionary = {}):
+
     variable = None
     #V_disk and V_bulge, V_sersic are place holders for the values to be inserted in the final formulas
     base,number = get_uncounted(name)
@@ -627,15 +631,19 @@ def add_fitting_dict(name, parameters, component_type = 'stars', fitting_diction
 
     if variable is None:
         variable = f'Gamma_random_{component_type}_{number}'
-    fitting_dictionary[variable] = parameters
-   
-def set_fitting_parameters(rotmass_settings,fit_settings, baryonic_RCs,total_RC):
+    
+    # We need to add the parameter to the fitting dictionary    
+    fitting_dictionary[variable] = set_parameter_from_cfg(variable,
+        parameters) 
+    # We need to add the parameter to the fitting dictionary    
+  
+def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
     # Get the variables of the DM function
     dm_parameters = []
     no_dm = False
     baryonic = []
     total_RC.fitting_variables = {}
-    for x in getattr(potentials, rotmass_settings['HALO'])().free_symbols: 
+    for x in getattr(potentials, cfg.fitting_general['HALO'])().free_symbols: 
         if str(x) == 'r':
             pass
         elif str(x) in ['ML','V']:
@@ -649,22 +657,24 @@ def set_fitting_parameters(rotmass_settings,fit_settings, baryonic_RCs,total_RC)
     all_RCs = copy.deepcopy(baryonic_RCs)
     # Let's set the initial parameters for all the baryonic curve
     for name in all_RCs:
+        
         fitting_dictionary = {} 
         all_RCs[name].check_component()
-        add_fitting_dict(all_RCs[name].name,fit_settings[all_RCs[name].name],\
+        add_fitting_dict(all_RCs[name].name,cfg.fitting_parameters[all_RCs[name].name],\
                          component_type=all_RCs[name].component,\
                         fitting_dictionary=fitting_dictionary)
         #Check whether we want to include this RC tot the total
-        if not fit_settings[all_RCs[name].name][4]:
+        if not cfg.fitting_parameters[all_RCs[name].name][4]:
             all_RCs[name].include=False
      
         if no_dm:
-            all_RCs[name].halo = rotmass_settings['HALO']
-            all_RCs[name].curve = getattr(potentials, rotmass_settings['HALO'])()       
-            all_RCs[name].individual_curve = getattr(potentials, f"{rotmass_settings['HALO']}_INDIVIDUAL")()
+            all_RCs[name].halo = cfg.fitting_general['HALO']
+            all_RCs[name].curve = getattr(potentials, cfg.fitting_general['HALO'])()       
+            all_RCs[name].individual_curve = getattr(potentials, f"{cfg.fitting_general['HALO']}_INDIVIDUAL")()
             for variable in dm_parameters:
                 # Using a dictionary make the parameter always to be added
-                fitting_dictionary[variable] = fit_settings[variable]
+                fitting_dictionary[variable] = set_parameter_from_cfg(variable,
+                    cfg.fitting_parameters[variable]) 
         else:
             ML, V = symbols(f"ML V")
             all_RCs[name].halo = 'NEWTONIAN'
@@ -677,34 +687,35 @@ def set_fitting_parameters(rotmass_settings,fit_settings, baryonic_RCs,total_RC)
         all_RCs[name].fitting_variables= fitting_dictionary 
         
         
-        all_RCs[name].check_unified(rotmass_settings.single_stellar_ML,\
-                                    rotmass_settings.single_gas_ML)
+        all_RCs[name].check_unified(cfg.fitting_general.single_stellar_ML,\
+                                    cfg.fitting_general.single_gas_ML)
         if all_RCs[name].include:
             total_RC.fitting_variables.update(all_RCs[name].fitting_variables)
       
     if not no_dm:
         #We need add the DM RC and the parameters
-        all_RCs[rotmass_settings['HALO']] = Rotation_Curve(component='DM',\
-            name=rotmass_settings['HALO'])
+        all_RCs[cfg.fitting_general['HALO']] = Rotation_Curve(component='DM',\
+            name=cfg.fitting_general['HALO'])
         fitting_dictionary = {} 
         for variable in dm_parameters:
             # Using a dictionary make the parameter always to be added
-            fitting_dictionary[variable] = fit_settings[variable]
-            if not bool(fit_settings[variable][4]):
-                raise  InputError(f'''You have requested the {rotmass_settings['HALO']} DM halo but want to exclude {variable} from the fitting.
+            fitting_dictionary[variable] =set_parameter_from_cfg(variable,
+                    cfg.fitting_parameters[variable]) 
+            if not bool(cfg.fitting_parameters[variable][4]):
+                raise  InputError(f'''You have requested the {cfg.fitting_generals['HALO']} DM halo but want to exclude {variable} from the fitting.
 You cannot change the DM formula, if this is your aim please add a potential in the rotmass potential file.
 If you merely want to fix the variable, set an initial guess and fix it in the input (e.g. rotmass.{variable} = [100, null,null, False,True]). ''')
-        all_RCs[rotmass_settings['HALO']].fitting_variables = fitting_dictionary
-        all_RCs[rotmass_settings['HALO']].radii = total_RC.radii
-        all_RCs[rotmass_settings['HALO']].values = np.zeros(len(total_RC.radii))*\
+        all_RCs[cfg.fitting_general['HALO']].fitting_variables = fitting_dictionary
+        all_RCs[cfg.fitting_general['HALO']].radii = total_RC.radii
+        all_RCs[cfg.fitting_general['HALO']].values = np.zeros(len(total_RC.radii))*\
                                                     total_RC.values.unit
         
-        all_RCs[rotmass_settings['HALO']].halo = rotmass_settings['HALO']
-        all_RCs[rotmass_settings['HALO']].curve = getattr(potentials, rotmass_settings['HALO'])()
+        all_RCs[cfg.fitting_general['HALO']].halo = cfg.fitting_general['HALO']
+        all_RCs[cfg.fitting_general['HALO']].curve = getattr(potentials, cfg.fitting_general['HALO'])()
         #Thewre are no negatives for the DM supossedly so the individual curve is the same
-        all_RCs[rotmass_settings['HALO']].individual_curve = getattr(potentials, rotmass_settings['HALO'])()
-        total_RC.fitting_variables.update(all_RCs[rotmass_settings['HALO']].fitting_variables)
-
+        all_RCs[cfg.fitting_general['HALO']].individual_curve = getattr(potentials, cfg.fitting_general['HALO'])()
+        total_RC.fitting_variables.update(all_RCs[cfg.fitting_general['HALO']].fitting_variables)
+   
     return all_RCs
 set_fitting_parameters.__doc__ =f'''
  NAME:

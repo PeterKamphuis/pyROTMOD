@@ -25,11 +25,21 @@ def NFW():
     r,C,R200= symbols('r C R200')
     nfw = (R200/0.73)*sqrt( (R200/r)*((log(1+r*(C/R200))-(r*(C/R200)/(1+r*(C/R200))))/(log(1+C) - (C/(1+C)))))
     return nfw
- 
-
 class NFW_config:
     parameters = {'C': [None, None, None, True,True],\
     'R200': [None, None, None, True,True]}
+  
+def Log_NFW():
+    r,lgC,lgR200= symbols('r lgC lgR200')
+    nfw = ((10**lgR200)/0.73)*sqrt(((10**lgR200)/r)*((log(1+r*((10**lgC)/(10**lgR200)))
+                                    -(r*((10**lgC)/(10**lgR200))/(1+r*((10**lgC)/(10**lgR200)))))
+                                    /(log(1+10**lgC) - ((10**lgC)/(1+10**lgC)))))
+    return nfw
+ 
+
+class Log_NFW_config:
+    parameters = {'lgC': [None, None, None, True,True],\
+    'lgR200': [None, None, None, True,True]}
   
   # if V and ML are in a potential it is assumed that this is an 
   # alternative gravity where no additional RC is required beyond the baryonic RCs

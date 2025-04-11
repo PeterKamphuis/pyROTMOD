@@ -1,5 +1,5 @@
 # -*- coding: future_fstrings -*-
-from pyROTMOD.fitters.fitters import initial_guess,mcmc_run
+from pyROTMOD.fitters.fitters import initial_guess,lmfit_run
 from pyROTMOD.support.errors import InputError,UnitError
 from pyROTMOD.support.minor_functions import integrate_surface_density,\
     strip_unit,get_uncounted
@@ -264,10 +264,8 @@ def single_fit_profile(profile_to_fit,fit_function,initial,cfg=None,\
     if profile_to_fit.errors is None:
         profile_to_fit.errors = 0.1*profile_to_fit.values
    
-    optical_fits,emcee_results = mcmc_run(profile_to_fit, original_settings,\
-                            cfg=cfg,negative=False,steps=1000,\
-                            results_name= f'Optical_{name}')
-    
+    optical_fits,emcee_results = lmfit_run(cfg,profile_to_fit)
+   
     tot_parameters = [optical_fits[x][0] for x in optical_fits]
 
     # let's see if our fit has a reasonable reduced chi square
