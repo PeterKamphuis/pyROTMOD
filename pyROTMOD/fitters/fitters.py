@@ -592,7 +592,7 @@ change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bound
                     new_bounds[0] = 0.
            
             if change > max_distance:
-                new_bounds[1] = float(c + np.max([change,min_distance]))
+                new_bounds[1] = float(current_parameter.value + np.max([change,min_distance]))
             '''    
             if lower_bound < new_bounds[0]:
                 new_bounds[0] = float(lower_bound)  
