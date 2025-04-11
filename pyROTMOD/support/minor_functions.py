@@ -309,6 +309,7 @@ def get_correct_label(par,no,exponent = 0.):
     split_parameter = par.split('_')
     morph_type ='unknown'
     component_type = 'unknown'
+    log = False
     if len(split_parameter) > 1:
         if split_parameter[0] in ['effective','R','length']:
             pass
@@ -317,6 +318,9 @@ def get_correct_label(par,no,exponent = 0.):
             morph_type = split_parameter[1]
             if len(split_parameter) > 2:
                 component_type = split_parameter[2]
+    if par[0:2] == 'lg':
+        par = par[2:]
+        log = True
     #Need to use raw strings here to avoid problems with \
     label_dictionary = {'Gamma':[f'$\\mathrm{{M/L_{{{morph_type}}}}}$ {no}', ''],
                         'ML': [f'$\\mathrm{{M/L_{{{morph_type}}}}}$',''],
@@ -325,8 +329,6 @@ def get_correct_label(par,no,exponent = 0.):
                         'R_C': [r'$ \mathrm{R_{c}}$','(kpc)'],
                         'C':[r'C',''],
                         'R200':[r'$ \mathrm{R_{200}}$','(kpc)'],
-                        'lgC':[r'log10(C)',''],
-                        'lgR200':[r'log10($ \mathrm{R_{200}}$)','(kpc)'],
                         'm': [r'Axion Mass','(eV)'],
                         'central': [r'Central SBR',r'$\mathrm{(M_{\odot}\,\,pc^{-2})}$'],
                         'h': [r'Scale Length','(kpc)'],
@@ -336,14 +338,20 @@ def get_correct_label(par,no,exponent = 0.):
                         'effective_radius': [r'$\mathrm{R_{e}}}$','(kpc)'] ,
                         'n': [r'Sersic Index',''],
                         'a0': [r'$\mathrm{a_{0}}$',r'$\mathrm{(cm\,\,s^{-2})}$'],
-                        'amplitude': [r'GP log10(Amplitude)',''],
+                        'amplitude': [r'GP Amplitude',''],
                         'length_scale': [r'GP Length Scale','(RC step)'],
                         }
     if par in label_dictionary:
         string = label_dictionary[par][0] 
         if abs(exponent) >= 1.:
             string += f'$\\times10^{{{exponent}}}$' 
-        string += f'{label_dictionary[par][1]}'
+        if log:
+            string = f'log10({string})'
+            if label_dictionary[par][1] != '':    
+                string += f'log10({label_dictionary[par][1]})'
+        else:
+            string += f'{label_dictionary[par][1]}'
+
     else:
         print(f''' The parameter {par} has been stripped
 Unfortunately we can not find it in the label dictionary.''')

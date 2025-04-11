@@ -165,7 +165,7 @@ This should correspond to,
         return function_fill, yerr   
     else:
         kernel = (
-            10**fitting_variables['amplitude']
+            10**fitting_variables['lgamplitude']
             * tgpkernels.ExpSquared(
                 fitting_variables['length_scale'],
                 distance=tgpkernels.distance.L1Distance()
@@ -256,7 +256,7 @@ def numpyro_run(cfg,total_RC,out_dir = None):
                 numpyro.infer.NUTS(
                     mod,
                     dense_mass=True,
-                    step_size = 0.25,
+                    step_size = 0.1,
                     target_accept_prob=0.9,
                     find_heuristic_step_size=True,
                     regularize_mass_matrix=False,

@@ -176,8 +176,7 @@ from sklearn.gaussian_process.kernels import RBF, ConstantKernel\n'''
     else:
         code = f'''{'':6s}# Define the Gaussian Process kernel
 {'':6s}x = r.reshape(-1, 1) 
-{'':6s}kernel = ConstantKernel(amplitude, (0.1, 2)) * RBF(length_scale=length_scale,\\
-{'':12s}length_scale_bounds=(0.5, 10.))
+{'':6s}kernel = ConstantKernel(10**lgamplitude) * RBF(length_scale=length_scale)
 {'':6s}# Initialize the Gaussian Process Regressor
 {'':6s}yerr=np.array([{', '.join([str(i.value) for i in total_RC.errors])}],dtype=float)
 {'':6s}gp = GaussianProcessRegressor(kernel=kernel, alpha=yerr**2, n_restarts_optimizer=3, normalize_y=True)
@@ -241,7 +240,7 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
                 if key != 'symbols':
                     line = line.replace(key+',','')
             if cfg.fitting_general.use_gp and cfg.fitting_general.backend.lower() == 'lmfit':
-                line = line.replace('):',', amplitude, length_scale):')
+                line = line.replace('):',', lgamplitude, length_scale):')
             line += '\n'
         if i == 1:
             for key in dictionary_trans:
@@ -503,9 +502,7 @@ def update_RCs(update,RCs,total_RC):
                 RCs[name].fitting_variables[variable] = update[variable]
                     
         total_RC.fitting_variables[variable] = update[variable]  
-        print(f'WE ARE UPDATING {variable} TO')      
-        print(update[variable].print())
-
+      
 
 
 def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
@@ -545,14 +542,14 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
     if cfg.fitting_general.use_gp :
         #total_RC.fitting_variables['amplitude'] = [1.,0.1,10.,True,True]
         #total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
-        total_RC.fitting_variables['amplitude'] = Parameter(name='amplitude'
+        total_RC.fitting_variables['lgamplitude'] = Parameter(name='lgamplitude'
             ,value= 1.2, min= -3. ,max = 3., variable = True, include = True, 
             fixed_boundaries= False)
         total_RC.fitting_variables['length_scale'] = Parameter(name='length_scale'
             ,value= 1., min= 0.5 ,max = 5., variable = True, include = True ,
             fixed_boundaries= False)
         
-        total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['amplitude','length_scale']
+        total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['lgamplitude','length_scale']
     if cfg.fitting_general.backend.lower() == 'numpyro':
         variable_fits,BIC = numpyro_run(cfg,total_RC, out_dir = out_dir)
     else:

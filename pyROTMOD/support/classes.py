@@ -683,7 +683,7 @@ def set_variables_and_ranges(RC):
                   ranges.append([(RC.values.value-err), RC.values.value+err])
             elif variable not in [str(x) for x in 
                   inspect.signature(RC.numpy_curve['function']).parameters]: 
-                  if variable.lower() in ['amplitude','length_scale']:
+                  if variable.lower() in ['amplitude','lgamplitude','length_scale']:
                         req_var.remove(variable)
                   else:
                         print(f'Variable |{variable}| is not in the function signature')
