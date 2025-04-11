@@ -588,7 +588,7 @@ change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bound
           
             if change > min_distance:
                 new_bounds[0] = float(current_parameter.value - np.max([change,max_distance]))
-                if not negative and new_bounds[0] < 0.:
+                if not negative and new_bounds[0] < 0. and var_name[0:2] != 'lg':
                     new_bounds[0] = 0.
            
             if change > max_distance:
@@ -605,10 +605,12 @@ change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bound
             '''    
             if np.allclose(np.array(prev_bound[var_name])/current_parameter.value, np.array(new_bounds)/current_parameter.value,rtol=req_fraction):
                 print_log(f'''{var_name} is fitted wel in the boundaries {new_bounds[0]} - {new_bounds[1]}. (Old is {prev_bound[var_name][0]} - {prev_bound[var_name][1]} )
+Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.array(new_bounds)/current_parameter.value} with a tolerance of {req_fraction}
 ''',    cfg,case=['main','screen'])
             else:
                 print_log(f''' The boundaries for {var_name} are deviating more that 15% from those set by 5*std (std = {current_parameter.stddev}) change.
 Setting {var_name} = {current_parameter.value} between {new_bounds[0]}-{new_bounds[1]} (old ={prev_bound[var_name][0]}-{prev_bound[var_name][1]})
+Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.array(new_bounds)/current_parameter.value} with a tolerance of {req_fraction}
 ''',cfg,case=['main','screen'])
                 no_succes = True
                
