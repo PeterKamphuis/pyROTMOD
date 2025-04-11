@@ -252,7 +252,7 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
             if cfg.fitting_general.use_gp and cfg.fitting_general.backend == 'lmfit':
                 line += inject_GP(total_RC)
             else:
-                line += f'{'':6s}return vmodelled \n'
+                line += f'''{'':6s}return vmodelled \n'''
         clean_code += line
 
     print_log(f''' This the code for the formula that is finally fitted.
