@@ -76,20 +76,3 @@ class BURKERT_config:
     parameters = {'RHO0': [None, None, None, True,True],\
     'R_C': [None, None, None, True,True]}
    
-
-#Taken from Aritra, Not pulished yet
-def Fuzzy_DM():
-    r,m,R_C = symbols('r m R_C')
-    #m in eV  r and r_c in kpc and rho_Fuzzy_DM in M/pc**3
-    #rho_Fuzzy_DM = 1.9*(m*10**23)**(-2)*R_C**(-4) /(1+0.091*(r/R_C)**2)**8
-    #MR=4/3.*pi*r**3*rho_Fuzzy_DM
-    #m in 10^-23 eV
-    Fuzzy_DM = sqrt(cons.Gpot.value*4/3.*pi*r**2*(1.9*(m)**(-2)*R_C**(-4) /(1+0.091*(r/R_C)**2)**8)*10**9)
-    return Fuzzy_DM
-    #(m/s)^2*kpc/Msol  *kpc^2 * M/pc**3
-    #1./pc = 1./(10^-3 kpc) =10^3 1./kpc
-
-class Fuzzy_DM_config:
-    parameters = {'m': [None, None, None, True,True],\
-    'R_C': [None, None, None, True,True]}
-  
