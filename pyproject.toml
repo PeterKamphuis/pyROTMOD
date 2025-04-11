@@ -22,6 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "astropy",
+    "arviz",
     "corner",
     "emcee",
     "future-fstrings",

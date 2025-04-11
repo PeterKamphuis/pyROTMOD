@@ -603,7 +603,7 @@ change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bound
                 new_bounds[1] = float(upper_bound) 
                 no_succes = True
             '''    
-            if np.allclose(prev_bound[var_name]/current_parameter.value, new_bounds/current_parameter.value,rtol=req_fraction):
+            if np.allclose(np.array(prev_bound[var_name])/current_parameter.value, np.array(new_bounds)/current_parameter.value,rtol=req_fraction):
                 print_log(f'''{var_name} is fitted wel in the boundaries {new_bounds[0]} - {new_bounds[1]}. (Old is {prev_bound[var_name][0]} - {prev_bound[var_name][1]} )
 ''',    cfg,case=['main','screen'])
             else:
