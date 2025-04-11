@@ -226,12 +226,13 @@ def numpyro_run(cfg,total_RC,out_dir = None):
     negative = cfg.fitting_general.negative_values
    
     numpyro.set_host_device_count(cfg.input.ncpu)
+   
     if cfg.fitting_general.numpyro_chains is None:
         chains = cfg.input.ncpu
     else:
         chains = cfg.fitting_general.numpyro_chains
     results_name = get_output_name(cfg,profile_name = total_RC.name)
-    
+    succes  = False 
     #numpyro.set_host_device_count(1)
     rng_key = random.PRNGKey(67)  # Replace 0 with a seed value if needed
     guess_variables = copy.deepcopy(total_RC.fitting_variables)
@@ -298,9 +299,10 @@ def numpyro_run(cfg,total_RC,out_dir = None):
                 fit_summary,negative=negative,count=count,
                 arviz_output=True,prev_bound = setbounds)
          
-            
-    available_metrics = list(fit_summary.metric.values)
+    if count < cfg.fitting_general.max_iterations:
+        succes = True     
    
+    available_metrics = list(fit_summary.metric.values)
     if out_dir:
         if not cfg.output.chain_data is None:
        
@@ -353,9 +355,18 @@ def numpyro_run(cfg,total_RC,out_dir = None):
                 [available_metrics.index('sd')])
             print_log(f'''{variable} = {guess_variables[variable].value} +/- {guess_variables[variable].stddev} within the boundary {guess_variables[variable].min}-{guess_variables[variable].max}
 ''',cfg,case=['main'])
-    BIC = arviz.loo(data)
-    print_log(f'''The LOO value is {BIC}''',cfg,case=['main'])  
-    return guess_variables,BIC
+    with warnings.filterwarnings("error"):
+        try:
+            BIC = arviz.loo(data)
+            print_log(f'''The LOO value is {BIC}''',cfg,case=['main'])  
+        except UserWarning as e:
+            if str(e) == 'Estimated shape parameter of Pareto distribution is greater than 0.70 for one or more samples. You should consider using a more robust model, this is because importance sampling is less likely to work well if the marginal posterior and LOO posterior are very different. This is more likely to happen with a non-robust model and highly influential observations.':
+                print_log(f'''The LOO value is not reliable, we will use the BIC value instead''',cfg,case=['main'])
+                BIC = arviz.bic(data)
+                succes = False
+            else:
+                raise UserWarning(e)
+    return guess_variables,BIC,succes
 
 numpyro_run.__doc__ =f'''
  NAME:
@@ -581,7 +592,7 @@ change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bound
                     new_bounds[0] = 0.
            
             if change > max_distance:
-                new_bounds[1] = float(current_parameter.value + np.max([change,min_distance]))
+                new_bounds[1] = float(c + np.max([change,min_distance]))
             '''    
             if lower_bound < new_bounds[0]:
                 new_bounds[0] = float(lower_bound)  
@@ -592,7 +603,7 @@ change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bound
                 new_bounds[1] = float(upper_bound) 
                 no_succes = True
             '''    
-            if np.allclose(prev_bound[var_name], new_bounds,rtol=req_fraction):
+            if np.allclose(prev_bound[var_name]/current_parameter.value, new_bounds/current_parameter.value,rtol=req_fraction):
                 print_log(f'''{var_name} is fitted wel in the boundaries {new_bounds[0]} - {new_bounds[1]}. (Old is {prev_bound[var_name][0]} - {prev_bound[var_name][1]} )
 ''',    cfg,case=['main','screen'])
             else:

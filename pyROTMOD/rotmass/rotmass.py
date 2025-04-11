@@ -551,7 +551,7 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
         
         total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['lgamplitude','length_scale']
     if cfg.fitting_general.backend.lower() == 'numpyro':
-        variable_fits,BIC = numpyro_run(cfg,total_RC, out_dir = out_dir)
+        variable_fits,BIC,succes = numpyro_run(cfg,total_RC, out_dir = out_dir)
     else:
         initial_guesses = initial_guess(cfg, total_RC)
         original_settings = copy.deepcopy(total_RC.fitting_variables)
@@ -562,7 +562,7 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
         plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
             all_RCs,total_RC,font=font)
        
-        variable_fits,BIC = lmfit_run(cfg, total_RC, original_settings,out_dir = out_dir)
+        variable_fits,BIC,succes = lmfit_run(cfg, total_RC, original_settings,out_dir = out_dir)
     update_RCs(variable_fits,all_RCs,total_RC) 
     
     print_log('Plotting and writing',cfg,case=['main'])
@@ -573,6 +573,9 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
 
     write_output_file(cfg,variable_fits,BIC,output_dir=out_dir, 
         red_chisq = red_chisq, results_file=f'{results_file}_results.txt')
+    if not succes:
+        raise RunTimeError(f'''The fitting procedure was not successful. See log for details
+''')
 
 rotmass_main.__doc__ =f'''
  NAME:
