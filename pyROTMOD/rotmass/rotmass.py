@@ -42,7 +42,16 @@ def build_curve(all_RCs, total_RC, cfg=None):
                 all_RCs[name].match_radii(total_RC)
                 #Here we need to set it all to the radii of the total_RC else we can not match  
                 if all_RCs[name].include: 
-                    replace_dict[f'V_{all_RCs[name].name}'] =   all_RCs[name].matched_values.value
+                    if cfg.fitting_general.backend.lower() == 'lmfit':
+                        replace_dict[f'V_{all_RCs[name].name}']= {'values':
+                            all_RCs[name].matched_values.value, 'radii':
+                            all_RCs[name].matched_radii.value}
+                    elif cfg.fitting_general.backend.lower() == 'numpyro':
+                        replace_dict[f'V_{all_RCs[name].name}']= {'values':
+                            all_RCs[name].values.value, 'radii':
+                            all_RCs[name].radii.value}
+
+                    
                     replace_dict['symbols'].append(V_replace)
             if symbol == ML:
                 for variable in all_RCs[name].fitting_variables:
@@ -214,7 +223,7 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
                         'pi': 'np.pi','log': 'np.log', 'abs': 'np.abs'}
         array_name = inject_simple_array
         #simp'np.array'
-    rad = total_RC.radii.value
+    #rad = total_RC.radii.value
     found = False
     code =''
     for line in lines:
@@ -246,7 +255,11 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
             for key in dictionary_trans:
                 line = line.replace(key,dictionary_trans[key])
             for key in replace_dict:
-                line = line.replace(key,array_name(replace_dict[key],rad))
+                if key != 'symbols':
+                    print_log(f'REPLACE: {key} with {replace_dict[key]}',cfg,
+                        case=['debug_add'])
+                    line = line.replace(key,array_name(replace_dict[key]['values']
+                                            ,replace_dict[key]['radii']))
                   
             line = f'''{'':6s}{line.replace('return','vmodelled = ').strip()}\n'''
             if cfg.fitting_general.use_gp and cfg.fitting_general.backend == 'lmfit':
