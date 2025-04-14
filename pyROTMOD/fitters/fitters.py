@@ -355,17 +355,24 @@ def numpyro_run(cfg,total_RC,out_dir = None):
                 [available_metrics.index('sd')])
             print_log(f'''{variable} = {guess_variables[variable].value} +/- {guess_variables[variable].stddev} within the boundary {guess_variables[variable].min}-{guess_variables[variable].max}
 ''',cfg,case=['main'])
-    with warnings.filterwarnings("error"):
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error")        
         try:
             BIC = arviz.loo(data)
             print_log(f'''The LOO value is {BIC}''',cfg,case=['main'])  
         except UserWarning as e:
             if str(e) == 'Estimated shape parameter of Pareto distribution is greater than 0.70 for one or more samples. You should consider using a more robust model, this is because importance sampling is less likely to work well if the marginal posterior and LOO posterior are very different. This is more likely to happen with a non-robust model and highly influential observations.':
-                print_log(f'''The LOO value is not reliable, we will use the BIC value instead''',cfg,case=['main'])
-                BIC = arviz.bic(data)
+                warnings.filterwarnings("ignore")  
+                BIC = arviz.loo(data)
+                print_log(f'''The LOO value ({BIC}) is not reliable''',cfg,case=['main'])
                 succes = False
             else:
                 raise UserWarning(e)
+        except RuntimeWarning as e:
+            warnings.filterwarnings("ignore")  
+            BIC = arviz.loo(data)
+            print_log(f'''The LOO value is {BIC}''',cfg,case=['main'])
+            pass
     return guess_variables,BIC,succes
 
 numpyro_run.__doc__ =f'''
@@ -537,7 +544,7 @@ def update_parameter_values(output,var_name,parameter,arviz_output=False):
 def check_boundaries(cfg,function_variable_settings,output,count=0.,arviz_output=False,
         prev_bound= None,negative=False):
     no_succes=False
-    req_fraction =0.15 #Arrays should be within 5% of each other
+    req_fraction =0.25 #Arrays should be within 25% of each other
     if prev_bound is None:
         prev_bound = {}
         for parameter in function_variable_settings:
@@ -552,14 +559,17 @@ def check_boundaries(cfg,function_variable_settings,output,count=0.,arviz_output
                         ,arviz_output=arviz_output)
             new_bounds = [float(current_parameter.min),
                           float(current_parameter.max)]
-            change = 5.*current_parameter.stddev
-           
-
-
-            change = 5.*current_parameter.stddev
-            if change < 0.2*current_parameter.stddev:
-                change = 0.2*current_parameter.stddev 
-                   
+            
+            change = abs(3.*current_parameter.stddev)
+            min_bounds = [current_parameter.stddev-change,
+                          current_parameter.stddev+change]
+            if not negative and min_bounds[0] < 0. and var_name[0:2] != 'lg':
+                    min_bounds[0] = 0.
+          
+            change = abs(5.*current_parameter.stddev)
+            if change < abs(0.2*current_parameter.stddev):
+                change = abs(0.2*current_parameter.stddev) 
+                             
             lower_bound = current_parameter.value - change
             upper_bound = current_parameter.value + change
             if current_parameter.fixed_boundaries:
@@ -567,10 +577,10 @@ def check_boundaries(cfg,function_variable_settings,output,count=0.,arviz_output
 ''',cfg,case=['main'])
                 if prev_bound[var_name][0] < lower_bound:
                     print_log(f'''The lower bound ({prev_bound[var_name][0]}) for {var_name} deviates more than 5. * std (std = {current_parameter.stddev}).
-consider changing it''',cfg,case=['main'])
+consider changing it''',cfg,case=['main','screen'])
                 if prev_bound[var_name][1] > upper_bound:
                     print_log(f'''The upper bound ({prev_bound[var_name][1]}) for {var_name} deviates more than 5. * std (std = {current_parameter.stddev}).
-consider changing it''',cfg,case=['main'])
+consider changing it''',cfg,case=['main','screen'])
                 bounds_out[var_name] = prev_bound[var_name]
                 continue
 
@@ -593,22 +603,23 @@ change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bound
            
             if change > max_distance:
                 new_bounds[1] = float(current_parameter.value + np.max([change,min_distance]))
-            '''    
-            if lower_bound < new_bounds[0]:
-                new_bounds[0] = float(lower_bound)  
-                if not negative and new_bounds[0] < 0.:
-                        new_bounds[0] = 0.  
-                no_succes = True            
-            if upper_bound > new_bounds[1]:
-                new_bounds[1] = float(upper_bound) 
-                no_succes = True
-            '''    
-            if np.allclose(np.array(prev_bound[var_name])/current_parameter.value, np.array(new_bounds)/current_parameter.value,rtol=req_fraction):
+      
+            if new_bounds[0] > min_bounds[0]:
+                new_bounds[0] = min_bounds[0]
+            if new_bounds[1] < min_bounds[1]:
+                new_bounds[1] = min_bounds[1]
+            if count > 0.:
+                if new_bounds[0] > prev_bound[var_name][0]:
+                    new_bounds[0] = prev_bound[var_name][0]
+                if new_bounds[1] < prev_bound[var_name][1]:
+                    new_bounds[1] = prev_bound[var_name][1]    
+            if np.allclose(np.array(prev_bound[var_name])/current_parameter.value, 
+                    np.array(new_bounds)/current_parameter.value,rtol=req_fraction):
                 print_log(f'''{var_name} is fitted wel in the boundaries {new_bounds[0]} - {new_bounds[1]}. (Old is {prev_bound[var_name][0]} - {prev_bound[var_name][1]} )
 Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.array(new_bounds)/current_parameter.value} with a tolerance of {req_fraction}
 ''',    cfg,case=['main','screen'])
             else:
-                print_log(f''' The boundaries for {var_name} are deviating more that 15% from those set by 5*std (std = {current_parameter.stddev}) change.
+                print_log(f''' The boundaries for {var_name} are deviating more that {int(req_fraction*100.)}% from those set by 5*std (std = {current_parameter.stddev}) change.
 Setting {var_name} = {current_parameter.value} between {new_bounds[0]}-{new_bounds[1]} (old ={prev_bound[var_name][0]}-{prev_bound[var_name][1]})
 Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.array(new_bounds)/current_parameter.value} with a tolerance of {req_fraction}
 ''',cfg,case=['main','screen'])
