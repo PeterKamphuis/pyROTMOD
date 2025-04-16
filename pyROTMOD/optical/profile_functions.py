@@ -72,7 +72,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
     radii = strip_unit(profile_to_fit.radii,variable_type='radii')
     density = strip_unit(profile_to_fit.values,variable_type=profile_to_fit.profile_type)
     original_backend= copy.deepcopy(cfg.fitting_general.backend)
-    cfg.fitting_general.backend ='lmfit'
+    #cfg.fitting_general.backend ='lmfit'
     fit_function_dictionary = {'EXPONENTIAL':
                 {'initial':[density[0],radii[density < density[0]/np.e ][0]],
                 'out':['central_SB','scale_length'],
@@ -290,18 +290,26 @@ def single_fit_profile(profile_to_fit,fit_function,initial,cfg=None,\
             if parameter in ['n','sersic_index','h','hern_length'
                 ,'effective_radius','scale_length']:
                 parameter_settings[parameter].min = 1e-6
-        optical_fits,BIC = lmfit_run(cfg,profile_to_fit,initial_parameters,optical_profile=True)
+        optical_fits,BIC,succes = lmfit_run(cfg,profile_to_fit,initial_parameters,optical_profile=True)
+
     elif cfg.fitting_general.backend == 'numpyro':
-        optical_fits,BIC = numpyro_run(cfg,profile_to_fit,
+        optical_fits,BIC,succes = numpyro_run(cfg,profile_to_fit,
             out_dir=cfg.output.log_directory,optical_profile=True)
+        
     # Here we are only taking the value we could improve by parsing fit statistics and errors
     tot_parameters = [optical_fits[x].value for x in optical_fits]
     print(optical_fits[x].print() for x in optical_fits)
     # let's see if our fit has a reasonable reduced chi square
-    profile = fit_function(profile_to_fit.radii.value,*tot_parameters)
-    red_chi = np.sum((profile_to_fit.values[profile_to_fit.values.value > 0.].value\
-        -profile[profile_to_fit.values.value > 0.])**2/(profile_to_fit.errors[profile_to_fit.values.value > 0.].value))
-    red_chisq = red_chi/(len(profile_to_fit.values[profile_to_fit.values.value > 0.])\
+    if not succes:
+        profile = np.zeros_like(profile_to_fit.radii)*unit.Lsun/unit.pc**2
+        profile[profile == 0.] = float('NaN')
+        red_chisq = float('NaN')
+    else:
+        profile = fit_function(profile_to_fit.radii.value,*tot_parameters)
+        red_chi = np.sum((profile_to_fit.values[profile_to_fit.values.value > 0.].value
+            -profile[profile_to_fit.values.value > 0.])**2/
+            (profile_to_fit.errors[profile_to_fit.values.value > 0.].value))
+        red_chisq = red_chi/(len(profile_to_fit.values[profile_to_fit.values.value > 0.])\
                          -len(tot_parameters))
     #plot_profile(radii,density,profile,name=name,
     #                output_dir=output_dir,red_chi= red_chisq,count=count)
