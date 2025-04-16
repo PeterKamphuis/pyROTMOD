@@ -311,7 +311,7 @@ def get_correct_label(par,no,exponent = 0.):
     component_type = 'unknown'
     log = False
     if len(split_parameter) > 1:
-        if split_parameter[0] in ['effective','R','length']:
+        if split_parameter[0] in ['effective','R','length','hern']:
             pass
         else:
             par = split_parameter[0]
@@ -332,8 +332,9 @@ def get_correct_label(par,no,exponent = 0.):
                         'm': [r'Axion Mass','(eV)'],
                         'central': [r'Central SBR',r'$\mathrm{(M_{\odot}\,\,pc^{-2})}$'],
                         'h': [r'Scale Length','(kpc)'],
+                        'Ltotal':   [r'Total Luminosity',r'$\mathrm{(L_{\odot})}$'],    
                         'mass': [r'Total Mass', r'$\mathrm{(M_{\odot})}$'],
-                        'hern_length': ['Hernquist length','(kpc)}$'],
+                        'hern_length': ['Hernquist scale length','(kpc)}$'],
                         'effective_luminosity': [r'$\mathrm{L_{e}}$',r'$\mathrm{(M_{\odot})}$'] ,
                         'effective_radius': [r'$\mathrm{R_{e}}}$','(kpc)'] ,
                         'n': [r'Sersic Index',''],

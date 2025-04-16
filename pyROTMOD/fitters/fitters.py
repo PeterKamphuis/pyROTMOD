@@ -441,6 +441,7 @@ def lmfit_run(cfg,total_RC,original_settings, out_dir = None,optical_profile = F
     #,\
     #    workers = cfg.input.ncpu)
     no_succes =True
+    succes= False
     count = 0
     while no_succes:
         with warnings.catch_warnings():
@@ -466,7 +467,8 @@ def lmfit_run(cfg,total_RC,original_settings, out_dir = None,optical_profile = F
 ''',cfg,case=['debug_add'])
     print_log(result_emcee.fit_report(),cfg,case=['main'])
     print_log('\n',cfg,case=['main'])
-   
+    if count < cfg.fitting_general.max_iterations:
+        succes = True   
     if out_dir:
         if not cfg.output.chain_data is None:
             with open(f"{out_dir}{results_name}_chain_data.pickle", "wb") as f:
@@ -502,7 +504,7 @@ def lmfit_run(cfg,total_RC,original_settings, out_dir = None,optical_profile = F
 
 
 
-    return function_variable_settings,BIC
+    return function_variable_settings,BIC,succes
 
 lmfit_run.__doc__ =f'''
  NAME:
@@ -626,8 +628,8 @@ change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bound
                 print_log(f'''{var_name} is fitted wel in the boundaries {new_bounds[0]} - {new_bounds[1]}. (Old is {prev_bound[var_name][0]} - {prev_bound[var_name][1]} )
 Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.array(new_bounds)/current_parameter.value} with a tolerance of {req_fraction}
 ''',    cfg,case=['main','screen'])
-                function_variable_settings[var_name].min = prev_bound[parameter][0]
-                function_variable_settings[var_name].max = prev_bound[parameter][1]    
+                function_variable_settings[var_name].min = prev_bound[var_name][0]
+                function_variable_settings[var_name].max = prev_bound[var_name][1]    
             else:
                 print_log(f''' The boundaries for {var_name} are deviating more that {int(req_fraction*100.)}% from those set by 5*std (std = {current_parameter.stddev}) change.
 Setting {var_name} = {current_parameter.value} between {new_bounds[0]}-{new_bounds[1]} (old ={prev_bound[var_name][0]}-{prev_bound[var_name][1]})

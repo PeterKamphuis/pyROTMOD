@@ -9,11 +9,14 @@ from scipy.special import k0,k1, gammaincinv
 from scipy.interpolate import interp1d
 from sympy import meijerg
 import numpy as np
+from jax import numpy as jnp
+from jax import scipy as jsp
 import warnings
-
+from functools import partial
 # The edge functions are  untested for now
 def edge_numpyro(central,h,r):
-    profile = edge(r,central,h)
+    s = r/h
+    profile = central*s*jsp.special.k1(s)
     return profile
 def edge(r,central,h):
     '''This is the actual edge on sky projection of an exponential disk (vd Kruit 1981)'''
@@ -126,8 +129,15 @@ def extrapolate_zero(radii,profile):
         index = np.where(radii == 0.)
         profile[index] = extra(radii[index].value)*profile.unit
     return profile
+
+def extrapolate_zero_numpyro(radii,profile):
+    # This is a numpyro version of the extrapolate_zero function
+    profile = jnp.interp(radii, radii[1:], profile[1:], left = "extrapolate")
+
+    return profile
 def exponential_numpyro(central,h,r):
-    profile = exponential(r,central,h)
+
+    profile = central*jnp.exp(-1.*r/h)
     return profile
 def exponential(r,central,h):
     '''Exponential function'''
@@ -229,7 +239,7 @@ def hernexp_numpyro(Ltotal,hern_length,central,h,r):
     '''
     This is the sum of a Hernquist and an exponential profile
     '''
-    value = hernquist(r,Ltotal,hern_length) + exponential(r,central,h)
+    value = hernquist_numpyro(Ltotal,hern_length,r) + exponential_numpyro(central,h,r)
    
     return value
 def hernexp( r,Ltotal,hern_length,central,h):
@@ -241,8 +251,26 @@ def hernexp( r,Ltotal,hern_length,central,h):
     return value
 
 def hernquist_numpyro(total_l,h,r):   
-    profile= hernquist(r,total_l,h)
+    '''
+    This is the projected profile of a Hernquist density profile
+    These are presented in Hernquist 1990 Eq 32 and what follows
+    M_total/Gamma is replaced by L_total
+    '''
+   
+    s = r/h
+  
+    XS_1 = 1./jnp.sqrt(1-s**2)*\
+        jnp.log((1+jnp.sqrt(1-s**2))/s)
+    XS_1 = jnp.where(s < 1,XS_1,0) #Casue jit need so know the size at compile time
+    XS_2 = 1./jnp.sqrt(s**2-1)*1.*jnp.arccos(1./s)
+    XS_2 = jnp.where(s > 1,XS_2,0) #Casue jit need so know the size at compile time
+    XS = XS_1+XS_2
+    profile = total_l/(2.*jnp.pi*h**2*\
+        (1-s**2)**2)*((2+s**2)*XS-3)
+   
+    profile = extrapolate_zero_numpyro(r,profile)  
     return profile
+  
 
 def hernquist(r,total_l,h):
     '''
@@ -302,7 +330,16 @@ def hernquist_profile(components,radii=None):
   
     return profile 
 def sersic_numpyro(effective_luminosity,effective_radius,n,r):
-    profile = sersic(r,effective_luminosity,effective_radius,n)
+    b = get_sersic_b_numpyro(n) 
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        try:
+            profile = effective_luminosity*jnp.exp(-1.*b*((r/effective_radius)**(1./n)-1))
+        except RuntimeWarning as e:
+            if 'overflow encountered in power' in str(e):
+                profile = jnp.zeros_like(r)
+            else:
+                raise e
     return profile
 def sersic(r,effective_luminosity,effective_radius,n):
     b = get_sersic_b(n) 
@@ -416,7 +453,15 @@ def get_integers(n):
     n = round(n,5)
     solution= Fraction(n).limit_denominator()
     return int(solution.numerator),int(solution.denominator)
-    
+
+   
+def get_sersic_b_numpyro(n):
+    #We cannot have an exact calculation of b as thereis no inverse gamminc function in jax
+    # So we need to use the assymtotic appr wiihch iss only valid for n > 0.36 
+    # Ciotti & Bertin (1999)
+    b = (2*n - 1./3 + (4./405)*(n**(-1)) + (46./25515)*(n**(-2)) + (
+        131./1148175)*(n**(-3)) - (2194697./30690717750)*(n**(-4)))
+    return b    
 def get_sersic_b(sersic_index):
         # Get the gamma function to calculate b
     b =  gammaincinv(2. * sersic_index, 0.5)    
