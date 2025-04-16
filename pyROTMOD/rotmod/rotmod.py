@@ -562,7 +562,7 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
                 cfg,case=['main','screen'])
             traceback.print_exc()
             raise InputError(f'We failed to retrieve the optical components from {cfg.RC_Construction.optical_file}')
-        plot_profiles(optical_profiles,output_file = f'{cfg.output.output_dir}/Sky_Profiles.png', cfg=cfg)
+        plot_profiles(optical_profiles,output_file = f'{cfg.output.output_dir}/{cfg.RC_Construction.out_base}Sky_Profiles.png', cfg=cfg)
     else:
         optical_profiles = None
     ################ We want the profiles to extend to the size of the total RC ###############################
@@ -575,10 +575,10 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
 
     ########################################## Make a plot with the extracted SB profiles ######################3
     if not profiles is None:
-        plot_profiles(profiles,output_file = f'{cfg.output.output_dir}/SBR_Profiles.png', cfg=cfg)
+        plot_profiles(profiles,output_file = f'{cfg.output.output_dir}/{cfg.RC_Construction.out_base}SBR_Profiles.png', cfg=cfg)
     ########################################## Make a nice file with all the different components as a column ######################3
         write_profiles(profiles,output_dir = cfg.output.output_dir, cfg=cfg,\
-            filename='SBR_Profiles.txt')
+            filename=f'{cfg.RC_Construction.out_base}SBR_Profiles.txt')
     ######################################### Convert to Rotation curves ################################################
         derived_RCs = convert_dens_rc(profiles, cfg=cfg)
     ######################################### Read any RCs provided directly ################################################

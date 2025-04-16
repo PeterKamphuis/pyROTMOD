@@ -24,7 +24,7 @@ class Input:
 @dataclass
 class Output:
     RC_file: str = f'RCs_For_Fitting.txt'
-    results_base: str = 'Final_Results'
+    out_base: str = 'Final_Results'
     log: str = 'log.txt'
     output_dir: str = f'{os.getcwd()}/pyROTMOD_products/'
     log_directory: str = f'{output_dir}Logs/{datetime.now().strftime("%H:%M:%S-%d-%m-%Y")}/'
@@ -36,6 +36,7 @@ class Output:
 @dataclass
 class RCConstruction:
     enable: bool = True
+    out_base: str = ''
     optical_file: Optional[str] = None
     gas_file: Optional[str] = None
     #Scale height for the optical profiles provided as  [value, error, unit, type]

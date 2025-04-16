@@ -229,7 +229,7 @@ def check_input(cfg, fitting=False):
         log = f"{cfg.output.log_directory}{cfg.output.log}"
         #If it exists move the previous Log
         if os.path.exists(log):
-            os.rename(log,f"{cfg.output.log_directory}/Previous_Log.txt")
+            os.rename(log,f"{cfg.output.log_directory}/{cfg.output.out_base}_Previous_Log.txt")
 
         #Start a new log
         print_log(f'''This file is a log of the modelling process run at {datetime.now()}.
@@ -266,7 +266,7 @@ This is version {pyROTMOD.__version__} of the program.
 
     #write the input to the log dir.
    
-    name = f'{cfg.output.log_directory}input'
+    name = f'{cfg.output.log_directory}/{cfg.output.out_base}_input'
     if fitting:
         name += '_RC_fitting'
     else:
@@ -360,7 +360,7 @@ Unfortunately we can not find it in the label dictionary.''')
     return string   
 
 def get_output_name(cfg,profile_name =None):
-    name = f'{cfg.output.results_base}_{cfg.fitting_general.backend}'
+    name = f'{cfg.output.out_base}_{cfg.fitting_general.backend}'
     if cfg.fitting_general.use_gp:
         name += '_GP'
     if profile_name is not None:
@@ -451,7 +451,7 @@ isiterable.__doc__ =f'''
 '''
 
 
-def plot_individual_profile(profile,min,max,log = None,cfg=None):
+def plot_individual_profile(profile,min,max,ax,log = None,cfg=None):
     stellar_profile=False
     if not profile.values.unit in [u.Lsun/u.pc**2,u.Msun/u.pc**3,u.Msun/u.pc**2] :
         print_log(f'''The units of {profile.name} are not L_SOLAR/PC^2, M_SOLAR/PC^2 OR M_SOLAR/PC^3 .
@@ -464,21 +464,26 @@ Not plotting this profile.
 Not plotting this profile.
 ''',cfg, case=['main'])
         return max,stellar_profile
-    plt.plot(profile.radii.value,profile.values.value, \
-                label = profile.name)
-    if profile.original_values is not None:
-        plt.plot(profile.radii.value,profile.original_values.value, \
-                label = f'Original {profile.name}')
-        if np.nanmax(profile.original_values.value) > max:
-            max =  np.nanmax(profile.original_values.value)
+    
+    lineout = ax.plot(profile.radii.value,profile.values.value, \
+            label = profile.name)
     if np.nanmax(profile.values.value) > max:
         max =  np.nanmax(profile.values.value)
     if np.nanmin(profile.values[profile.values.value > 0.].value) < min:
         min =  np.nanmin(profile.values[profile.values.value > 0.].value)
+    if profile.original_values is not None:
+        if profile.original_values.unit == profile.values.unit:
+           
+            #plt.gca().twiny()
+            secline = ax.plot(profile.radii.value,profile.original_values.value, \
+                    label = f'Original {profile.name}')
+            if np.nanmax(profile.original_values.value) > max:
+                max =  np.nanmax(profile.original_values.value)
+            lineout = lineout +secline
     if not profile.component is None:
         if profile.component.lower() == 'stars':
             stellar_profile = True
-    return min,max,stellar_profile
+    return min,max,stellar_profile,ax,lineout
 
 def calculate_total_profile(total,profile):
     if len(total['Profile']) ==  0.:
@@ -506,10 +511,10 @@ def calculate_total_profile(total,profile):
     return total
 
 def get_accepted_unit(search_dictionary,attr, acceptable_units = \
-                      [u.Lsun/u.pc**2,u.Msun/u.pc**2,u.Msun/u.pc**3],cfg=None):
+                      [u.Lsun/u.pc**2,u.Msun/u.pc**2,u.Msun/u.pc**3],
+                      cfg=None,first_value=None):
     funit = None
     iters = iter(search_dictionary)
-
     while funit is None:
         try:
             check = next(iters)
@@ -519,11 +524,13 @@ def get_accepted_unit(search_dictionary,attr, acceptable_units = \
           
         if isquantity(values):
             funit = values.unit
-          
         else:
             continue
         print_log(f'''The units of {search_dictionary[check].name} for {attr} are {funit}.
-''',cfg,case=['debug_add','screen'])    
+''',cfg,case=['debug_add','screen'])
+        if first_value is not None:
+            if funit == first_value:
+                funit = None          
         if not funit in acceptable_units:
             funit = None
     return funit
@@ -554,6 +561,8 @@ def plot_profiles(profiles, cfg= None\
     first_radii_unit = get_accepted_unit(profiles,'radii',\
         acceptable_units=[u.pc,u.kpc,u.Mpc],cfg=cfg)
     
+    second_value_unit = get_accepted_unit(profiles,'values',cfg=cfg
+        ,first_value = first_value_unit)
     
     if first_value_unit is None:
         print_log(f'''We cannot find acceptable units in the profiles.
@@ -568,41 +577,63 @@ This is not acceptable for the output.
 ''',cfg,case=['main'] )
         raise RunTimeError("No proper units")
     tot_opt ={'Profile': [],'Radii': []}
+    doubleplot = False
+    fig = setup_fig()
+    ax = fig.add_subplot(111)
+    leg_lines = []
     for name in profiles:
         print(profiles[name].print())
         if profiles[name].values.unit == first_value_unit and\
             profiles[name].radii.unit == first_radii_unit:
-            min,max,succes = plot_individual_profile(profiles[name],min,max)
+            min,max,succes,ax,lineout = plot_individual_profile(profiles[name],
+                min,max,ax)
 
             if succes:
                 tot_opt = calculate_total_profile(tot_opt,profiles[name])
-
+        elif profiles[name].values.unit == second_value_unit and\
+            profiles[name].radii.unit == first_radii_unit:
+            if not doubleplot:
+                secax= ax.twinx()
+                secax._get_lines = ax._get_lines            
+            mintwo,maxtwo,succes,secax,lineout = plot_individual_profile(profiles[name]
+                ,min,max,secax)
+        
+            doubleplot = True
+              
         else:
             print_log(f'''The profile units of {profiles[name].name} are not {first_value_unit} (unit  = {profiles[name].values.unit})
     or the radii units are   not {first_radii_unit} (unit  = {profiles[name].radii.unit})           
     Not plotting this profile.
-    ''',cfg,case=['main']) 
-    if len(tot_opt['Profile']) > 0:  
-        plt.plot(tot_opt['Radii'],tot_opt['Profile'], \
+    ''',cfg,case=['main'])
+        leg_lines = leg_lines + lineout 
+    if len(tot_opt['Profile']) > 0 and not doubleplot:  
+        lineout = ax.plot(tot_opt['Radii'],tot_opt['Profile'], \
                 label = 'Total Optical Profile',color='black',linestyle='--')
         if np.nanmax(tot_opt['Profile'].value) > max:
             max =  np.nanmax(tot_opt['Profile'].value)
+        leg_lines.append(lineout[0]) 
         #min = np.nanmin(np.array([x for x in tot_opt['Profile'].value if x > 0.]))
     if min <= 0.:
         min=0.001
 
     max = max*1.1
-    plt.ylim(min,max)
+    ax.set_ylim(min,max)
     #plt.xlim(0,6)
-    plt.ylabel(select_axis_label(first_value_unit))
-    plt.xlabel(select_axis_label(first_radii_unit))    
-   
-   
-    plt.yscale('log')
-    plt.legend()
+    ax.set_ylabel(select_axis_label(first_value_unit))
+    ax.set_xlabel(select_axis_label(first_radii_unit))    
+    ax.set_yscale('log')
+    if doubleplot:
+        secax.set_ylabel(select_axis_label(second_value_unit))        
+        secax.set_xlim(ax.get_xlim())
+        secax.set_ylim(mintwo,maxtwo)
+        secax.set_yscale('log')
+    print(leg_lines)
+    labs = [l.get_label() for l in leg_lines]
+    ax.legend(leg_lines, labs, loc=0)
+
     
     plt.savefig(output_file)
-
+   
     plt.close()
 
 
@@ -740,7 +771,42 @@ def select_axis_label(input):
                         'SomethingIsWrong': None}
     return translation_dict[input]
 
+def setup_fig(size_factor=1.5,figsize= [7,7]):
+    Overview = plt.figure(2, figsize=figsize, dpi=300, facecolor='w', edgecolor='k')
+#stupid pythonic layout for grid spec, which means it is yx instead of xy like for normal human beings
+    try:
+        mpl_fm.fontManager.addfont( "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf")
+        font_name = mpl_fm.FontProperties(fname= "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf").get_name()
+    except FileNotFoundError:
+        font_name= 'Deja Vu'
+        
+    labelfont = {'family': font_name,
+         'weight': 'normal',
+         'size': 8*size_factor}
+    plt.rc('font', **labelfont)
+    plt.rcParams['xtick.direction'] = 'in'
+    plt.rcParams['ytick.direction'] = 'in'
+    return Overview
+setup_fig.__doc__ =f'''
+ NAME:
+    setup_fig
+ PURPOSE:
+    Setup a figure to plot in
+ CATEGORY:
+   
+ INPUTS:
+    
+ OPTIONAL INPUTS:
 
+ OUTPUTS:
+  
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    scipy.ndimage.map_coordinates, np.array, np.mgrid
+
+ NOTE:
+'''
 
 
 '''Translate strings to astropy units and vice versa (invert =True)'''

@@ -180,20 +180,21 @@ def exponential_profile(components,radii = None):
     #Ftot = 2πrs2Σ0q
     if radii is None:
         radii = components.radii
-
+    
     if radii.unit == components.scale_length.unit:
-        if components.height == 'inf_thin':
-            profile= exponential(radii, components.central_SB, components.scale_length)   
+        if components.height_type == 'inf_thin':
+            profile= exponential(radii, components.central_SB, components.scale_length)  
+            components.profile_type='sbr_dens' 
         else:
             #Equation 24 in Gentile and Baes
             profile = components.central_SB/(np.pi*components.scale_length)\
                 *k0(radii/components.scale_length)
+            components.profile_type='density' 
     else:
         raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
     #profile = [x.value for x in profile]
     profile = extrapolate_zero(radii,profile)
-   
-
+    
     return profile
 exponential_profile.__doc__ = f'''
  NAME:

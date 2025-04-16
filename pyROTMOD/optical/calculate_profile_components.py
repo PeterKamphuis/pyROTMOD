@@ -23,24 +23,36 @@ def calculate_axis_ratio(components):
 
 def calculate_central_SB(components):
     '''The central SB is the SB at the center of the galaxy'''
+    if components.type == 'expdisk' and components.profile_type == 'sbr_dens':
+        print(components.central_SB)
     if not components.central_SB is None:
         print('Central SB already set')
+        if components.type == 'expdisk' and components.profile_type == 'sbr_dens':
+            exit()
         return
-    
+    if components.profile_type == 'sbr_dens':
+        if components.total_mass is None:
+            calculate_total_mass(components)
+        total = components.total_mass
+    elif components.profile_type == 'sbr_lum':
+        if components.total_luminosity is None:
+            calculate_total_luminosity(components)
+        total = components.total_luminosity
+
     if components.radii[0] == 0. and not components.values is None:  
         components.central_SB = components.values[0]
     else: 
         if components.type == 'expdisk':
-            if not None in [components.total_luminosity,components.scale_length]:
+            if not None in [total,components.scale_length]:
              
                 # this assumes perfect ellipses for now and no deviations are allowed
 
-                components.central_SB = components.total_luminosity/(2.*np.pi*\
+                components.central_SB = total/(2.*np.pi*\
                                         components.scale_length.to(unit.pc)**2)
               
-        elif components.type in ['sersic','devauc']:
+        elif components.type in ['sersic','devauc'] and not components.profile_type == 'sbr_dens': #This is based on Leffective and the sky profile so it doesn work for the density
             if components.L_effective is None and\
-                not None in [components.total_luminosity ,components.R_effective,\
+                not None in [total, components.R_effective,\
                             components.sersic_index,components.axis_ratio]:
                 calculate_L_effective(components)
             
@@ -55,7 +67,7 @@ def calculate_L_effective(components,from_central = False):
     #kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
     if not components.sersic_index is None and not components.R_effective is None:
         kappa = get_sersic_b(components.sersic_index)
-        if from_central:
+        if from_central and not components.profile_type == 'sbr_dens': 
              if not components.central_SB is None:
                 components.L_effective = components.central_SB/np.exp(-1.*kappa*(((\
                     0.*unit.kpc)/components.R_effective)**(1./components.sersic_index)-1))

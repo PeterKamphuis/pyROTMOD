@@ -19,16 +19,17 @@ def convert_luminosity_profile(profile_in,cfg=None):
     for attr, value in transfer.__dict__.items():
         if attr not in ['central_SB','values']:
             setattr(profiles_out,attr,getattr(profile_in,attr))  
+   
     profiles_out.create_profile() 
     
     if 'random' in profile_in.type:
         profiles_out.values = profile_in.values*profile_in.MLratio  
         profiles_out.radii = profile_in.radii 
-    if profiles_out.unit not in [unit.Msun/unit.kpc**2,unit.Msun/unit.pc**2] and\
-        profiles_out.type == 'sbr_dens:':
+    if profiles_out.values.unit not in [unit.Msun/unit.kpc**2,unit.Msun/unit.pc**2] and\
+        profiles_out.profile_type == 'sbr_dens:':
         raise UnitError(f'The unit {profiles_out.unit} is not recognized for the surface brightness profile {profiles_out.name}')
-    if profiles_out.unit not in [unit.Msun/unit.kpc**3,unit.Msun/unit.pc**3] and\
-        profiles_out.type == 'density:':
+    if profiles_out.values.unit not in [unit.Msun/unit.kpc**3,unit.Msun/unit.pc**3] and\
+        profiles_out.profile_type == 'density:':
         raise UnitError(f'The unit {profiles_out.unit} is not recognized for the density profile {profiles_out.name}')
  
     return profiles_out    

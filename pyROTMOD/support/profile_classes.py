@@ -61,6 +61,7 @@ class Component:
                                     'density':u.Msun/u.pc**3},\
                               'PA': u.degree,\
                               'R_effective': u.kpc,\
+                              'L_effective': u.Lsun/u.pc**2,\
                               'extend': u.kpc,\
                               'truncation_radius': u.kpc,\
                               'softening_length': u.kpc,\
@@ -198,7 +199,6 @@ class SBR_Profile(Component):
           
             if self.type in ['expdisk']:
                   self.values = exponential_profile(self)
-                  self.profile_type='density'
             elif self.type in ['edgedisk']:
                   self.values = edge_profile(self)
                   self.profile_type='density'
