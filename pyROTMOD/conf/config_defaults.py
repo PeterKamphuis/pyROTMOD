@@ -54,7 +54,8 @@ class RCConstruction:
     exposure_time: float = 1.
     mass_to_light_ratio: float = 1.0
     keep_random_profiles: bool = False #If we have random profiles in Lsun/pc^2
-    # we keep them and assume they are SBR_Profile when multiplied with MLratio, if set to false we attempt to fit a profile to them
+    # we keep them and assume they are SBR_Profile when multiplied with MLratio, 
+    # if set to false we attempt to fit a profile to them with known functions.
     band: str='SPITZER3.6'
     gas_band: str = '21cm'
 

@@ -15,7 +15,7 @@ with warnings.catch_warnings():
 from astropy import units as u
 
 from pyROTMOD.support.errors import InputError
-from pyROTMOD.support.classes import Luminosity_Profile, Rotation_Curve,\
+from pyROTMOD.support.profile_classes import Luminosity_Profile, Rotation_Curve,\
     SBR_Profile
 from pyROTMOD.support.log_functions import print_log
 from pyROTMOD.support.minor_functions import translate_string_to_unit

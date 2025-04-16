@@ -9,8 +9,9 @@ from pyROTMOD.optical.profiles import exponential_luminosity,edge_luminosity,\
 from pyROTMOD.optical.profile_functions import fit_profile,\
       truncate_density_profile
 from pyROTMOD.optical.calculate_profile_components import calculate_central_SB,\
-      calculate_total_SB,calculate_R_effective,calculate_L_effective,\
-      calculate_scale_length,calculate_axis_ratio,calculate_hernquist_scale_length
+      calculate_total_mass,calculate_R_effective,calculate_L_effective,\
+      calculate_scale_length,calculate_axis_ratio,calculate_hernquist_scale_length,\
+      calculate_total_luminosity
 import astropy.units as u 
 import numpy as np
 import copy
@@ -20,16 +21,18 @@ import inspect
 class Component:
       #These should be set with a unit
       def __init__(self, type = None, name = None, central_SB = None,\
-            total_SB = None, R_effective = None, scale_length = None,\
+            R_effective = None, scale_length = None,\
             height_type = None, height = None,L_effective=None,\
             hernquist_scale_length = None,\
             height_error = None ,sersic_index = None, central_position = None, \
             axis_ratio = None, PA = None ,background = None, dx = None,\
-            dy = None, truncation_radius = None, extend = None,softening_length =None):
+            dy = None, truncation_radius = None, extend = None,
+            softening_length =None,total_mass=None,total_luminosity=None):
             self.name = name
             self.type = type
             self.central_SB = central_SB 
-            self.total_SB = total_SB
+            self.total_mass = total_mass
+            self.total_luminosity = total_luminosity  
             self.R_effective = R_effective
             self.L_effective = L_effective
             self.extend = extend
@@ -49,9 +52,8 @@ class Component:
             self.dy = dy
             self.unit_dictionary = {'scale_length': u.kpc,\
                               'hernquist_scale_length': u.kpc,\
-                              'total_SB': {'density':u.Msun,\
-                                    'sbr_lum':u.Lsun,
-                                    'sbr_dens':u.Msun},\
+                              'total_mass': u.Msun,\
+                              'total_luminosity': u.Lsun,
                               'height': u.kpc,\
                               'height_error': u.kpc,\
                               'central_SB': {'sbr_lum':u.Lsun/u.pc**2,\
@@ -76,8 +78,6 @@ class Component:
                               calculate_axis_ratio(self)    
                         elif attr in ['central_SB']:
                               calculate_central_SB(self)
-                        elif attr in ['total_SB']:
-                              calculate_total_SB(self)
                         elif attr in ['R_effective']:
                               calculate_R_effective(self)
                         elif attr in ['L_effective']:
@@ -86,48 +86,13 @@ class Component:
                               calculate_scale_length(self)
                         elif attr in ['hernquist_scale_length']:
                               calculate_hernquist_scale_length(self)
+                        elif attr in ['total_mass']:
+                              calculate_total_mass(self)
+                        elif attr in ['total_luminosity']:
+                              calculate_total_luminosity(self)
       def print(self):
             print_class(self)
-          
-
-class Parameter:
-      def __init__(self, name = None, value = None, stddev = None, unit = None,
-            min = None, max = None, variable = False, include = True,fixed_boundaries = False):
-            self.name = name
-            self.value = value
-            self.stddev = stddev
-            self.unit = unit
-            self.min = min
-            self.max = max
-            self.fixed_boundaries = fixed_boundaries
-            self.variable = variable
-            self.include = include
-      def print(self):
-            print_class(self)
-      def fill_empty(self):
-            #If the value is None we set it to a random number between min and max
-            #if the min and max are None we set them to 0.1 and 1000.
-            if self.min is None:
-                  if self.value is not None and self.value != 0.:
-                        self.min = self.value/5.
-                  else:      
-                        self.min = 0.1
-            if self.max is None:
-                  if self.value is not None and self.value != 0.:
-                        self.max = self.value*5.
-                  else:
-                        self.max = 1000.
-            if self.min == self.max:
-                  self.min = self.min*0.9
-                  self.max = self.max*0.9
-           
-            if self.stddev is None:
-                  self.stddev = (self.max-self.min)/5.
-            if self.value is None:
-                  #no_input = True
-                  self.value = float(np.random.rand()*\
-                        (self.max-self.min)+self.min)
-                
+ 
 class SBR_Profile(Component):
       '''These are in plane the surface brightness profiles
       The Tilted ring Model provides these directly but for fits made to the 
@@ -151,19 +116,21 @@ class SBR_Profile(Component):
                   height_type = None, band = None, \
                   height_error =None ,name =None, MLratio= None, 
                   distance = None,component = None, central_SB = None,\
-                  total_SB = None, R_effective = None,L_effective=None,\
+                  total_mass = None, total_luminosity = None, R_effective = None,L_effective=None,\
                   scale_length = None, truncation_radius = None,\
                   sersic_index = None, central_position = None, \
                   axis_ratio = None, PA = None ,background = None,\
-                  dx = None, dy = None,softening_length =None ):
-            super().__init__(type = type,name = name,\
-                  height = height, height_type=height_type,\
-                  height_error = height_error, central_SB = central_SB,\
-                  total_SB = total_SB, R_effective = R_effective, scale_length = scale_length,\
-                  sersic_index = sersic_index, central_position = central_position, \
-                  axis_ratio = axis_ratio, PA = PA ,background = background, \
-                  dx = dx, dy = dy ,truncation_radius=truncation_radius,\
-                  softening_length = softening_length)
+                  dx = None, dy = None,softening_length =None,
+                  hernquist_scale_length = None):
+            super().__init__(type = type,name = name,
+                  height = height, height_type=height_type,
+                  height_error = height_error, central_SB = central_SB,
+                  total_mass = total_mass,total_luminosity=total_luminosity,
+                  R_effective = R_effective, scale_length = scale_length,
+                  sersic_index = sersic_index, central_position = central_position, 
+                  axis_ratio = axis_ratio, PA = PA ,background = background, 
+                  dx = dx, dy = dy ,truncation_radius=truncation_radius,
+                  softening_length = softening_length,hernquist_scale_length=hernquist_scale_length)
             self.values = values
             self.errors = errors  
             #The density profiles can be sbr_dens or density
@@ -173,7 +140,8 @@ class SBR_Profile(Component):
             self.band = band
             self.distance = distance
             self.MLratio= MLratio
-            for attr in ['values',errors]:
+            self.original_values = None
+            for attr in ['values','errors']:
                   self.unit_dictionary[attr] = {'density':u.Msun/u.pc**3,\
                                     'sbr_lum':u.Lsun/u.pc**2,\
                                     'sbr_dens':u.Msun/u.pc**2}
@@ -227,6 +195,7 @@ class SBR_Profile(Component):
             self.check_attr()
       
             #Changing the units in the profiles important that you only trust values with quantities
+          
             if self.type in ['expdisk']:
                   self.values = exponential_profile(self)
                   self.profile_type='density'
@@ -236,7 +205,7 @@ class SBR_Profile(Component):
             elif self.type in ['sersic','devauc']:
                   self.values = sersic_profile(self)
                   self.profile_type='density'
-            elif self.type in ['bulge']:
+            elif self.type in ['bulge','hernquist']:
                   self.values = hernquist_profile(self)
                   self.profile_type='density'
             if not self.type in ['sky','psf']: 
@@ -262,21 +231,24 @@ class Luminosity_Profile(SBR_Profile):
                   height_type = None, band = None, \
                   height_error =None ,name =None, MLratio= None, 
                   distance = None,component = None, central_SB = None,\
-                  total_SB = None, R_effective = None,\
+                  total_mass = None, total_luminosity= None, R_effective = None,\
                   scale_length = None,L_effective=None,\
                   sersic_index = None, central_position = None, \
                   axis_ratio = None, PA = None ,background = None,\
-                  dx = None, dy = None,softening_length =None ):
+                  dx = None, dy = None,softening_length =None
+                   ,hernquist_scale_length = None):
             super().__init__(type = type,name = name, values = values,\
                   errors = errors, radii = radii, band = band,\
                   height = height, height_type=height_type, component= component,\
                   height_error = height_error, central_SB = central_SB,\
-                  total_SB = total_SB, R_effective = R_effective,\
+                  total_mass = total_mass, total_luminosity=total_luminosity,
+                  R_effective = R_effective,\
                   scale_length = scale_length, distance =distance,\
                   MLratio=MLratio,L_effective=L_effective,\
                   sersic_index = sersic_index, central_position = central_position, \
                   axis_ratio = axis_ratio, PA = PA ,background = background, \
-                  dx = dx, dy = dy,softening_length = softening_length )
+                  dx = dx, dy = dy,softening_length = softening_length,
+                  hernquist_scale_length=hernquist_scale_length) 
             self.profile_type = 'sbr_lum'   
 
      
@@ -563,26 +535,13 @@ def set_requested_units(self,req_attr):
                   new_value = self.MLratio*value
                   break
 
-            new_value = 'Something went wrong'
+            new_value = 1.*requested_unit**3
                
       if new_value.unit != requested_unit:
             raise InputError(f'For {req_attr} in {self.name} we do not know how convert {value.unit} to {requested.unit}')
       else:
             setattr(self,req_attr,new_value) 
-def set_parameter_from_cfg(var_name,var_settings):
-      # Using a dictionary make the parameter always to be added
-    if not var_settings[1] is None and not var_settings[2] is None:
-        fixed_bounds = True
-    else:
-        fixed_bounds = False
-    return Parameter(name=var_name,
-        value = var_settings[0],
-        stddev = None,
-        min=var_settings[1],
-        max=var_settings[2],
-        variable=var_settings[3],
-        include=var_settings[4],
-        fixed_boundaries=fixed_bounds)
+
       
 def set_type(profile):
       bare_name = get_uncounted(profile.name)[0]                
@@ -749,5 +708,20 @@ requested variables = {req_var}
 collected variables = {collected_variables}''' )
             raise RunTimeError(f'Ordering Error in variables collection')
       return sets,ranges
-            
-            
+
+def copy_attributes(source, target, exclude=None):
+    """
+    Copy all attributes from the source object to the target object.
+
+    Args:
+        source: The object to copy attributes from.
+        target: The object to copy attributes to.
+        exclude: A list of attribute names to exclude from copying.
+    """
+    if exclude is None:
+        exclude = []
+    for attr, value in vars(source).items():
+        if attr not in exclude:
+            setattr(target, attr, value)
+
+

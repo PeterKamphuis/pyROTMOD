@@ -5,7 +5,7 @@ from pyROTMOD.support.minor_functions import print_log, propagate_mean_error,\
     translate_string_to_unit
 
 from pyROTMOD.support.errors import InputError
-from pyROTMOD.support.classes import SBR_Profile,Rotation_Curve
+from pyROTMOD.support.profile_classes import SBR_Profile,Rotation_Curve
 from astropy import units as unit
 #Function to convert column densities
 

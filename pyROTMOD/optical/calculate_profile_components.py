@@ -17,6 +17,9 @@ def calculate_axis_ratio(components):
     if not components.height in [None,0.] and \
         not components.scale_length is None:
             components.axis_ratio = components.height/components.scale_length
+    elif not components.height in [None,0.] and \
+        not components.hernquist_scale_length is None:
+            components.axis_ratio = components.height/components.hernquist_scale_length
 
 def calculate_central_SB(components):
     '''The central SB is the SB at the center of the galaxy'''
@@ -28,16 +31,16 @@ def calculate_central_SB(components):
         components.central_SB = components.values[0]
     else: 
         if components.type == 'expdisk':
-            if not None in [components.total_SB,components.scale_length]:
+            if not None in [components.total_luminosity,components.scale_length]:
              
                 # this assumes perfect ellipses for now and no deviations are allowed
 
-                components.central_SB = components.total_SB/(2.*np.pi*\
+                components.central_SB = components.total_luminosity/(2.*np.pi*\
                                         components.scale_length.to(unit.pc)**2)
               
         elif components.type in ['sersic','devauc']:
             if components.L_effective is None and\
-                not None in [components.total_SB ,components.R_effective,\
+                not None in [components.total_luminosity ,components.R_effective,\
                             components.sersic_index,components.axis_ratio]:
                 calculate_L_effective(components)
             
@@ -57,8 +60,8 @@ def calculate_L_effective(components,from_central = False):
                 components.L_effective = components.central_SB/np.exp(-1.*kappa*(((\
                     0.*unit.kpc)/components.R_effective)**(1./components.sersic_index)-1))
         else:
-            if not components.total_SB is None:
-                components.L_effective = components.total_SB/(2.*np.pi*(components.R_effective.to(unit.pc))**2*\
+            if not components.total_luminosity is None:
+                components.L_effective = components.total_luminosity/(2.*np.pi*(components.R_effective.to(unit.pc))**2*\
                             np.exp(kappa)*components.sersic_index*\
                             kappa**(-2*components.sersic_index)*\
                             components.axis_ratio*gamma(2.*components.sersic_index)) #L_solar/pc^2
@@ -82,9 +85,12 @@ def calculate_R_effective(components):
         mass,ringarea = integrate_surface_density(components.radii,\
                                                   components.values)
         
-        if components.total_SB is None:
-            components.total_SB = mass    
-
+        if mass.unit == unit.Msun:
+            if components.total_mass is None:
+                components.total_mass = mass    
+        if mass.unit == unit.Lsun:
+            if components.total_luminosity is None:
+                components.total_luminosity = mass
         for i in range(len(components.radii.value),1,-1):
             current_mass =  np.sum(ringarea.value[:i]*components.values.value[:i])*\
                 (components.values.unit*ringarea.unit)
@@ -123,36 +129,58 @@ def calculate_hernquist_scale_length(components):
             exit()
 
     '''
-
-def calculate_total_SB(components):
-    if not components.total_SB is None:
-        print('The total_SB is already set')
+def calculate_total_mass(components):
+    if components.total_mass is not None:
+        print('The total mass is already set')
         return
-    # If calculated from the profile it can be set in calculate_R_effective as well
-    # Hence calculate_R_effective  is better to run first
+    total = None
+    if not components.radii is None and not components.values is None:\
+        total,ring_area = integrate_surface_density(\
+                components.radii,components.values)
+    elif not components.total_luminosity is None and not components.MLratio is None:
+        total = components.total_luminosity*components.MLratio
+    if not total is None:
+        try:
+            total = total.to(unit.Msun)
+            components.total_mass = total 
+        except:
+            print('The total luminosity could not be calculated')
+            components.total_mass = None
 
-    if not components.radii is None and not components.values is None:
-        components.total_SB,ring_area = integrate_surface_density(\
-            components.radii,components.values)
-    else: 
-        if components.type == 'expdisk':
-            if not None in [components.central_SB,components.scale_length]:
-             
-                # this assumes perfect ellipses for now and no deviations are allowed
+def calculate_total_luminosity(components):
+    if components.total_luminosity is not None:
+        print('The total luminosity is already set')
+        return
+  
 
-                components.total_SB = components.central_SB*(2.*np.pi*\
-                                        components.scale_length.to(unit.pc)**2)
-              
-        elif components.type == 'sersic':
+    total = None
+    if not components.radii is None and not components.values is None:\
+        total,ring_area = integrate_surface_density(\
+                components.radii,components.values)
        
-            if not None in [components.central_SB ,components.R_effective,\
-                            components.sersic_index,components.axis_ratio]: 
-                #kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
-                kappa = get_sersic_b(components.sersic_index)
-                effective_luminosity= calculate_L_effective(components, from_central=True)
-                components.total_SB = effective_luminosity*(2.*np.pi*(\
+    
+    elif not components.total_mass is None and not components.MLratio is None:
+        total = components.total_mass/components.MLratio
+    elif components.type == 'expdisk' and not components.scale_length is None\
+        and not components.central_SB is None:
+        total = components.central_SB*(2.*np.pi*\
+                                        components.scale_length**2)
+    elif components.type == 'sersic' and not components.R_effective is None\
+        and not components.sersic_index is None and not components.axis_ratio is None:
+        #kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile 
+        kappa = get_sersic_b(components.sersic_index)
+        total = components.central_SB*(2.*np.pi*(\
                     components.R_effective.to(unit.pc))**2*\
                     np.exp(kappa)*components.sersic_index*\
                     kappa**(-2*components.sersic_index)*\
                     components.axis_ratio*gamma(2.*components.sersic_index))
-    #return components.central_SB
+    if not total is None:
+        try:
+            total = total.to(unit.Lsun)
+            components.total_luminosity = total 
+        #exit()
+        except:
+            print('The total luminosity could not be calculated')
+            components.total_luminosity = None
+    
+        

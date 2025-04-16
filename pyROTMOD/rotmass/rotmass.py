@@ -7,7 +7,8 @@ from pyROTMOD.support.errors import InputError,RunTimeError
 import copy
 import pyROTMOD.rotmass.potentials as potentials
 import pyROTMOD.support.constants as cons
-from pyROTMOD.support.classes import Rotation_Curve,Parameter,set_parameter_from_cfg
+from pyROTMOD.support.parameter_classes import Parameter,set_parameter_from_cfg
+from pyROTMOD.support.profile_classes import Rotation_Curve
 from pyROTMOD.support.minor_functions import get_uncounted,add_font,get_output_name
 from pyROTMOD.support.log_functions import print_log
 from pyROTMOD.fitters.fitters import initial_guess,lmfit_run, numpyro_run

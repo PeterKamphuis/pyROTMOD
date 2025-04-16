@@ -39,7 +39,7 @@ def initial_guess(cfg, total_RC):
     #First initiate the model with the numpy function we want to fit
     model = lmfit.Model(total_RC.numpy_curve['function'])
     #no_input = False
-  
+   
     guess_variables = copy.deepcopy(total_RC.fitting_variables)
     for variable in guess_variables:
         guess_variables[variable].fill_empty()
@@ -110,6 +110,7 @@ def initial_guess(cfg, total_RC):
     print_log(f'''INITIAL_GUESS: These are the statistics and values found through {minimizer} fitting of the residual.
 {initial_fit.fit_report()}
 ''',cfg,case=['main'])
+    
     return guess_variables
 initial_guess.__doc__ =f'''
  NAME:
@@ -221,7 +222,7 @@ def simple_model(total_RC, fitting_variables, cfg=None):
 
 
 
-def numpyro_run(cfg,total_RC,out_dir = None):
+def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
     original_variable_settings = copy.deepcopy(total_RC.fitting_variables)
     negative = cfg.fitting_general.negative_values
    
@@ -236,6 +237,7 @@ def numpyro_run(cfg,total_RC,out_dir = None):
     #numpyro.set_host_device_count(1)
     rng_key = random.PRNGKey(67)  # Replace 0 with a seed value if needed
     guess_variables = copy.deepcopy(total_RC.fitting_variables)
+  
     for variable in guess_variables:
         guess_variables[variable].fill_empty()
     steps,burning = calculate_steps_burning(cfg,guess_variables)
@@ -246,7 +248,7 @@ def numpyro_run(cfg,total_RC,out_dir = None):
     for variable in guess_variables:   
         setbounds[variable] = [float(guess_variables[variable].min),float(guess_variables[variable].max)]
    
-    if cfg.fitting_general.use_gp:
+    if cfg.fitting_general.use_gp and not optical_profile:
         mod= tiny_gp_model
     else:
         mod = simple_model   
@@ -402,7 +404,7 @@ numpyro_run.__doc__ =f'''
 
 
 
-def lmfit_run(cfg,total_RC,original_settings, out_dir = None):
+def lmfit_run(cfg,total_RC,original_settings, out_dir = None,optical_profile = False):
     function_variable_settings = copy.deepcopy(total_RC.fitting_variables)
     negative = cfg.fitting_general.negative_values
     results_name = get_output_name(cfg,profile_name = total_RC.name)
@@ -411,7 +413,7 @@ def lmfit_run(cfg,total_RC,original_settings, out_dir = None):
     #First set the model
     model = lmfit.Model(total_RC.numpy_curve['function'])
     #then set the hints
-    if cfg.fitting_general.use_gp:
+    if cfg.fitting_general.use_gp and not optical_profile:
         results_name = 'GP_' + results_name
 
     

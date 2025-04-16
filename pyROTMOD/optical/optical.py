@@ -2,11 +2,11 @@
 
 import numpy as np
 
-from pyROTMOD.support.minor_functions import print_log,translate_string_to_unit
+from pyROTMOD.support.minor_functions import print_log,translate_string_to_unit,get_uncounted
 from pyROTMOD.support.major_functions import read_columns
 from pyROTMOD.optical.conversions import mag_to_lum
-from pyROTMOD.support.errors import InputError, BadFileError
-from pyROTMOD.support.classes import SBR_Profile,Component,Luminosity_Profile
+from pyROTMOD.support.errors import InputError, BadFileError, UnitError
+from pyROTMOD.support.profile_classes import SBR_Profile,Component,Luminosity_Profile,copy_attributes
 
 from astropy import units as unit
 
@@ -17,14 +17,20 @@ def convert_luminosity_profile(profile_in,cfg=None):
         ,radii=profile_in.radii,MLratio=profile_in.MLratio,
         component='Stars',band=profile_in.band)
     for attr, value in transfer.__dict__.items():
-        if attr not in ['central_SB']:
+        if attr not in ['central_SB','values']:
             setattr(profiles_out,attr,getattr(profile_in,attr))  
     profiles_out.create_profile() 
- 
+    
     if 'random' in profile_in.type:
         profiles_out.values = profile_in.values*profile_in.MLratio  
         profiles_out.radii = profile_in.radii 
-  
+    if profiles_out.unit not in [unit.Msun/unit.kpc**2,unit.Msun/unit.pc**2] and\
+        profiles_out.type == 'sbr_dens:':
+        raise UnitError(f'The unit {profiles_out.unit} is not recognized for the surface brightness profile {profiles_out.name}')
+    if profiles_out.unit not in [unit.Msun/unit.kpc**3,unit.Msun/unit.pc**3] and\
+        profiles_out.type == 'density:':
+        raise UnitError(f'The unit {profiles_out.unit} is not recognized for the density profile {profiles_out.name}')
+ 
     return profiles_out    
 
 def get_optical_profiles(cfg):
@@ -58,7 +64,7 @@ def get_optical_profiles(cfg):
     else:
         optical_profiles = read_columns(cfg.RC_Construction.optical_file\
                             ,cfg=cfg)
-   
+    split = {'names': []}
     for name in optical_profiles:
        
         print_log(f"GET_OPTICAL_PROFILES: We are processing the optical parameters for {name}. \n"\
@@ -88,10 +94,10 @@ def get_optical_profiles(cfg):
     
             #for the expdisk profiles  we apparently need to deproject the totalSB
             if  optical_profiles[name].type in ['expdisk']:
-                IntLum = mag_to_lum(optical_profiles[name].total_SB, \
+                IntLum = mag_to_lum(optical_profiles[name].total_luminosity, \
                                     band =optical_profiles[name].band , distance=distance)
                  # and transform to a face on total magnitude (where does this come from?)
-                optical_profiles[name].total_SB =  IntLum/optical_profiles[name].axis_ratio 
+                optical_profiles[name].total_luminosity =  IntLum/optical_profiles[name].axis_ratio 
             
            
             optical_profiles[name].check_radius()
@@ -102,7 +108,12 @@ def get_optical_profiles(cfg):
             print_log(f"GET_OPTICAL_PROFILES: We are calculating the optical parameters for {name}. \n"\
                 ,cfg, case = ['main','screen'])
             optical_profiles[name].calculate_attr(cfg=cfg)
-   
+            if optical_profiles[name].type =='hernq+expdisk':
+               split['names'].append(name)
+            
+    for name in split['names']:
+        split_double_profile(optical_profiles,name,cfg=cfg)
+        
   
     print_log(f"We found the following optical components:\n",cfg, case = ['main','screen'])
     for name in optical_profiles:
@@ -123,7 +134,7 @@ def get_optical_profiles(cfg):
         else:
             print_log(f'''We have found a {optical_profiles[name].type} component with the following values.
 ''',cfg, case = ['main'])
-        print_log(f'''The total mass of the disk is {optical_profiles[name].total_SB}   a central mass density {optical_profiles[name].central_SB}  with a M/L {optical_profiles[name].MLratio}.
+        print_log(f'''The total mass of the disk is {optical_profiles[name].total_mass}   a central mass density {optical_profiles[name].central_SB}  with a M/L {optical_profiles[name].MLratio}.
 The scale length is {optical_profiles[name].scale_length}  and the scale height {optical_profiles[name].height}.
 The axis ratio is {optical_profiles[name].axis_ratio}.
 ''' ,cfg, case = ['main'])
@@ -233,7 +244,7 @@ def read_galfit(lines,cfg=None):
                             components[current_name].central_SB = float(tmp[1])\
                                 *unit.mag/unit.arcsec**2
                         else:
-                            components[current_name].total_SB = float(tmp[1])*unit.mag
+                            components[current_name].total_luminosity = float(tmp[1])*unit.mag
                     elif tmp[0] == '4)':
                         if current_component in ['sersic','devauc']:
                             components[current_name].R_effective = float(tmp[1])\
@@ -315,5 +326,32 @@ read_galfit.__doc__ =f'''
  NOTE:
 '''
 
-
-
+def split_double_profile(profiles,original_name,cfg=None):
+    names = [name for name in profiles]
+    profile_type = profiles[original_name].type
+    if  profile_type == 'hernq+expdisk':
+        hcounter = 1
+        ecounter = 1
+        for name in names:
+            strip_name = get_uncounted(name)[0]
+            if strip_name.lower() == 'hernquist':
+                hcounter += 1
+            if strip_name == 'exponential':
+                ecounter += 1
+        new_profile_name = [f'HERNQUIST_{hcounter}',f'EXPONENTIAL_{ecounter}']
+        profile_type = ['hernquist','expdisk']
+        for i,name in enumerate(new_profile_name):
+            profiles[name] = Luminosity_Profile(type=profile_type[i],name=name)
+            exclude = ['type','name','values','total_mass']
+            if i == 0:
+                exclude =exclude+ ['central_SB','scale_length']
+            elif i == 1:
+                exclude =exclude+ ['total_luminosity','hernquist_scale_length'] 
+            
+            copy_attributes(profiles[original_name],profiles[name],
+                exclude=exclude)
+           
+            profiles[name].create_profile()
+          
+  
+    del profiles[original_name]

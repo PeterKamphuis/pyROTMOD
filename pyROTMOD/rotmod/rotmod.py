@@ -14,7 +14,7 @@ from pyROTMOD.optical.profile_functions import calc_truncation_function
 from pyROTMOD.gas.gas import get_gas_profiles
 
 from pyROTMOD.support.errors import InputError, RunTimeError, UnitError
-from pyROTMOD.support.classes import Rotation_Curve,Luminosity_Profile,SBR_Profile
+from pyROTMOD.support.profile_classes import Rotation_Curve,Luminosity_Profile,SBR_Profile
 import pyROTMOD.support.constants as c
 import numpy as np
 import traceback
@@ -31,7 +31,7 @@ def bulge_RC(Density_In,RC_Out,cfg=None):
 
     if Density_In.type in ['bulge','sersic','hernquist','devauc']:
         print_log(f'''We have found an hernquist profile with the following values.
-The total mass of the disk is {Density_In.total_SB} a central mass density {Density_In.central_SB} .
+The total mass of the disk is {Density_In.total_mass} a central mass density {Density_In.central_SB} .
 The scale length is {Density_In.scale_length} and the scale height {Density_In.height}.
 The axis ratio is {Density_In.axis_ratio}.
 ''' ,cfg,case=['main'])
@@ -265,7 +265,7 @@ def exponential_RC(Density_In,RC_Out,cfg=None):
     #If the RC has already radii we assume we want it on that radii
     RC_radii = check_radius(Density_In,RC_Out)
     print_log(f'''We have found an exponential disk with the following values.
-The total mass of the disk is {Density_In.total_SB} a central mass density {Density_In.central_SB} .
+The total mass of the disk is {Density_In.total_mass} a central mass density {Density_In.central_SB} .
 The scale length is {Density_In.scale_length} and the scale height {Density_In.height}.
 The axis ratio is {Density_In.axis_ratio}.
 ''' ,cfg,case=['main'])
@@ -327,7 +327,7 @@ def apply_truncation(RC, radii, parameters ):
         mix = calc_truncation_function(radii, parameters.truncation_radius,\
             parameters.softening_length)
         index = np.where(radii != 0.)
-        RC[index] = RC[index]*(1.-mix[index])+np.sqrt(c.Grotmod*parameters.total_SB/(radii[index]))*mix[index]
+        RC[index] = RC[index]*(1.-mix[index])+np.sqrt(c.Grotmod*parameters.total_mass/(radii[index]))*mix[index]
         index = np.where(radii == 0.)
         RC[index] = 0.
     return RC
@@ -431,7 +431,11 @@ def hernquist_parameter_RC(radii,parameters,cfg=None):
     '''This assumes a Hernquist potential where the scale length should correspond to hernquist scale length'''
     #The two is specified in https://docs.galpy.org/en/latest/reference/potentialhernquist.html?highlight=hernquist
     #It is assumed this hold with the the triaxial potential as well.
-    bulge_potential = THP(amp=2.*parameters.total_SB,a= parameters.scale_length ,b= 1.,c = parameters.axis_ratio)
+    #We set this here as in general we don't want to assume the axis ratio is 1.
+    if parameters.axis_ratio is None:
+        parameters.axis_ratio = 1.
+ 
+    bulge_potential = THP(amp=2.*parameters.total_mass,a= parameters.hernquist_scale_length ,b= 1.,c = parameters.axis_ratio)
     #bulge_potential = THP(amp=2.*parameters['Total SB'],a= parameters['scale length'])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

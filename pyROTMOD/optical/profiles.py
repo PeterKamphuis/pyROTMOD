@@ -1,6 +1,7 @@
 # -*- coding: future_fstrings -*-
 
 from pyROTMOD.support.errors import UnitError
+from pyROTMOD.support.minor_functions import isquantity
 from astropy import units as unit
 from fractions import Fraction
 #the individul functions are quicker than the general function https://docs.scipy.org/doc/scipy/reference/special.html
@@ -11,6 +12,9 @@ import numpy as np
 import warnings
 
 # The edge functions are  untested for now
+def edge_numpyro(central,h,r):
+    profile = edge(r,central,h)
+    return profile
 def edge(r,central,h):
     '''This is the actual edge on sky projection of an exponential disk (vd Kruit 1981)'''
     s=r/h
@@ -71,7 +75,7 @@ def edge_profile(components,radii = None):
         warnings.simplefilter("ignore")
         if radii.unit == components.scale_length.unit:    
             #Equation 5 in vd Kruit and Searle with z 0
-            L0 = components.total_SB/(4.*np.pi*components.scale_length**2*components.height)
+            L0 = components.total_mass/(4.*np.pi*components.scale_length**2*components.height)
             ### This makes this a 3D profile with M/pc**3
             profile = exponential(radii,L0,components.scale_length)
           
@@ -122,7 +126,9 @@ def extrapolate_zero(radii,profile):
         index = np.where(radii == 0.)
         profile[index] = extra(radii[index].value)*profile.unit
     return profile
-
+def exponential_numpyro(central,h,r):
+    profile = exponential(r,central,h)
+    return profile
 def exponential(r,central,h):
     '''Exponential function'''
     return central*np.exp(-1.*r/h)
@@ -174,10 +180,14 @@ def exponential_profile(components,radii = None):
     #Ftot = 2πrs2Σ0q
     if radii is None:
         radii = components.radii
-    if radii.unit == components.scale_length.unit:    
-        #Equation 24 in Gentile and Baes
-        profile = components.central_SB/(np.pi*components.scale_length.to(unit.pc))\
-            *k0(radii/components.scale_length)
+
+    if radii.unit == components.scale_length.unit:
+        if components.height == 'inf_thin':
+            profile= exponential(radii, components.central_SB, components.scale_length)   
+        else:
+            #Equation 24 in Gentile and Baes
+            profile = components.central_SB/(np.pi*components.scale_length)\
+                *k0(radii/components.scale_length)
     else:
         raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
     #profile = [x.value for x in profile]
@@ -215,12 +225,24 @@ exponential_profile.__doc__ = f'''
 '''
  
 # if we do not define these functions they cannot be pickled and not multiproceessed 
+def hernexp_numpyro(Ltotal,hern_length,central,h,r):
+    '''
+    This is the sum of a Hernquist and an exponential profile
+    '''
+    value = hernquist(r,Ltotal,hern_length) + exponential(r,central,h)
+   
+    return value
 def hernexp( r,Ltotal,hern_length,central,h):
     '''
     This is the sum of a Hernquist and an exponential profile
     '''
-    return hernquist(r,Ltotal,hern_length) + exponential(r,central,h)
+    value = hernquist(r,Ltotal,hern_length) + exponential(r,central,h)
+   
+    return value
 
+def hernquist_numpyro(total_l,h,r):   
+    profile= hernquist(r,total_l,h)
+    return profile
 
 def hernquist(r,total_l,h):
     '''
@@ -228,23 +250,30 @@ def hernquist(r,total_l,h):
     These are presented in Hernquist 1990 Eq 32 and what follows
     M_total/Gamma is replaced by L_total
     '''
+    
+    if h == 0.:
+        h=1e-7
+
     s = r/h
+    if isquantity(s):
+        s = s.value
     XS_1 = 1./np.sqrt(1-s[s < 1]**2)*\
         np.log((1+np.sqrt(1-s[s<1]**2))/s[s < 1])
-    XS_2 = 1./np.sqrt(s[s > 1]**2-1)*1./np.cos(1./s[s > 1])
+    XS_2 = 1./np.sqrt(s[s > 1]**2-1)*1.*np.arccos(1./s[s > 1])
     XS = np.array(list(XS_1)+list(XS_2),dtype=float)
     profile = total_l/(2.*np.pi*h**2*\
         (1-s**2)**2)*((2+s**2)*XS-3)
+   
     profile = extrapolate_zero(r,profile)  
     return profile
 
 def hernquist_luminosity(components,radii=None):
     if radii is None:
         radii = components.radii
-    if radii.unit == components.R_effective.unit:  
-        profile = hernquist(radii, components.total_SB,components.scale_length) 
+    if radii.unit == components.hernquist_scale_length.unit:  
+        profile = hernquist(radii, components.total_luminosity,components.hernquist_scale_length) 
     else:
-        raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
+        raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.hernquist_scale_length.unit})')
     #profile = [x.value for x in profile]
     return profile
   
@@ -264,18 +293,34 @@ def hernquist_profile(components,radii=None):
     '''
     if radii is None:
         radii = components.radii
-    if radii.unit == components.R_effective.unit:  
-        a = components.R_effective/1.8153
-        profile = components.total_SB/(2.*np.pi)*a/radii*1./(radii+a)**3
+    if radii.unit == components.hernquist_scale_length.unit:  
+        a = components.hernquist_scale_length
+        profile = components.total_mass/(2.*np.pi)*a/radii*1./(radii+a)**3
     else:
         raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
     profile = extrapolate_zero(radii,profile)
   
     return profile 
-
+def sersic_numpyro(effective_luminosity,effective_radius,n,r):
+    profile = sersic(r,effective_luminosity,effective_radius,n)
+    return profile
 def sersic(r,effective_luminosity,effective_radius,n):
     b = get_sersic_b(n) 
-    return effective_luminosity*np.exp(-1.*b*((r/effective_radius)**(1./n)-1))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        try:
+            profile = effective_luminosity*np.exp(-1.*b*((r/effective_radius)**(1./n)-1))
+        except RuntimeWarning as e:
+            if 'overflow encountered in power' in str(e):
+                profile = np.zeros_like(r)
+            else:
+                raise e
+
+        # This is the deprojected surface density profile from Baes & gentile 2010 Equation 22
+        # With this it should be possible use an Einasto profile/potential
+
+
+    return profile
 
 def sersic_luminosity(components,radii=None):
     '''sersic function'''

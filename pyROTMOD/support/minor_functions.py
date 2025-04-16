@@ -466,6 +466,11 @@ Not plotting this profile.
         return max,stellar_profile
     plt.plot(profile.radii.value,profile.values.value, \
                 label = profile.name)
+    if profile.original_values is not None:
+        plt.plot(profile.radii.value,profile.original_values.value, \
+                label = f'Original {profile.name}')
+        if np.nanmax(profile.original_values.value) > max:
+            max =  np.nanmax(profile.original_values.value)
     if np.nanmax(profile.values.value) > max:
         max =  np.nanmax(profile.values.value)
     if np.nanmin(profile.values[profile.values.value > 0.].value) < min:
@@ -504,6 +509,7 @@ def get_accepted_unit(search_dictionary,attr, acceptable_units = \
                       [u.Lsun/u.pc**2,u.Msun/u.pc**2,u.Msun/u.pc**3],cfg=None):
     funit = None
     iters = iter(search_dictionary)
+
     while funit is None:
         try:
             check = next(iters)
@@ -516,7 +522,7 @@ def get_accepted_unit(search_dictionary,attr, acceptable_units = \
           
         else:
             continue
-        print_log(f'''The units of {search_dictionary[check].name} are {funit}.
+        print_log(f'''The units of {search_dictionary[check].name} for {attr} are {funit}.
 ''',cfg,case=['debug_add','screen'])    
         if not funit in acceptable_units:
             funit = None
@@ -543,6 +549,7 @@ def plot_profiles(profiles, cfg= None\
     # From the optical profiles we select the first acceptable units and make sure that all 
     # other profiles adhere to these unit. As they are not coupled it is possible that 
     # no profile adheres to the combination of units
+   
     first_value_unit = get_accepted_unit(profiles,'values',cfg=cfg)
     first_radii_unit = get_accepted_unit(profiles,'radii',\
         acceptable_units=[u.pc,u.kpc,u.Mpc],cfg=cfg)
@@ -550,6 +557,7 @@ def plot_profiles(profiles, cfg= None\
     
     if first_value_unit is None:
         print_log(f'''We cannot find acceptable units in the profiles.
+{[profiles[x].print() for x in profiles]}
 This is not acceptable for the output.
 ''',cfg,case=['main','screen'] )
         raise RunTimeError("No proper units")    
@@ -561,21 +569,29 @@ This is not acceptable for the output.
         raise RunTimeError("No proper units")
     tot_opt ={'Profile': [],'Radii': []}
     for name in profiles:
+        print(profiles[name].print())
         if profiles[name].values.unit == first_value_unit and\
             profiles[name].radii.unit == first_radii_unit:
             min,max,succes = plot_individual_profile(profiles[name],min,max)
+
             if succes:
                 tot_opt = calculate_total_profile(tot_opt,profiles[name])
+
         else:
             print_log(f'''The profile units of {profiles[name].name} are not {first_value_unit} (unit  = {profiles[name].values.unit})
     or the radii units are   not {first_radii_unit} (unit  = {profiles[name].radii.unit})           
     Not plotting this profile.
     ''',cfg,case=['main']) 
     if len(tot_opt['Profile']) > 0:  
-        min = np.nanmin(np.array([x for x in tot_opt['Profile'].value if x > 0.]))
+        plt.plot(tot_opt['Radii'],tot_opt['Profile'], \
+                label = 'Total Optical Profile',color='black',linestyle='--')
+        if np.nanmax(tot_opt['Profile'].value) > max:
+            max =  np.nanmax(tot_opt['Profile'].value)
+        #min = np.nanmin(np.array([x for x in tot_opt['Profile'].value if x > 0.]))
     if min <= 0.:
-        min=0.01
-   
+        min=0.001
+
+    max = max*1.1
     plt.ylim(min,max)
     #plt.xlim(0,6)
     plt.ylabel(select_axis_label(first_value_unit))
@@ -592,7 +608,7 @@ This is not acceptable for the output.
 
 
 def profiles_to_lines(profiles):
-    '''Trandform the profiles into a set of line by line columns.'''
+    '''Transform the profiles into a set of line by line columns.'''
     profile_columns = []
     profile_units = []
     to_write = []
