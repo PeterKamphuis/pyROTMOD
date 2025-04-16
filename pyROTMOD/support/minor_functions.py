@@ -336,7 +336,7 @@ def get_correct_label(par,no,exponent = 0.):
                         'mass': [r'Total Mass', r'$\mathrm{(M_{\odot})}$'],
                         'hern_length': ['Hernquist scale length','(kpc)}$'],
                         'effective_luminosity': [r'$\mathrm{L_{e}}$',r'$\mathrm{(M_{\odot})}$'] ,
-                        'effective_radius': [r'$\mathrm{R_{e}}}$','(kpc)'] ,
+                        'effective_radius': [r'$\mathrm{R_{e}}$','(kpc)'] ,
                         'n': [r'Sersic Index',''],
                         'a0': [r'$\mathrm{a_{0}}$',r'$\mathrm{(cm\,\,s^{-2})}$'],
                         'amplitude': [r'GP Amplitude',''],
