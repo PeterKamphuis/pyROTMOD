@@ -583,7 +583,13 @@ consider changing it''',cfg,case=['main','screen'])
                 if prev_bound[var_name][1] > upper_bound:
                     print_log(f'''The upper bound ({prev_bound[var_name][1]}) for {var_name} deviates more than 5. * std (std = {current_parameter.stddev}).
 consider changing it''',cfg,case=['main','screen'])
+                
                 bounds_out[var_name] = prev_bound[var_name]
+                    
+                #function_variable_settings[var_name].min = prev_bound[var_name][0]
+                #function_variable_settings[var_name].max = prev_bound[var_name][1]     
+                #function_variable_settings[var_name].value = current_parameter.value
+                #function_variable_settings[var_name].stddev = current_parameter.stddev
                 continue
 
             #lower_bound = current_parameter.value - 5.*current_parameter.stddev
@@ -620,6 +626,8 @@ change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bound
                 print_log(f'''{var_name} is fitted wel in the boundaries {new_bounds[0]} - {new_bounds[1]}. (Old is {prev_bound[var_name][0]} - {prev_bound[var_name][1]} )
 Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.array(new_bounds)/current_parameter.value} with a tolerance of {req_fraction}
 ''',    cfg,case=['main','screen'])
+                function_variable_settings[var_name].min = prev_bound[parameter][0]
+                function_variable_settings[var_name].max = prev_bound[parameter][1]    
             else:
                 print_log(f''' The boundaries for {var_name} are deviating more that {int(req_fraction*100.)}% from those set by 5*std (std = {current_parameter.stddev}) change.
 Setting {var_name} = {current_parameter.value} between {new_bounds[0]}-{new_bounds[1]} (old ={prev_bound[var_name][0]}-{prev_bound[var_name][1]})
@@ -627,8 +635,8 @@ Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.a
 ''',cfg,case=['main','screen'])
                 no_succes = True
                
-            function_variable_settings[var_name].min = new_bounds[0]
-            function_variable_settings[var_name].max = new_bounds[1]     
+                function_variable_settings[var_name].min = new_bounds[0]
+                function_variable_settings[var_name].max = new_bounds[1]     
             function_variable_settings[var_name].value = current_parameter.value
             function_variable_settings[var_name].stddev = current_parameter.stddev
             bounds_out[var_name] = new_bounds
@@ -642,5 +650,6 @@ Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.a
         print_log(f'''We will stop the iterations  process
 ''',cfg,case=['main','screen']) 
         no_succes = False
+    #no_success=True
     return no_succes,count,bounds_out           
             
