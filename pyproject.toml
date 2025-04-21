@@ -27,6 +27,7 @@ dependencies = [
     "emcee",
     "future-fstrings",
     "galpy",
+    "psutil",
     "importlib_resources>=3.3.0",
     "jax",
     "lmfit",
