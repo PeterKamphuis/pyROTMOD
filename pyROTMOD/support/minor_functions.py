@@ -360,12 +360,14 @@ Unfortunately we can not find it in the label dictionary.''')
        
     return string   
 
-def get_output_name(cfg,profile_name =None):
+def get_output_name(cfg,profile_name =None,function_name = None):
     name = f'{cfg.output.out_base}_{cfg.fitting_general.backend}'
     if cfg.fitting_general.use_gp:
         name += '_GP'
     if profile_name is not None:
-        name += f'_{profile_name}'    
+        name += f'_{profile_name}' 
+    if function_name is not None:
+        name += f'_{function_name}'   
     return name
 '''Stripe any possible _counters from the key'''
 def get_uncounted(key):
@@ -481,6 +483,14 @@ Not plotting this profile.
             if np.nanmax(profile.original_values.value) > max:
                 max =  np.nanmax(profile.original_values.value)
             lineout = lineout +secline
+   
+      
+        if 'rejected' in profile.__dict__:
+            for rej_ev in profile.rejected:
+                secline = ax.plot(profile.radii.value, profile.rejected[rej_ev]['profile'], 
+                            label = f'Rejected { profile.rejected[rej_ev]["name"]}',
+                            linestyle='--',zorder=-2,alpha=0.5)
+                lineout = lineout + secline   
     if not profile.component is None:
         if profile.component.lower() == 'stars':
             stellar_profile = True
@@ -583,7 +593,6 @@ This is not acceptable for the output.
     ax = fig.add_subplot(111)
     leg_lines = []
     for name in profiles:
-        print(profiles[name].print())
         if profiles[name].values.unit == first_value_unit and\
             profiles[name].radii.unit == first_radii_unit:
             min,max,succes,ax,lineout = plot_individual_profile(profiles[name],
@@ -628,7 +637,7 @@ This is not acceptable for the output.
         secax.set_xlim(ax.get_xlim())
         secax.set_ylim(mintwo,maxtwo)
         secax.set_yscale('log')
-    print(leg_lines)
+  
     labs = [l.get_label() for l in leg_lines]
     ax.legend(leg_lines, labs, loc=0)
 

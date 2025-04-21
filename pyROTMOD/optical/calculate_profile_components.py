@@ -12,7 +12,6 @@ import numpy as np
 def calculate_axis_ratio(components):
     '''The axis ratio is the ratio of the height to the scale length'''    
     if not components.axis_ratio is None:
-        print('Axis ratio already set')
         return
     if not components.height in [None,0.] and \
         not components.scale_length is None:
@@ -23,12 +22,8 @@ def calculate_axis_ratio(components):
 
 def calculate_central_SB(components):
     '''The central SB is the SB at the center of the galaxy'''
-    if components.type == 'expdisk' and components.profile_type == 'sbr_dens':
-        print(components.central_SB)
+  
     if not components.central_SB is None:
-        print('Central SB already set')
-        if components.type == 'expdisk' and components.profile_type == 'sbr_dens':
-            exit()
         return
     if components.profile_type == 'sbr_dens':
         if components.total_mass is None:
@@ -61,7 +56,6 @@ def calculate_central_SB(components):
                 
 def calculate_L_effective(components,from_central = False):
     if not components.L_effective is None:
-        print('L_effective already set')
         return
     '''The sersic profile is based on Sig_eff'''
     #kappa=2.*components.sersic_index-1./3. # From https://en.wikipedia.org/wiki/Sersic_profile
@@ -82,7 +76,6 @@ def calculate_L_effective(components,from_central = False):
 def calculate_R_effective(components):
     '''The effective radius is the radius that contains half of the mass'''
     if not components.R_effective is None:
-        print('R_effective already set')
         return
 
     if not components.scale_length is None:
@@ -118,7 +111,6 @@ def calculate_R_effective(components):
    
 def calculate_scale_length(components):
     if not components.scale_length is None:
-        print('The scale length is already set')
         return
     '''The scale length relate to the exponential function only'''
     # From https://iopscience.iop.org/article/10.1088/0004-6256/139/6/2097/pdf Peng 2010 Eq 7
@@ -127,23 +119,13 @@ def calculate_scale_length(components):
 def calculate_hernquist_scale_length(components):
     '''The scale length relates to the hernquist function only'''
     if not components.hernquist_scale_length is None:
-        print('The hernquist scale length is already set')
         return
   
     # Eq 38 in https://articles.adsabs.harvard.edu/pdf/1990ApJ...356..359H (Hernquist 1990)
     components.hernquist_scale_length  = components.R_effective/1.8153 
-    '''#This was in the old version for the hernquist profile but I do not know where it comes from  
-        elif not components.central_SB is None and not components.total_SB is None:
-            print(components.total_SB,components.central_SB)
-            central_3d = components.central_SB
-            components.scale_length  = (components.total_SB/(2.*np.pi*components.central_SB))**1/3
-            print( components.scale_length)
-            exit()
-
-    '''
+   
 def calculate_total_mass(components):
     if components.total_mass is not None:
-        print('The total mass is already set')
         return
     total = None
     if not components.radii is None and not components.values is None:\
@@ -161,7 +143,6 @@ def calculate_total_mass(components):
 
 def calculate_total_luminosity(components):
     if components.total_luminosity is not None:
-        print('The total luminosity is already set')
         return
   
 

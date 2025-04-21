@@ -1,6 +1,6 @@
 # -*- coding: future_fstrings -*-
 from pyROTMOD.fitters.fitters import initial_guess,lmfit_run,numpyro_run
-from pyROTMOD.support.errors import InputError,UnitError
+from pyROTMOD.support.errors import InputError,UnitError,FailedFitError
 from pyROTMOD.support.minor_functions import integrate_surface_density,\
     strip_unit,get_uncounted
 from pyROTMOD.support.parameter_classes import Parameter
@@ -39,7 +39,7 @@ def determine_profiles_to_fit(type):
     if type.upper() in ['DENSITY','RANDOM_DISK','RANDOM_BULGE']:
         evaluate = ['EXPONENTIAL','EXP+HERN','SERSIC']
     elif type.upper() in ['BULGE', 'HERNQUIST']:
-        evaluate = ['HERNQUIST']
+        evaluate = ['HERNQUIST','SERSIC']
     elif type.upper() in ['DISK', 'EXPONENTIAL']:
         evaluate = ['EXPONENTIAL','SERSIC']
     else:
@@ -74,7 +74,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
     original_backend= copy.deepcopy(cfg.fitting_general.backend)
     #cfg.fitting_general.backend ='lmfit'
     fit_function_dictionary = {'EXPONENTIAL':
-                {'initial':[density[0],radii[density < density[0]/np.e ][0]],
+                {'initial':{'central':density[0], 'h':radii[density < density[0]/np.e ][0]},
                 'out':['central_SB','scale_length'],
                 'function': (exponential if cfg.fitting_general.backend 
                              == 'lmfit' else exponential_numpyro),
@@ -84,7 +84,8 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
                 'name':'Exponential',
                 'fail':'random_disk'},
                 'HERNQUIST':
-                {'initial':[profile_to_fit.total_luminosity.value/2.,float(profile_to_fit.R_effective.value/1.8153)],
+                {'initial':{'total_l':profile_to_fit.total_luminosity.value/1.5,
+                            'h':float(profile_to_fit.R_effective.value/1.8153)},
                 'out':['total_luminosity','hernquist_scale_length'],
                 'out_units':[profile_to_fit.total_luminosity.unit,unit.kpc],
                 'function': (hernquist if cfg.fitting_general.backend
@@ -94,8 +95,8 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
                 'name':'Hernquist',
                 'fail':'failed'},
                 'SERSIC':
-                {'initial':[density[radii < profile_to_fit.R_effective.value][0],\
-                            profile_to_fit.R_effective.value, 2.],
+                {'initial':{'effective_luminosity':density[radii < profile_to_fit.R_effective.value][0],\
+                            'effective_radius':profile_to_fit.R_effective.value,'n': 2.},
                 'out':['L_effective','R_effective','sersic_index'],
                 'out_units':[profile_to_fit.total_luminosity.unit/unit.pc**2,unit.kpc,1],
                 'function': (sersic if cfg.fitting_general.backend
@@ -105,8 +106,9 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
                 'name':'Sersic',
                 'fail':'random_disk'},
                 'EXP+HERN':
-                {'initial':[profile_to_fit.total_luminosity.value/10.,float(profile_to_fit.R_effective.value/(10.*1.8153)),\
-                                density[0]/2.,radii[density < density[0]/np.e][0]],
+                {'initial':{'Ltotal':profile_to_fit.total_luminosity.value/100.,
+                            'hern_length':float(profile_to_fit.R_effective.value/(10.*1.8153)),\
+                            'central':density[0]/2.,'h':radii[density < density[0]/np.e][0]},
                 'out':['total_luminosity','hernquist_scale_length','central_SB','scale_length'],
                 'out_units':[profile_to_fit.total_luminosity.unit,unit.kpc,\
                                 profile_to_fit.values.unit,unit.kpc],
@@ -123,6 +125,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
 
 
     evaluate = determine_profiles_to_fit(type)
+   
     fitted_dict = {}
     for ev in evaluate:
         try:
@@ -139,7 +142,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
 
                 print_log(f'''The fit to {ev} has a red Chi^2 {tmp_red_chisq}.
 As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a mis fit''',\
-                    cfg,case=['main'])
+                    cfg,case=['main','screen'])
                 tmp_red_chisq = float('NaN')
 
             if len(fit_function_dictionary[ev]['Type']) == 2:
@@ -173,11 +176,14 @@ As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a
 
 
     red_chi = [fitted_dict[x]['red_chi_sq']  for x in fitted_dict]
+  
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         min_red_chi = np.nanmin(red_chi)
     #red_chi = [float('NaN'),float('NaN
     # ')]
+    ev_we_want = None
+    rejected = {}
     if not np.isnan(min_red_chi):
         print_log('FIT_PROFILE: We have found at least one decent fit.',cfg,case=['main'])
         for ev in fitted_dict:
@@ -185,12 +191,27 @@ As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a
                 # if the sersic index is 0.9 < 1.1 we prefer an exponential
                 if ev.lower() == 'sersic':
                     if 0.9 < fitted_dict[ev]['parameters'][2] < 1.1: 
+                        rejected[ev] = {'profile': fitted_dict[ev]['profile'],
+                            'name':fitted_dict[ev]['function'],
+                            'red_chi_square':fitted_dict[ev]['red_chi_sq']}
                         ev = 'EXPONENTIAL'
-                    elif 3.9 < fitted_dict[ev]['parameters'][2] < 4.1: 
-                        ev = 'HERNQUIST'
-                break
 
-        fitted_dict =fitted_dict[ev]
+                    elif 3.9 < fitted_dict[ev]['parameters'][2] < 4.1: 
+                        rejected[ev] = {'profile': fitted_dict[ev]['profile'],
+                            'name':fitted_dict[ev]['function'].__name__,
+                            'red_chi_square':fitted_dict[ev]['red_chi_sq']}
+                        ev = 'HERNQUIST'
+                ev_we_want = copy.deepcopy(ev)
+            elif not np.isnan(fitted_dict[ev]['red_chi_sq']):
+                rejected[ev] = {'profile': fitted_dict[ev]['profile'],
+                            'name':fitted_dict[ev]['function'],
+                            'red_chi_square':fitted_dict[ev]['red_chi_sq']}
+        if len(rejected) > 0:
+            print_log(f'FIT_PROFILE: We have rejected the following profiles {rejected}',\
+                cfg,case=['debug_add'])
+            setattr(profile_to_fit,'rejected',rejected)
+
+        fitted_dict =fitted_dict[ev_we_want]
 
     else:
         for ev in fitted_dict:
@@ -205,15 +226,16 @@ As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a
     
    
     for i,parameter in enumerate(fitted_dict['component_parameter']):
-        print(fitted_dict['parameters'][i],fitted_dict['component_units'][i])
         setattr(profile_to_fit,parameter,fitted_dict['parameters'][i]*\
             fitted_dict['component_units'][i])
-   
+       
     if not cfg.RC_Construction.keep_random_profiles:
         profile_to_fit.original_values = copy.deepcopy(profile_to_fit.values)
         profile_to_fit.type = fitted_dict['result']
         profile_to_fit.values = profile 
-   
+        profile_to_fit.type= f'{fitted_dict["result"]}'
+        profile_to_fit.name=f'{ev_we_want}_{get_uncounted(profile_to_fit.name)[1]}'
+  
     cfg.fitting_general.backend = original_backend
     return
 fit_profile.__doc__ =f'''
@@ -258,23 +280,28 @@ def single_fit_profile(profile_to_fit,fit_function,initial,cfg=None,\
               case=['debug_add','screen'])
     inp_fit_function = {'function':fit_function, 'variables':[]}
     parameter_settings = {}
-    for i,parameter in enumerate(inspect.signature(fit_function).parameters):
+    
+    for parameter in inspect.signature(fit_function).parameters:
         if parameter != 'r':
             parameter_settings[parameter] = Parameter(name=parameter,
-            value=initial[i-1],min=0.,max =None,stddev= None, variable=True,
+            value=initial[parameter],min=0.,max =None,stddev= None, variable=True,
             include= True,fixed_boundaries= False)
             if parameter == 'mass':
                 parameter_settings[parameter].max =\
-                    integrate_surface_density(profile_to_fit.radii,profile_to_fit.values)
+                    1.5*integrate_surface_density(profile_to_fit.radii,profile_to_fit.values)
             if parameter == 'central':
                 parameter_settings[parameter].max = 2*profile_to_fit.values[0].value
-            if parameter in ['n','sersic_index','h','hern_length'
+            if parameter in ['sersic_index','h','hern_length'
                 ,'effective_radius','scale_length']:
                 parameter_settings[parameter].min = 1e-6
-         
+            if parameter == 'n':
+                parameter_settings[parameter].min = 0.3
+            if parameter == 'Ltotal':
+                parameter_settings[parameter].min = 0.7*parameter_settings[parameter].value
             inp_fit_function['variables'].append(parameter)
     setattr(profile_to_fit,'numpy_curve',inp_fit_function)
     setattr(profile_to_fit,'fitting_variables',parameter_settings)
+    
    
     if cfg.fitting_general.backend == 'lmfit':
         initial_parameters = initial_guess(cfg,profile_to_fit)
@@ -286,26 +313,35 @@ def single_fit_profile(profile_to_fit,fit_function,initial,cfg=None,\
         original_settings = copy.deepcopy(profile_to_fit.fitting_variables)
         for variable in profile_to_fit.fitting_variables:
             profile_to_fit.fitting_variables[variable] = initial_parameters[variable]
-            profile_to_fit.fitting_variables[variable].fixed_boundaries = True
-            if parameter in ['n','sersic_index','h','hern_length'
-                ,'effective_radius','scale_length']:
-                parameter_settings[parameter].min = 1e-6
+            profile_to_fit.fitting_variables[variable].fixed_boundaries = False
+          
         optical_fits,BIC,succes = lmfit_run(cfg,profile_to_fit,initial_parameters,optical_profile=True)
 
     elif cfg.fitting_general.backend == 'numpyro':
-        optical_fits,BIC,succes = numpyro_run(cfg,profile_to_fit,
-            out_dir=cfg.output.log_directory,optical_profile=True)
-        
+        try:
+            optical_fits,BIC,succes = numpyro_run(cfg,profile_to_fit,
+                out_dir=cfg.output.log_directory,optical_profile=True)
+        except FailedFitError as e:
+            print_log(f'FIT_PROFILE: We failed to fit {name}:',cfg,case=['main'])
+            BIC = float('NaN')
+            succes = False
+            optical_fits=copy.deepcopy(profile_to_fit.fitting_variables)
+            for variable in optical_fits:
+                optical_fits[variable].value = float('NaN')
     # Here we are only taking the value we could improve by parsing fit statistics and errors
     tot_parameters = [optical_fits[x].value for x in optical_fits]
-    print(optical_fits[x].print() for x in optical_fits)
+  
     # let's see if our fit has a reasonable reduced chi square
     if not succes:
         profile = np.zeros_like(profile_to_fit.radii)*unit.Lsun/unit.pc**2
         profile[profile == 0.] = float('NaN')
         red_chisq = float('NaN')
     else:
-        profile = fit_function(profile_to_fit.radii.value,*tot_parameters)
+        if cfg.fitting_general.backend == 'lmfit':
+            profile = fit_function(profile_to_fit.radii.value,*tot_parameters)
+        elif cfg.fitting_general.backend == 'numpyro':
+            profile = fit_function(*tot_parameters,profile_to_fit.radii.value)
+
         red_chi = np.sum((profile_to_fit.values[profile_to_fit.values.value > 0.].value
             -profile[profile_to_fit.values.value > 0.])**2/
             (profile_to_fit.errors[profile_to_fit.values.value > 0.].value))

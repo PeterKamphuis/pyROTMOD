@@ -63,5 +63,6 @@ def main():
         #radii = ensure_kpc_radii(derived_RCs[0],distance=cfg.general.distance,log=log )
         rotmass_main(cfg, derived_RCs, total_rc)
 
+
 if __name__ =="__main__":
     main()

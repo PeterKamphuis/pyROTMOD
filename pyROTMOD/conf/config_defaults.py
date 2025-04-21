@@ -104,7 +104,6 @@ def add_dynamic(in_dict,in_components, halo = 'NFW'):
         dict_elements = []
         for name in in_components:
             component,no = get_uncounted(in_components[name].name)
-            print(in_dict)
             if 'GAS' in component.upper():
                 dict_elements.append([f'{in_components[name].name}',
                     [1.33, None, None,not in_dict['fitting_general']['fixed_gas_ML'],True]])
@@ -119,8 +118,6 @@ def add_dynamic(in_dict,in_components, halo = 'NFW'):
         for ell in dict_elements:
             in_dict.fitting_parameters[ell[0]] = ell[1]
     return in_dict
-
-
 
 def check_arguments():
     argv = sys.argv[1:]
@@ -241,16 +238,13 @@ Exiting pyROTMOD.''')
 
    
     cfg = OmegaConf.merge(cfg,short_yaml_config)
-    cfg = OmegaConf.merge(cfg,short_inputconf)
-
-   
-    
+    cfg = OmegaConf.merge(cfg,short_inputconf) 
     return cfg
 
 
 
 def read_fitting_config(cfg,baryonic_RCs,print_examples=False):
-    halo = 'NFW'
+    halo = 'NFW' 
     try:
         halo = cfg.file_config.fitting_general.HALO
     except:
@@ -259,6 +253,9 @@ def read_fitting_config(cfg,baryonic_RCs,print_examples=False):
         halo = cfg.input_config.fitting_general.HALO
     except:
         pass
+    halo = halo.upper()
+    if halo == 'MOND':
+        halo = 'MOND_CLASSIC'
     if print_examples:
         baryonic_components = {'DISK_GAS_1': [],'EXPONENTIAL_1':{},'HERNQUIST_1': []}
         cfg.fitting_general.HALO = halo

@@ -3,7 +3,7 @@
 
 import numpy as np
 import warnings
-from pyROTMOD.support.errors import InputError,RunTimeError
+from pyROTMOD.support.errors import InputError,RunTimeError,FailedFitError
 import copy
 import pyROTMOD.rotmass.potentials as potentials
 import pyROTMOD.support.constants as cons
@@ -564,8 +564,16 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
             fixed_boundaries= False)
         
         total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['lgamplitude','length_scale']
+    skip_output = False
     if cfg.fitting_general.backend.lower() == 'numpyro':
-        variable_fits,BIC,succes = numpyro_run(cfg,total_RC, out_dir = out_dir)
+        try:
+            variable_fits,BIC,succes = numpyro_run(cfg,total_RC, out_dir = out_dir)
+        except FailedFitError as e:
+            print_log(f'''The parameters for the function could not be fitted.
+Skipping the output Fase''', cfg, case=['main'])
+            succes = False
+            skip_output =True
+
     else:
         initial_guesses = initial_guess(cfg, total_RC)
         original_settings = copy.deepcopy(total_RC.fitting_variables)
@@ -577,16 +585,17 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
             all_RCs,total_RC,font=font)
        
         variable_fits,BIC,succes = lmfit_run(cfg, total_RC, original_settings,out_dir = out_dir)
-    update_RCs(variable_fits,all_RCs,total_RC) 
-    
-    print_log('Plotting and writing',cfg,case=['main'])
-    plot_curves(f'{out_dir}/{results_file}_Final_Curves.pdf', \
-        all_RCs,total_RC,font=font)      
-    
-    red_chisq = calculate_red_chisq(total_RC)
+    if not skip_output:
+        update_RCs(variable_fits,all_RCs,total_RC) 
+        
+        print_log('Plotting and writing',cfg,case=['main'])
+        plot_curves(f'{out_dir}/{results_file}_Final_Curves.pdf', \
+            all_RCs,total_RC,font=font)      
+        
+        red_chisq = calculate_red_chisq(total_RC)
 
-    write_output_file(cfg,variable_fits,BIC,output_dir=out_dir, 
-        red_chisq = red_chisq, results_file=f'{results_file}_results.txt')
+        write_output_file(cfg,variable_fits,BIC,output_dir=out_dir, 
+            red_chisq = red_chisq, results_file=f'{results_file}_results.txt')
     if not succes:
         raise RunTimeError(f'''The fitting procedure was not successful. See log for details
 ''')

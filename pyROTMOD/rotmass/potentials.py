@@ -35,8 +35,6 @@ def Log_NFW():
                                     -(r*((10**lgC)/(10**lgR200))/(1+r*((10**lgC)/(10**lgR200)))))
                                     /(log(1+10**lgC) - ((10**lgC)/(1+10**lgC)))))
     return nfw
- 
-
 class Log_NFW_config:
     parameters = {'lgC': [None, None, None, True,True],\
     'lgR200': [None, None, None, True,True]}
@@ -59,7 +57,6 @@ def MOND_CLASSIC_INDIVIDUAL():
     r, V,ML, a0 = symbols('r V ML a0')
     mond_in = V/abs(V)*sqrt(ML*V**2*sqrt(1+sqrt(1+(2*r*(a0*3.0856776e11)/(ML*V**2))**2))/sqrt(2))
     return mond_in
-
 class MOND_CLASSIC_config:
     parameters = {'a0': [1.2e-8, None, None, True,True],
                   'V': ['RC_input_Curve'],
@@ -70,8 +67,6 @@ def BURKERT():
     r,RHO0,R_C = symbols('r RHO0 R_C')
     Burkert = sqrt((6.4*cons.Gpot.value*RHO0*((R_C**3)/r))*(log(1+(r/R_C)) - atan(r/R_C)  + 0.5*log( 1+ (r/R_C)**2) ))
     return Burkert
-
-
 class BURKERT_config:
     parameters = {'RHO0': [None, None, None, True,True],\
     'R_C': [None, None, None, True,True]}

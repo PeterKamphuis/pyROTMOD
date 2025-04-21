@@ -3,7 +3,7 @@
 
 import numpy as np
 import warnings
-from pyROTMOD.support.errors import InitialGuessWarning
+from pyROTMOD.support.errors import InitialGuessWarning,FailedFitError
 import copy
 import lmfit
 import inspect
@@ -27,17 +27,22 @@ import numpyro
 from functools import partial
 
 import pickle
+from pyROTMOD.optical.profiles import hernexp
 
 
 
 
 
-def initial_guess(cfg, total_RC):
+def initial_guess(cfg, total_RC,r_last = False):
     
     negative= cfg.fitting_general.negative_values
     minimizer = cfg.fitting_general.initial_minimizer
     #First initiate the model with the numpy function we want to fit
-    model = lmfit.Model(total_RC.numpy_curve['function'])
+    ivars = 'r'
+    paras = [x for x in  total_RC.numpy_curve['variables']]
+    model = lmfit.Model(total_RC.numpy_curve['function'],independent_vars = ivars,
+                        param_names= paras)
+   
     #no_input = False
    
     guess_variables = copy.deepcopy(total_RC.fitting_variables)
@@ -70,7 +75,6 @@ def initial_guess(cfg, total_RC):
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="invalid value encountered in sqrt")
             warnings.filterwarnings("ignore", message="invalid value encountered in divide")
-            print(f'Starting the fit')
             initial_fit = model.fit(data=total_RC.values.value, \
                 params=parameters, r=total_RC.radii.value, method= minimizer\
                 ,nan_policy='omit',scale_covar=False)
@@ -104,7 +108,7 @@ def initial_guess(cfg, total_RC):
                     guess_variables[variable].max = float(initial_fit.params[variable].value+buffer \
                                              if (total_RC.fitting_variables[variable].max is None)\
                                              else initial_fit.params[variable].max)
-
+                    guess_variables[variable].std = float(initial_fit.params[variable].stderr)
                     guess_variables[variable].value = float(initial_fit.params[variable].value)
                 no_errors = False
     print_log(f'''INITIAL_GUESS: These are the statistics and values found through {minimizer} fitting of the residual.
@@ -223,7 +227,6 @@ def simple_model(total_RC, fitting_variables, cfg=None):
 
 
 def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
-    original_variable_settings = copy.deepcopy(total_RC.fitting_variables)
     negative = cfg.fitting_general.negative_values
    
     numpyro.set_host_device_count(cfg.input.ncpu)
@@ -232,7 +235,8 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
         chains = cfg.input.ncpu
     else:
         chains = cfg.fitting_general.numpyro_chains
-    results_name = get_output_name(cfg,profile_name = total_RC.name)
+    results_name = get_output_name(cfg,profile_name = total_RC.name,
+            function_name= total_RC.numpy_curve['function'].__name__)
     succes  = False 
     #numpyro.set_host_device_count(1)
     rng_key = random.PRNGKey(67)  # Replace 0 with a seed value if needed
@@ -281,7 +285,7 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
             labels_map[parameter] = get_correct_label(strip_parameter,no)
     azLabeller = arviz.labels.MapLabeller(var_name_map=labels_map)    
     count=0.
-  
+    no_differential = True
     while no_succes:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
@@ -290,16 +294,49 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
             warnings.filterwarnings("ignore", message="invalid value encountered in divide")
             warnings.filterwarnings("ignore", message="invalid value encountered in multiply")
             warnings.filterwarnings("ignore", message="overflow encountered in power") 
-          
+            warnings.filterwarnings("ignore", message="overflow encountered in reduce")
+            warnings.filterwarnings("ignore", message="overflow encountered in square")
+            warnings.filterwarnings("ignore", message="invalid value encountered in subtract")
             sampler.run(subkey,total_RC, guess_variables)
+            sampler.print_summary()
+            
+            
             data = arviz.from_numpyro(sampler,log_likelihood=True)
-            #print(inf_data)
+         
             fit_summary = arviz.summary(data, var_names=parameter_names,
                 fmt='xarray',round_to= None)
-         
-            no_succes,count,setbounds = check_boundaries(cfg,guess_variables,
-                fit_summary,negative=negative,count=count,
-                arviz_output=True,prev_bound = setbounds)
+            
+            available_metrics = list(fit_summary.metric.values)
+            count_rhat = 0
+            for var_name in parameter_names:
+                metric_values = fit_summary[var_name].values
+                if metric_values[available_metrics.index('r_hat')] > 1.15:
+                    count_rhat +=1
+            if count_rhat/len(parameter_names) > 0.5:
+                print_log(f'''More than 50% of the parameters have a rhat > 1.15.
+This is not good. 
+''',cfg,case=['main','screen'])
+                if no_differential:
+                    print_log(f'''We will run a differntial evolution to estimate the parameters.
+''',cfg,case=['main','screen'])
+                    guess_variables = initial_guess(cfg,total_RC)
+                    no_differential = False
+                    for var_name in guess_variables:
+                        guess_variables[var_name].min = (guess_variables[var_name].value
+                            - 3.*guess_variables[var_name].stddev)  
+                        if not negative and guess_variables[var_name].min < 0.:
+                            guess_variables[var_name].min = 0.
+                        guess_variables[var_name].max = (guess_variables[var_name].value
+                            + 3.*guess_variables[var_name].stddev)
+                      
+                else:
+                    raise FailedFitError(f'''The fit was not succesful, we cannot trust this output''') 
+            else:
+                print_log(f'''We will adopt the boundaries of the Fit
+''',cfg,case=['main','screen'])
+                no_succes,count,setbounds = check_boundaries(cfg,guess_variables,
+                    fit_summary,negative=negative,count=count,
+                    arviz_output=True,prev_bound = setbounds)
          
     if count < cfg.fitting_general.max_iterations:
         succes = True     
@@ -316,6 +353,7 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
         else:
             print_log(f'''The fit was not succesful, we will use the last fit as the best guess output'''
 ,cfg,case=['main'])
+            
         arviz.plot_trace(data, var_names= parameter_names, figsize=(12,9), 
                  labeller = azLabeller, legend =True, compact =False)
         plt.tight_layout()
@@ -342,7 +380,7 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
         #,labels=lab)
         plt.savefig(f"{out_dir}{results_name}_Numpyro_COV_Fits.pdf",dpi=150)
         plt.close()
-    print_log(f''' Numpyro_RUN: We find the following parameters for this fit. \n''',cfg,case=['main'])
+    print_log(f''' Numpyro_RUN: We find the following parameters for this fit. \n''',cfg,case=['main','screen'])
     for variable in guess_variables:
         if guess_variables[variable].variable:
             guess_variables[variable].min = float(fit_summary[variable].values
@@ -565,8 +603,8 @@ def check_boundaries(cfg,function_variable_settings,output,count=0.,arviz_output
                           float(current_parameter.max)]
             
             change = abs(3.*current_parameter.stddev)
-            min_bounds = [current_parameter.stddev-change,
-                          current_parameter.stddev+change]
+            min_bounds = [current_parameter.value-change,
+                          current_parameter.value+change]
             if not negative and min_bounds[0] < 0. and var_name[0:2] != 'lg':
                     min_bounds[0] = 0.
           
@@ -599,13 +637,14 @@ consider changing it''',cfg,case=['main','screen'])
          
             print_log(f'''{var_name} = {current_parameter.value} +/- {current_parameter.stddev} 
 change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bounds = {new_bounds} 
+minbounds = {min_bounds} prev_bound = {prev_bound[var_name]}
 ''',cfg,case=['debug_add'])
             
 
              # We expect that the boundaries are symmetrical around the value
             min_distance = abs(current_parameter.value - new_bounds[0])
             max_distance = abs(current_parameter.value - new_bounds[1])
-          
+
             if change > min_distance:
                 new_bounds[0] = float(current_parameter.value - np.max([change,max_distance]))
                 if not negative and new_bounds[0] < 0. and var_name[0:2] != 'lg':

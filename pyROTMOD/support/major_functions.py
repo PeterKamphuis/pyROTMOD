@@ -111,7 +111,7 @@ Allowed columns are {', '.join(allowed_types)} or for the total RC {','.join(all
 
         #Check that the columns are not empty
         if np.sum(found_input[incolumn].values) == 0.:
-            print(f'The column {incolumn} is empty. We will ignore it.')
+            print_log(f'The column {incolumn} is empty. We will ignore it.',cfg,case=['main'])
             input_columns.remove(incolumn)
             to_remove.append(incolumn)
     if len(to_remove) > 0:
