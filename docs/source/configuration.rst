@@ -1,4 +1,4 @@
-#The Configuration File
+The Configuration File
 =====
 
 Introduction
@@ -8,7 +8,7 @@ pyROTMOD uses OmegaConf (https://github.com/omry/omegaconf) to handle the input 
 
 In a run pyROTMOD first checks the defaults, then the configuration yaml and finally the command line input. This mean that if a value is set in all three input methods the one from the command line is used.
 
-The yml file has four main sections individuals keywords, general, galaxy and rotmass that contain several parameters that can adjust how pyROTMOD runs. All these  parameters are described below.
+The yml file has six main sections individuals keywords, input, output, RC_Construction, fitting_general and fitting_parameters that contain several parameters that can adjust how pyROTMOD runs. All these  parameters are described in detail below.
 
 Individual Keywords
 ----
@@ -27,7 +27,7 @@ Individual Keywords
 
   *str, optional, default = None*
 
-  configuration input file
+  input configuration file
 
 Input Keywords
 --------
@@ -35,9 +35,9 @@ Input Keywords
 
 **ncpu**:
 
-  *int, optional, default = 6*
+  *int, optional, default = assigned or available in hardware - 1*
 
-  Number CPUs used for threaded parts of pyROTMOD. This is not implemented yet.
+  Number of CPUs used for threaded parts of pyROTMOD. In numpyro this determines the number of chains used in the mcmc fitting. In galfit this is the number of threads used for rotation curve fitting.
 
 
 **RC_File.txt**
@@ -45,25 +45,36 @@ Input Keywords
   *str, optional, default = 'RCs_For_Fitting.txt'*
 
   File where RCs can be given to the code without deriving their density profiles.
-  They need to be in the pyROTMOD format. If RC_Construction is disabled this can be the output from a previous run.
+  They need to be in the pyROTMOD format. This file is only read when RC_Construction is enabled to allow for a mixture of density profiles and derived RCs. In case one wants to continue from the output of a previous run the RC file in output is read.
 
-**distance**: null
+**distance**: 
 
-  *float, optional, default = vsys*
+  *float, required, default = None*
 
   Distance to the galaxy. In case the gas_file is a tirific file the default is vsys from that file. In case of a table no default exists.
+  This is a required parameter and the code will exit if not provided.
+
+ **font**: 
+
+  *str, optional, default = "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf"*
 
 
 Output Keywords
 --------
 *Specified with output*
 
-**RC_File.txt**
+**RC_File.txt**:
 
   *str, optional, default = 'RCs_For_Fitting.txt'*
 
-  File where the all the derived RCs will be written in the pyROTMOD format.
+  File where the all the derived RCs will be written in the pyROTMOD format. \n
   !! If RC_Contrustion is enabled this file will be overwritten !!!
+
+ **out_base**:
+
+  *str, optional, default = 'Final_Results'*
+
+  Base name of the output files. 
 
 **output_dir**:
 
@@ -89,6 +100,18 @@ Output Keywords
 
   Switch for printing debug messages in the log. If you are posting an issue with a log on the github please run once with this turned on.
 
+**debug_functions**:
+
+  *List, optional, default = ['ALL']*
+
+  List that can specify for which functions debug messages should be printed. This is a list of strings and can contain any function name.
+  For example to print debug messages in rotmass_main output.debug_functions=['ROTMASS_MAIN']
+
+**verbose**:
+
+  *bool, optional, default =False*
+
+  Print more messages then usual to the screen. 
 
 RC_Construction Keywords
 --------
@@ -99,6 +122,10 @@ RC_Construction Keywords
   *bool, optional, default =True*
 
   Whether to construct the RC from the density files. If this is disabled the code will only fit the RCs as listed in output directory output RC file.
+**out_base**:
+
+  *str, optional, default = ''*
+  Base name of the output files. Additional base_name for output produced in this section
 
 **optical_file**: null
 
@@ -124,6 +151,37 @@ RC_Construction Keywords
   The RADI can be different and the gas disk should be indicated with DISK_G_# the observed RC as V_OBS  with V_OBS_ERR as its error. In case of a tirific file every pair of even-uneven disks are combined into a single disk under the assumption the def indicates different values of the approaching and receding side that should be averaged.
   The first pair of disks is assumed to be V_OBS. 
 
+**scaleheight**
+
+  *list, optional, default = [0., None, 'KPC', 'inf_thin']*
+
+  scale height and vertical mode of the optical disks. If 0. or vertical mode = None infinitely thin disks are used.
+  vertical mode options are  ['exp', 'sech-sq','sech', 'constant', 'lorentzian']. Anything in galfit file supersedes this input.
+
+**truncation_radius**:
+
+  *list, optional, default = [None, 0.2, 'KPC']*
+
+  Truncation radius and softening length at which the density will be tapered to zero. The softening length is as faction of scale length.
+  The last item is the units of the truncation radius.
+
+**gas_scaleheight**
+
+  *list, optional, default =  [0., None, 'KPC', 'inf_thin']*
+
+  scale height and vertical mode of the gas  disks. If read from tirific def file that takes precedence.
+
+**gas_truncation_radius**:
+
+  *list, optional, default = [None, 0.2, 'KPC']*
+
+  same as from optical.
+
+**axis_ratio**
+
+  * float, optional, default = 1.*
+
+  axis ratio of the disks. Anything in galfit file supersedes this input.
 
 **exposure_time**:
 
@@ -131,11 +189,22 @@ RC_Construction Keywords
 
   Exposure time of the optical image. Certain galfit components (edge,sersic) take this into account. For the fit with galfit this should be set in the header of the image.
 
+
 **mass_to_light_ratio**:
 
   *float, optional, default = 1.0*
 
-  Mass to light ratio to be used for converting the optical luminosity profiles to mass profiles
+  Mass to light ratio to be used for converting the optical luminosity profiles to mass profiles.
+  Be aware that also in the fitting of the RCs a mass to light component is implemented. and that if this is set 
+  to a different value than one any variations in RC fitting would reflect from this value. 
+  
+
+**keep_random_profiles**:
+
+  *bool, optional, default = False*
+
+  If we have random profiles in Lsun/pc^2 we do not fit one of the known functions to them keepand assume they are SBR_Profile when multiplied with MLratio, 
+  if set to false we attempt to fit a profile to them with known functions.
 
 **band**:
 
@@ -144,24 +213,13 @@ RC_Construction Keywords
   Band to be used for magnitude to flux/luminosity conversion. This is only used if the input file is in MAG/ARCSEC^2 or when the input file is a galfit file.
   currently available bands are SPITZER3.6, WISE3.4 
 
-**scaleheight**
+**gas_band**:
 
-  *list, optional, default = [0., None]*
+  *str, optional , default = 21cm*
 
-  scale height and vertical mode of the optical disks. If 0. or vertical mode = None infinitely thin disks are used.
-  vertical mode options are  ['exp', 'sech-sq','sech']. Anything in galfit file supersedes this input.
-**gas_scaleheight**
+  For future use
 
-  *list, optional, default = [0., None]*
 
-  scale height and vertical mode of the optical disks. If 0. or vertical mode = None infinitely thin disks are used.
-  vertical mode options are  ['exp', 'sech-sq','sech']. Anything in tirific file supersedes this input.
-
-**axis_ratio**
-
-  * float, optional, default = 1.*
-
-  axis ratio of the bulge. Anything in galfit file supersedes this input.
 
 General Fitting Keywords
 --------
@@ -171,32 +229,99 @@ General Fitting Keywords
 
   *bool, optional, default =True*
 
-  Run the Bayesian Fitting.
+  Run the Bayesian Fitting of RCs.
 
 **negative_values**:
 
   *Bool, optional, default = False*
 
-  Allow for negative values for the parameters.
+  Allow for negative values for the parameters or Not.
+
+**initial_minimizer**:
+  
+  *str, optional, default = 'differential_evolution'
+
+  The minimizer used in the initial estimates. This can be any lmfit minimizer. This has no effect when using numpyro as the fitting method. 
+  The default is differential_evolution which is a global minimizer.
 
 **HALO**:
 
   *str, optional, default =NFW'*
 
-  The requested DM halo potential. For now this is NFW, ISO, BURKERT for the NAFW profile, the pseudo isothermal halo profile and a Burkert profile.
+  The requested DM halo potential. For now this is NFW, ISO, BURKERT for the NFW profile, the pseudo isothermal halo profile and a Burkert profile.
+  MOND is also an option to fit the classic implementation of MOND.
 
+**single_stellar_ML**:
+
+  *bool, optional, default = True*
+
+  If set to True the code will assume a single mass to light ratio for all stellar components. If set to False the code will 
+  fit a different mass to light ratio for each stellar component.
+  This is not recommended as it can easily lead to degeneracies.
+
+**single_gas_ML**:
+  *bool, optional, default = False*
+
+  If set to True the code will assume a single mass to light ratio for all gas components. 
+
+**fixed_stellar_ML**:
+
+  *bool, optional, default = True*
+
+  If set to True the code will assume a fixed mass to light ratio for all stellar components.
+  The individual mass to light ratios set in the fitting_parameters section take precedence. 
+  
+**fixed_gas_ML**:
+
+  *bool, optional, default = True*
+
+  If set to True the code will assume a fixed mass to light ratio for all gas components.
+
+
+  
 **mcmc_steps**:
 
   *int, optional, default= 2000*
 
   Number of integration steps per parameter for the emcee fitting.
 
-**initial_minimizer**:
+**burn**: 
+
+  *int, optional, default = 500* 
   
-  *str, optional, default = 'differential_evolution'
+  Number of steps to discard in MCMC chain per   free parameter
+    
+**numpyro_chains**: 
 
-  The minimizer used in the initial estimates. This can be any lmfit minimizer.
+  *int, optional, default = number of avalaible cpus*
+  
+  no effect in case of lmfit
+    
+**use_gp**: 
 
+  *bool, optional, default = True*
+  
+  use Gaussian Processes as described in https://arxiv.org/abs/2211.06460 or not (False).
+  Note that that the test in that article only converges due to the boundaries set and the problem is actually unconstrained due to the disk-halo degeneracy. 
+  As such it is not clear to me yet if Gaussian Processes truly change things. Please use this code to further investigate this issue.
+  In the code lmfit uses sklearn and numpyro uses tinygp to implement the Gaussian Processes.
+
+**gp_kernel**:
+
+  *str, optional, default = 'RBF'*
+
+  The kernel used in the Gaussian Processes. For now this ahas no effect.
+ 
+**backend**:
+  *str, optional, default = 'numpyro'*
+
+  The backend used for the fitting. This can be numpyro or lmfit. Numpyro is the default and is much faster than lmfit.
+  
+**max_iterations**:
+
+  pyROTMOD will run the fitting unitl the limits of the parameters converge to 5*stdev of the parameter. 
+  This ensures that each parameter is well constrained. However, in case of unconstrained fits this it can be that the parameters do not converge
+  and the code will run for a long time. If the code has done max_iterations it will assume that the problem diverges.
 
 Fitting Keywords
 --------
