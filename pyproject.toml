@@ -22,20 +22,25 @@ classifiers = [
 ]
 dependencies = [
     "astropy",
+    "arviz",
     "corner",
     "emcee",
     "future-fstrings",
     "galpy",
     "importlib_resources>=3.3.0",
+    "jax",
     "lmfit",
     "matplotlib",
     "numdifftools",
     "numpy>=1.14",
+    "numpyro",
     "omegaconf",
     "pandas",
     "scipy",
     "sympy",
+    "tinygp",
     "tqdm",
+    "scikit-learn",
 ]
 
 [project.urls]

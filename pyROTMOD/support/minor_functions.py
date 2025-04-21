@@ -23,8 +23,7 @@ from omegaconf import OmegaConf
 from datetime import datetime
 from pyROTMOD.support.errors import UnitError,InputError,SupportRunError,\
     RunTimeError
-
-
+from pyROTMOD.support.log_functions import print_log
 def add_font(file):
     try:
         mpl_fm.fontManager.addfont(file)
@@ -34,26 +33,6 @@ def add_font(file):
     return font_name
 
 
-def check_arguments():
-    argv = sys.argv[1:]
-
-    if '-v' in argv or '--version' in argv:
-        print(f"This is version {pyROTMOD.__version__} of the program.")
-        sys.exit()
-
-    if '-h' in argv or '--help' in argv:
-        print(''' Use pyROTMOD in this way:
-pyROTMOD configuration_file=inputfile.yml   where inputfile is a yaml config file with the desired input settings.
-pyROTMOD -h print this message
-pyROTMOD print_examples=True prints a yaml file (defaults.yml) with the default setting in the current working directory.
-in this file values designated ??? indicated values without defaults.
-
-All config parametere can be set directly from the command line by setting the correct parameters, e.g:
-pyROTMOD fitting.HALO=ISO to set the pseudothermal halo.
-note that list inout should be set in apostrophes in command line input. e.g.:
-pyROTMOD 'fitting.MD=[1.4,True,True]'
-''')
-        sys.exit()
 
 #Check wether a variable is a unit quantity and if not multiply with the supplied unit
 # unlees is none
@@ -66,7 +45,8 @@ def check_quantity(value):
         if not value is None and not isinstance(value,u.quantity.Quantity):
             raise UnitError(f'This value {value} is unitless it shouldnt be')
     return value
-  
+
+
 def isquantity(value):
     verdict= True
     if not isinstance(value,u.quantity.Quantity):
@@ -134,7 +114,7 @@ create_directory.__doc__ =f'''
 # function for converting kpc to arcsec and vice versa
 
 def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', \
-                    physical=False,debug = False, quantity= False):
+                    physical=False,debug = False, quantity= False,cfg=None):
 
     if quantity:
         try:
@@ -156,7 +136,7 @@ def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', \
             print_log(f'''CONVERTSKYANGLE: Starting conversion from the following input.
     {'':8s}Angle = {angle}
     {'':8s}Distance = {distance}
-''',None,debug =True)
+''',cfg,case=['debug_add'])
        
     try:
         _ = (e for e in angle)
@@ -218,77 +198,85 @@ def convertskyangle(angle, distance=1., unit='arcsec', distance_unit='Mpc', \
 
     return kpc
 
-def check_input(cfg,fitting=False):
+def check_input(cfg, fitting=False):
     'Check various input values to avoid problems later on.'
     #check the slashes and get the ininitial dir for the output dir
-    if cfg.general.output_dir[-1] != '/':
-        cfg.general.output_dir = f"{cfg.general.output_dir}/"
-    if cfg.general.output_dir[0] == '/':
-        first_dir= cfg.general.output_dir.split('/')[1]
+    if cfg.output.output_dir[-1] != '/':
+        cfg.output.output_dir = f"{cfg.output.output_dir}/"
+    if cfg.output.output_dir[0] == '/':
+        first_dir= cfg.output.output_dir.split('/')[1]
     else:
-        first_dir= cfg.general.output_dir.split('/')[0]
+        first_dir= cfg.output.output_dir.split('/')[0]
     #check the slashes and get the ininitial dir for the logging dir
-    if cfg.general.log_directory[-1] != '/':
-        cfg.general.log_directory = f"{cfg.general.log_directory}/"
-    if cfg.general.log_directory[0] == '/':
-        cfg.general.log_directory = cfg.general.log_directory[1:]
-    first_log= cfg.general.log_directory.split('/')[0]
+    if cfg.output.log_directory[-1] != '/':
+        cfg.output.log_directory = f"{cfg.output.log_directory}/"
+    if cfg.output.log_directory[0] == '/':
+        cfg.output.log_directory = cfg.output.log_directory[1:]
+    first_log= cfg.output.log_directory.split('/')[0]
 
     # If the first directories in the log dir and the output dir are not the same
     # we assume the log dir should start at the output dir
     if first_dir != first_log:
-        cfg.general.log_directory = f'{cfg.general.output_dir}{cfg.general.log_directory}'
+        cfg.output.log_directory = f'{cfg.output.output_dir}{cfg.output.log_directory}'
     else:
-        cfg.general.log_directory = f'/{cfg.general.log_directory}'
+        cfg.output.log_directory = f'/{cfg.output.log_directory}'
     #Create the directories if non-existent   
-    if not os.path.isdir(cfg.general.output_dir):
-        os.mkdir(cfg.general.output_dir)
-    create_directory(cfg.general.log_directory,cfg.general.output_dir)
-  
-    log = f"{cfg.general.log_directory}{cfg.general.log}"
-    #If it exists move the previous Log
-    if os.path.exists(log):
-        os.rename(log,f"{cfg.general.log_directory}/Previous_Log.txt")
+    if not fitting:
+        if not os.path.isdir(cfg.output.output_dir):
+            os.mkdir(cfg.output.output_dir)
+        create_directory(cfg.output.log_directory,cfg.output.output_dir)
+        
+        log = f"{cfg.output.log_directory}{cfg.output.log}"
+        #If it exists move the previous Log
+        if os.path.exists(log):
+            os.rename(log,f"{cfg.output.log_directory}/{cfg.output.out_base}_Previous_Log.txt")
 
-    #Start a new log
-    print_log(f'''This file is a log of the modelling process run at {datetime.now()}.
+        #Start a new log
+        print_log(f'''This file is a log of the modelling process run at {datetime.now()}.
 This is version {pyROTMOD.__version__} of the program.
-''',log,debug=cfg.general.debug)
+''',cfg,case=['main'])
 
-    # check the input files
-    if not cfg.RC_Construction.gas_file and cfg.RC_Construction.enable:
-        print(f'''You did not set the gas file input''')
-        cfg.RC_Construction.gas_file = input('''Please add the gas file or tirific output to be evaluated: ''')
-    print_log(f'''We are using the input from {cfg.RC_Construction.gas_file} for the gaseous component.
-''',log,debug=cfg.general.debug)
-    if cfg.RC_Construction.gas_file.split('.')[1].lower() == 'def' and \
-        cfg.RC_Construction.gas_scaleheight[1] is None\
-        and cfg.RC_Construction.enable:
-        cfg.RC_Construction.gas_scaleheight = [0.,None,'ARCSEC','tir']
+        # check the input files
+        if not cfg.RC_Construction.gas_file and not cfg.RC_Construction.optical_file \
+            and cfg.RC_Construction.enable:
+            print(f'''You did not set the gas file input or the optical file input.
+    We cannot model the profiles without these inputs.''')
+            if not cfg.RC_Construction.gas_file:
+                cfg.RC_Construction.gas_file = input('''Please add the gas file or tirific output to be evaluated: ''')
+            if not cfg.RC_Construction.optical_file:
+                cfg.RC_Construction.optical_file = input('''Please add the optical file or galfit output to be evaluated: ''')
+        if not cfg.RC_Construction.gas_file is None:
+            print_log(f'''We are using the input from {cfg.RC_Construction.gas_file} for the gaseous component.
+''',cfg,case=['debug_add'])
+            if cfg.RC_Construction.gas_file.split('.')[1].lower() == 'def' and \
+                cfg.RC_Construction.gas_scaleheight[1] is None\
+                and cfg.RC_Construction.enable:
+                cfg.RC_Construction.gas_scaleheight = [0.,None,'ARCSEC','tir']
+            
+        if not cfg.RC_Construction.optical_file is None:
+            print_log(f'''We are using the input from {cfg.RC_Construction.optical_file} for the optical component.
+''',cfg,case=['debug_add'])
     
-    if not cfg.RC_Construction.optical_file and cfg.RC_Construction.enable:
-        cfg.RC_Construction.optical_file = input('''Please add the optical or galfit file to be evaluated: ''')
-    print_log(f'''We are using the input from {cfg.RC_Construction.optical_file} for the optical component.
-''',log,debug=cfg.general.debug)
-
-    if cfg.general.distance is None:
-        raise InputError(f'We cannot model profiles adequately without a distance proper distance')
-    
-    print_log(f'''We are using the following distance = {cfg.general.distance}.
-''',log,debug=cfg.general.debug)
+        if cfg.input.distance is None:
+            raise InputError(f'We cannot model profiles adequately without a proper distance')
+        
+        print_log(f'''We are using the following distance = {cfg.input.distance}.
+''',cfg,case=['main'])
     # return the cfg and log name
 
     #write the input to the log dir.
-    if cfg.general.debug:
-        name = f'{cfg.general.log_directory}run_input'
-        if fitting:
-            name += '_fitting'
-        name +='.yml'   
-        with open(name,'w') as input_write:
-            input_write.write(OmegaConf.to_yaml(cfg))
+   
+    name = f'{cfg.output.log_directory}/{cfg.output.out_base}_input'
+    if fitting:
+        name += '_RC_fitting'
+    else:
+        name += '_RC_construction'
+    name +='.yml'   
+    with open(name,'w') as input_write:
+        input_write.write(OmegaConf.to_yaml(cfg))
        
 
-    return cfg,log
+    return cfg
 check_input.__doc__ =f'''
  NAME:
     check_input(cfg)
@@ -317,46 +305,70 @@ check_input.__doc__ =f'''
 '''
 
 def get_correct_label(par,no,exponent = 0.):
-    #Need to use raw strings here to avoid problems with \
-    label_dictionary = {'Gamma_disk':[r'$\mathrm{M/L_{disk}}$', ''],
-                         'Gamma_bulge':[r'$\mathrm{M/L_{bulge}}$', ''],
-                         'Gamma_gas': [r'$\mathrm{M/L_{gas}}$',''],
-                         'Gamma_sersic': [r'$\mathrm{M/L_{gas}}$',''],
-                         'ML_stellar':[r'$\mathrm{M/L_{optical}}$',''],
-                         'ML_gas':[r'$\mathrm{M/L_{gas}}$',''],
-                         'RHO': [r'$\mathrm{\rho_{c}}$',r'$\mathrm{(M_{\odot} \,\, pc^{-3})}$'],
-                         'RHO0': [r'$\mathrm{\rho_{c}}$',r'$\mathrm{(M_{\odot} \,\, pc^{-3})}$'],
-                         'R_C': [r'$ \mathrm{R_{c}}$','(kpc)'],
-                         'C':[r'C',''],
-                         'R200':[r'$ \mathrm{R_{200}}$','(kpc)'],
-                         'm': [r'Axion Mass','(eV)'],
-                         'central': [r'Central SBR',r'$\mathrm{(M_{\odot}\,\,pc^{-2})}$'],
-                         'h': [r'Scale Length','(kpc)'],
-                         'mass': [r'Total Mass', r'$\mathrm{(M_{\odot})}$'],
-                         'hern_length': ['Hernquist length','(kpc)}$'],
-                         'effective_luminosity': [r'$\mathrm{L_{e}}$',r'$\mathrm{(M_{\odot})}$'] ,
-                         'effective_radius': [r'$\mathrm{R_{e}}}$','(kpc)'] ,
-                         'n': [r'Sersic Index',''],
-                         'a0': [r'$\mathrm{a_{0}}$',r'$\mathrm{(cm\,\,s^{-2})}$']
-                         }
-    if par in label_dictionary:
-        if par[:5] == 'Gamma':
-            string = f'{label_dictionary[par][0]} {no}'
+    '''Get the correct label for the parameter'''
+    split_parameter = par.split('_')
+    morph_type ='unknown'
+    component_type = 'unknown'
+    log = False
+    if len(split_parameter) > 1:
+        if split_parameter[0] in ['effective','R','length','hern']:
+            pass
         else:
-            string = label_dictionary[par][0] 
+            par = split_parameter[0]
+            morph_type = split_parameter[1]
+            if len(split_parameter) > 2:
+                component_type = split_parameter[2]
+    if par[0:2] == 'lg':
+        par = par[2:]
+        log = True
+    #Need to use raw strings here to avoid problems with \
+    label_dictionary = {'Gamma':[f'$\\mathrm{{M/L_{{{morph_type}}}}}$ {no}', ''],
+                        'ML': [f'$\\mathrm{{M/L_{{{morph_type}}}}}$',''],
+                        'RHO': [r'$\mathrm{\rho_{c}}$',r'$\mathrm{(M_{\odot} \,\, pc^{-3})}$'],
+                        'RHO0': [r'$\mathrm{\rho_{c}}$',r'$\mathrm{(M_{\odot} \,\, pc^{-3})}$'],
+                        'R_C': [r'$ \mathrm{R_{c}}$','(kpc)'],
+                        'C':[r'C',''],
+                        'R200':[r'$ \mathrm{R_{200}}$','(kpc)'],
+                        'm': [r'Axion Mass','(eV)'],
+                        'central': [r'Central SBR',r'$\mathrm{(M_{\odot}\,\,pc^{-2})}$'],
+                        'h': [r'Scale Length','(kpc)'],
+                        'Ltotal':   [r'Total Luminosity',r'$\mathrm{(L_{\odot})}$'],    
+                        'mass': [r'Total Mass', r'$\mathrm{(M_{\odot})}$'],
+                        'hern_length': ['Hernquist scale length','(kpc)}$'],
+                        'effective_luminosity': [r'$\mathrm{L_{e}}$',r'$\mathrm{(M_{\odot})}$'] ,
+                        'effective_radius': [r'$\mathrm{R_{e}}$','(kpc)'] ,
+                        'n': [r'Sersic Index',''],
+                        'a0': [r'$\mathrm{a_{0}}$',r'$\mathrm{(cm\,\,s^{-2})}$'],
+                        'amplitude': [r'GP Amplitude',''],
+                        'length_scale': [r'GP Length Scale','(RC step)'],
+                        }
+    if par in label_dictionary:
+        string = label_dictionary[par][0] 
         if abs(exponent) >= 1.:
             string += f'$\\times10^{{{exponent}}}$' 
-        string += f'{label_dictionary[par][1]}'
-                     
+        if log:
+            string = f'log10({string})'
+            if label_dictionary[par][1] != '':    
+                string += f'log10({label_dictionary[par][1]})'
+        else:
+            string += f'{label_dictionary[par][1]}'
+
     else:
         print(f''' The parameter {par} has been stripped
 Unfortunately we can not find it in the label dictionary.''')
-        raise RunTimeError(f'{par} is not in label dictionary')
-    
+        string = f'{"_".join(split_parameter)}'
+       
     return string   
 
-
-
+def get_output_name(cfg,profile_name =None,function_name = None):
+    name = f'{cfg.output.out_base}_{cfg.fitting_general.backend}'
+    if cfg.fitting_general.use_gp:
+        name += '_GP'
+    if profile_name is not None:
+        name += f'_{profile_name}' 
+    if function_name is not None:
+        name += f'_{function_name}'   
+    return name
 '''Stripe any possible _counters from the key'''
 def get_uncounted(key):
     number = None
@@ -374,7 +386,8 @@ def get_uncounted(key):
                 component = key
     except ValueError:
         component = key
-        
+    if number is None:
+        number = '1'    
        
     return component,number
 
@@ -396,7 +409,10 @@ def integrate_surface_density(radii,density, log=None):
         +[np.pi*((radii[-1]+0.5*(radii[-1]-radii[-2]))**2-((radii[-1]+radii[-2])/2.)**2)]\
         ,u.pc**2)
     #Make sure the ring radii are in pc**2 to match the densities
-    mass = np.sum(quantity_array([x*y for x,y in zip(ringarea,density)],u.Msun))
+   
+    mass_array = [x*y for x,y in zip(ringarea,density)]
+    #Convert to a proper np array quantity and sum
+    mass =np.sum(quantity_array(mass_array,mass_array[0].unit))
     return mass,ringarea
 
 
@@ -438,23 +454,47 @@ isiterable.__doc__ =f'''
 '''
 
 
-def plot_individual_profile(profile,max,log = None):
-    if not profile.values.unit in [u.Lsun/u.pc**2,u.Msun/u.pc**3] :
-        print_log(f'''The units of {profile.name} are not L_SOLAR/PC^2 OR M_SOLAR/PC^3 .
+def plot_individual_profile(profile,min,max,ax,log = None,cfg=None):
+    stellar_profile=False
+    if not profile.values.unit in [u.Lsun/u.pc**2,u.Msun/u.pc**3,u.Msun/u.pc**2] :
+        print_log(f'''The units of {profile.name} are not L_SOLAR/PC^2, M_SOLAR/PC^2 OR M_SOLAR/PC^3 .
 Unit = {profile.values.unit}                  
 Not plotting this profile.
-''',log )
-        return max,False
+''',cfg, case=['main'] )
+        return max,stellar_profile
     if profile.radii.unit != u.kpc:
         print_log(f'''The units of {profile.name} are not KPC.
 Not plotting this profile.
-''',log )
-        return max,False
-    plt.plot(profile.radii.value,profile.values.value, \
-                label = profile.name)
-    if np.nanmax(profile.values) > max:
-        max =  np.nanmax(profile.values)
-    return max,True
+''',cfg, case=['main'])
+        return max,stellar_profile
+    
+    lineout = ax.plot(profile.radii.value,profile.values.value, \
+            label = profile.name)
+    if np.nanmax(profile.values.value) > max:
+        max =  np.nanmax(profile.values.value)
+    if np.nanmin(profile.values[profile.values.value > 0.].value) < min:
+        min =  np.nanmin(profile.values[profile.values.value > 0.].value)
+    if profile.original_values is not None:
+        if profile.original_values.unit == profile.values.unit:
+           
+            #plt.gca().twiny()
+            secline = ax.plot(profile.radii.value,profile.original_values.value, \
+                    label = f'Original {profile.name}')
+            if np.nanmax(profile.original_values.value) > max:
+                max =  np.nanmax(profile.original_values.value)
+            lineout = lineout +secline
+   
+      
+        if 'rejected' in profile.__dict__:
+            for rej_ev in profile.rejected:
+                secline = ax.plot(profile.radii.value, profile.rejected[rej_ev]['profile'], 
+                            label = f'Rejected { profile.rejected[rej_ev]["name"]}',
+                            linestyle='--',zorder=-2,alpha=0.5)
+                lineout = lineout + secline   
+    if not profile.component is None:
+        if profile.component.lower() == 'stars':
+            stellar_profile = True
+    return min,max,stellar_profile,ax,lineout
 
 def calculate_total_profile(total,profile):
     if len(total['Profile']) ==  0.:
@@ -482,7 +522,8 @@ def calculate_total_profile(total,profile):
     return total
 
 def get_accepted_unit(search_dictionary,attr, acceptable_units = \
-                      [u.Lsun/u.pc**2,u.Msun/u.pc**3]):
+                      [u.Lsun/u.pc**2,u.Msun/u.pc**2,u.Msun/u.pc**3],
+                      cfg=None,first_value=None):
     funit = None
     iters = iter(search_dictionary)
     while funit is None:
@@ -494,136 +535,121 @@ def get_accepted_unit(search_dictionary,attr, acceptable_units = \
           
         if isquantity(values):
             funit = values.unit
-          
         else:
             continue
-     
+        print_log(f'''The units of {search_dictionary[check].name} for {attr} are {funit}.
+''',cfg,case=['debug_add','screen'])
+        if first_value is not None:
+            if funit == first_value:
+                funit = None          
         if not funit in acceptable_units:
             funit = None
     return funit
 
 def get_exponent(level,threshold = 2.):
-    logexp = int(np.floor(np.log10(level)))
-    correction = 1./(10**(logexp))
+   
+    if np.isnan(level) or level == 0.:
+        logexp= 0.
+    else:
+        logexp = int(np.floor(np.log10(abs(level))))
+        correction = 1./(10**(logexp))
     if abs(logexp) <= threshold:
         logexp = 0.
         correction=1.
     return logexp,correction
 
 
-def plot_profiles(gas_profiles,optical_profiles, log= None\
-                ,output_dir = './',input_profiles = None):
-    '''This function makes a simple plot of the optical profiles'''    
+def plot_profiles(profiles, cfg= None\
+                ,output_file = './Profiles.png'):
+    '''This function makes a simple plot of the profiles'''    
     max = 0.
+    min = 1000.
     # From the optical profiles we select the first acceptable units and make sure that all 
     # other profiles adhere to these unit. As they are not coupled it is possible that 
     # no profile adheres to the combination of units
-    first_value_unit = get_accepted_unit(optical_profiles,'values')
-    first_radii_unit = get_accepted_unit(optical_profiles,'radii',\
-        acceptable_units=[u.pc,u.kpc,u.Mpc])
+   
+    first_value_unit = get_accepted_unit(profiles,'values',cfg=cfg)
+    first_radii_unit = get_accepted_unit(profiles,'radii',\
+        acceptable_units=[u.pc,u.kpc,u.Mpc],cfg=cfg)
+    
+    second_value_unit = get_accepted_unit(profiles,'values',cfg=cfg
+        ,first_value = first_value_unit)
+    
     if first_value_unit is None:
-        print_log(f'''We cannot find acceptable units in the optical profiles.
-The units are not L_SOLAR/PC^2 or M_SOLAR/PC^3 for any profile.
-This is not acceptable for the output
-''',log )
+        print_log(f'''We cannot find acceptable units in the profiles.
+{[profiles[x].print() for x in profiles]}
+This is not acceptable for the output.
+''',cfg,case=['main','screen'] )
         raise RunTimeError("No proper units")    
     if first_radii_unit is None:
-        print_log(f'''We cannot find acceptable units in the radii in optical profiles.
+        print_log(f'''We cannot find acceptable units in the radii in profiles.
 The units are not PC, KPC or MPC for any profile.
-This is not acceptable for the output
-''',log )
+This is not acceptable for the output.
+''',cfg,case=['main'] )
         raise RunTimeError("No proper units")
-    for name in gas_profiles:
-        if gas_profiles[name].values.unit == first_value_unit and\
-            gas_profiles[name].radii.unit == first_radii_unit:
-            plt.plot(gas_profiles[name].radii.value,gas_profiles[name].values.value,\
-                     label = gas_profiles[name].name )
-            max = np.nanmax(gas_profiles[name].values)
-        else:
-            print_log(f'''The profile units of {gas_profiles[name].name} are not {first_value_unit} (unit  = {gas_profiles[name].values.unit})
-or the radii units are   not {first_radii_unit} (unit  = {gas_profiles[name].radii.unit})           
-Not plotting this profile.
-''',log )
-    #This is only used here so do not make it a Density Profile        
     tot_opt ={'Profile': [],'Radii': []}
-    for x in optical_profiles:
-        if optical_profiles[x].name.split('_')[0] == 'SKY':
-            continue
-        if optical_profiles[x].values.unit == first_value_unit and\
-            optical_profiles[x].radii.unit == first_radii_unit:
-            max,succes = plot_individual_profile(optical_profiles[x],max)
+    doubleplot = False
+    fig = setup_fig()
+    ax = fig.add_subplot(111)
+    leg_lines = []
+    for name in profiles:
+        if profiles[name].values.unit == first_value_unit and\
+            profiles[name].radii.unit == first_radii_unit:
+            min,max,succes,ax,lineout = plot_individual_profile(profiles[name],
+                min,max,ax)
+
             if succes:
-                tot_opt = calculate_total_profile(tot_opt,optical_profiles[x])
-            
+                tot_opt = calculate_total_profile(tot_opt,profiles[name])
+        elif profiles[name].values.unit == second_value_unit and\
+            profiles[name].radii.unit == first_radii_unit:
+            if not doubleplot:
+                secax= ax.twinx()
+                secax._get_lines = ax._get_lines            
+            mintwo,maxtwo,succes,secax,lineout = plot_individual_profile(profiles[name]
+                ,min,max,secax)
+        
+            doubleplot = True
+              
         else:
-            print_log(f'''The profile units of {optical_profiles[x].name} are not {first_value_unit} (unit  = {optical_profiles[x].values.unit})
-or the radii units are   not {first_radii_unit} (unit  = {optical_profiles[x].radii.unit})           
-Not plotting this profile.
-''',log )
-          
-       
-    plt.plot(tot_opt['Radii'],tot_opt['Profile'], label='Total Optical')
-    
-    max = np.nanmax(tot_opt['Profile'].value)
-    min = np.nanmin(np.array([x for x in tot_opt['Profile'].value if x > 0.]))
-   
-    plt.ylim(min,max)
+            print_log(f'''The profile units of {profiles[name].name} are not {first_value_unit} (unit  = {profiles[name].values.unit})
+    or the radii units are   not {first_radii_unit} (unit  = {profiles[name].radii.unit})           
+    Not plotting this profile.
+    ''',cfg,case=['main'])
+        leg_lines = leg_lines + lineout 
+    if len(tot_opt['Profile']) > 0 and not doubleplot:  
+        lineout = ax.plot(tot_opt['Radii'],tot_opt['Profile'], \
+                label = 'Total Optical Profile',color='black',linestyle='--')
+        if np.nanmax(tot_opt['Profile'].value) > max:
+            max =  np.nanmax(tot_opt['Profile'].value)
+        leg_lines.append(lineout[0]) 
+        #min = np.nanmin(np.array([x for x in tot_opt['Profile'].value if x > 0.]))
+    if min <= 0.:
+        min=0.001
+
+    max = max*1.1
+    ax.set_ylim(min,max)
     #plt.xlim(0,6)
-    plt.ylabel(select_axis_label(first_value_unit))
-    plt.xlabel(select_axis_label(first_radii_unit))    
+    ax.set_ylabel(select_axis_label(first_value_unit))
+    ax.set_xlabel(select_axis_label(first_radii_unit))    
+    ax.set_yscale('log')
+    if doubleplot:
+        secax.set_ylabel(select_axis_label(second_value_unit))        
+        secax.set_xlim(ax.get_xlim())
+        secax.set_ylim(mintwo,maxtwo)
+        secax.set_yscale('log')
+  
+    labs = [l.get_label() for l in leg_lines]
+    ax.legend(leg_lines, labs, loc=0)
+
+    
+    plt.savefig(output_file)
    
-
-    plt.yscale('log')
-    plt.legend()
-    if first_value_unit == u.Lsun/u.pc**2:
-        plt.savefig(f'{output_dir}/Surface_Brightness_Profiles.png')
-    else:
-        plt.savefig(f'{output_dir}/Density_Profiles.png')
     plt.close()
-
-def print_log(log_statement,log, screen = True,debug = False):
-    log_statement = f"{log_statement}"
-    if screen or not log:
-        print(log_statement)
-    if log:
-        with open(log,'a') as log_file:
-            log_file.write(log_statement)
-
-print_log.__doc__ =f'''
- NAME:
-    print_log
- PURPOSE:
-    Print statements to log if existent and screen if Requested
- CATEGORY:
-    support_functions
-
- INPUTS:
-    log_statement = statement to be printed
-    log = log to print to, can be None
-
- OPTIONAL INPUTS:
-    debug = False
-
-    screen = False
-    also print the statement to the screen
-
- OUTPUTS:
-    line in the log or on the screen
-
- OPTIONAL OUTPUTS:
-
- PROCEDURES CALLED:
-    linenumber, .write
-
- NOTE:
-    If the log is None messages are printed to the screen.
-    This is useful for testing functions.
-'''
 
 
 
 def profiles_to_lines(profiles):
-    '''Trandform the profiles into a set of line by line columns.'''
+    '''Transform the profiles into a set of line by line columns.'''
     profile_columns = []
     profile_units = []
     to_write = []
@@ -649,10 +675,10 @@ def profiles_to_lines(profiles):
         for x in to_write:
             single = []
             if len(profiles[x].values) > count:
-                single = [f'{profiles[x].radii[count].value:>15.2f}',\
-                          f'{profiles[x].values[count].value:>15.2f}']
+                single = [f'{profiles[x].radii[count].value:>15.5f}',\
+                          f'{profiles[x].values[count].value:>15.5f}']
                 if not profiles[x].errors is None:
-                    single.append(f'{profiles[x].errors[count].value:>15.2f}')
+                    single.append(f'{profiles[x].errors[count].value:>15.5f}')
             else:
                 single = [f'{"NaN":>15s}',f'{"NaN":>15s}']
                 if not profiles[x].errors is None:
@@ -714,7 +740,9 @@ def strip_unit(value, requested_unit = None, variable_type = None):
     if requested_unit is None and variable_type is None:
         raise InputError(f'You have to request a unit or set a variable type')
     translation_dict = {'radii' : u.kpc,\
-                        'density': u.Msun/u.pc**2}
+                        'density': u.Msun/u.pc**3,
+                       'sbr_lum': u.Lsun/u.pc**2,
+                       'sbr_dens': u.Msun/u.pc**2,}
     if requested_unit is None:
         try:
             requested_unit = translation_dict[variable_type]
@@ -752,6 +780,44 @@ def select_axis_label(input):
                         'M_SOLAR/PC^3': r'$\mathrm{Density\,\,  (M_{\odot}\,\,  pc^{-3})}$',
                         'SomethingIsWrong': None}
     return translation_dict[input]
+
+def setup_fig(size_factor=1.5,figsize= [7,7]):
+    Overview = plt.figure(2, figsize=figsize, dpi=300, facecolor='w', edgecolor='k')
+#stupid pythonic layout for grid spec, which means it is yx instead of xy like for normal human beings
+    try:
+        mpl_fm.fontManager.addfont( "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf")
+        font_name = mpl_fm.FontProperties(fname= "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf").get_name()
+    except FileNotFoundError:
+        font_name= 'Deja Vu'
+        
+    labelfont = {'family': font_name,
+         'weight': 'normal',
+         'size': 8*size_factor}
+    plt.rc('font', **labelfont)
+    plt.rcParams['xtick.direction'] = 'in'
+    plt.rcParams['ytick.direction'] = 'in'
+    return Overview
+setup_fig.__doc__ =f'''
+ NAME:
+    setup_fig
+ PURPOSE:
+    Setup a figure to plot in
+ CATEGORY:
+   
+ INPUTS:
+    
+ OPTIONAL INPUTS:
+
+ OUTPUTS:
+  
+ OPTIONAL OUTPUTS:
+
+ PROCEDURES CALLED:
+    scipy.ndimage.map_coordinates, np.array, np.mgrid
+
+ NOTE:
+'''
+
 
 '''Translate strings to astropy units and vice versa (invert =True)'''
 def translate_string_to_unit(input,invert=False):
@@ -797,12 +863,19 @@ def write_header(profiles,
                 string = ''
                 if profiles[name].profile_type == 'rotation_curve': 
                     string = f'# {profiles[name].name} is a rotation curve constructed with the following parameters. \n'
-                else:
+                elif profiles[name].profile_type == 'sbr_lum':
+                    string = f'# {profiles[name].name} is a luminosity constructed with the following parameters. \n'
+                elif profiles[name].profile_type == 'sbr_dens':
+                    string = f'# {profiles[name].name} is a surface brightness profile constructed with the following parameters. \n'
+                elif profiles[name].profile_type == 'density': 
                     string = f'# {profiles[name].name} is a density profile constructed with the following parameters. \n'
+                else:
+                    string = f'# {profiles[name].name} is a random profile constructed with the following parameters. \n'
+               
                 string += f'''#{'':9s}We used a distance of {profiles[name].distance:.1f}. 
 #{'':9s}The type of is {profiles[name].type} relating to the component {profiles[name].component}. \n'''
 
-                if profiles[name].profile_type == 'density_profile': 
+                if profiles[name].profile_type in ['density','sbr_dens']: 
                     string += f'''#{'':9s}We used a Mass to Light ratio of {zero_if_none(profiles[name].MLratio):.3f}.
 #{'':9s}A height of {zero_if_none(profiles[name].height)}+/-{zero_if_none(profiles[name].height_error)} of type {zero_if_none(profiles[name].height_type)}.                      
 '''
@@ -844,25 +917,27 @@ write_header.__doc__ =f'''
 '''
 
   
-def write_profiles(gas_profile_in,total_rc,optical_profiles = None,output_dir= './',\
-             log =None, filename = None,optical_filename='Optical_Mass_Densities.txt'):
-    '''Function to write all the profiles to some text files.'''
-    if not optical_profiles is None:
-        optical_lines = profiles_to_lines(optical_profiles)
-        write_header(optical_profiles,output_dir=output_dir,file=optical_filename)
-        with open(f'{output_dir}{optical_filename}','a') as opt_file:   
-            for line in optical_lines:
-                opt_file.write(f'{line} \n')
-    if not  filename is None:
-        gas_profile = copy.deepcopy(gas_profile_in)
-        gas_profile['V_OBS'] = total_rc
-        gas_lines =  profiles_to_lines(gas_profile)
-        #rc_lines = profiles_to_lines({'V_OBS':total_rc})  
+def write_profiles(profiles,output_dir= './',additional_input=None,\
+        cfg=None, filename = None):
+    write_profiles = {}
 
-        write_header(gas_profile,output_dir=output_dir,file=filename)
-        with open(f'{output_dir}{filename}','a') as file:
-            for line in gas_lines:
-                    file.write(f'{line} \n')
+
+    '''Function to write all the profiles to some text files.'''
+    if not profiles is None:
+        for name in profiles:
+            write_profiles[name] = profiles[name]
+    
+    if not additional_input is None:
+        for name in additional_input:
+            write_profiles[name] = additional_input[name]   
+
+    if not write_profiles is None:
+        lines = profiles_to_lines(write_profiles)
+        write_header(write_profiles,output_dir=output_dir,file=filename)
+        with open(f'{output_dir}{filename}','a') as file:   
+            for line in lines:
+                file.write(f'{line} \n')
+
        
      
 def zero_if_none(val):

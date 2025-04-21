@@ -25,11 +25,19 @@ def NFW():
     r,C,R200= symbols('r C R200')
     nfw = (R200/0.73)*sqrt( (R200/r)*((log(1+r*(C/R200))-(r*(C/R200)/(1+r*(C/R200))))/(log(1+C) - (C/(1+C)))))
     return nfw
- 
-
 class NFW_config:
     parameters = {'C': [None, None, None, True,True],\
     'R200': [None, None, None, True,True]}
+  
+def Log_NFW():
+    r,lgC,lgR200= symbols('r lgC lgR200')
+    nfw = ((10**lgR200)/0.73)*sqrt(((10**lgR200)/r)*((log(1+r*((10**lgC)/(10**lgR200)))
+                                    -(r*((10**lgC)/(10**lgR200))/(1+r*((10**lgC)/(10**lgR200)))))
+                                    /(log(1+10**lgC) - ((10**lgC)/(1+10**lgC)))))
+    return nfw
+class Log_NFW_config:
+    parameters = {'lgC': [None, None, None, True,True],\
+    'lgR200': [None, None, None, True,True]}
   
   # if V and ML are in a potential it is assumed that this is an 
   # alternative gravity where no additional RC is required beyond the baryonic RCs
@@ -49,7 +57,6 @@ def MOND_CLASSIC_INDIVIDUAL():
     r, V,ML, a0 = symbols('r V ML a0')
     mond_in = V/abs(V)*sqrt(ML*V**2*sqrt(1+sqrt(1+(2*r*(a0*3.0856776e11)/(ML*V**2))**2))/sqrt(2))
     return mond_in
-
 class MOND_CLASSIC_config:
     parameters = {'a0': [1.2e-8, None, None, True,True],
                   'V': ['RC_input_Curve'],
@@ -60,26 +67,7 @@ def BURKERT():
     r,RHO0,R_C = symbols('r RHO0 R_C')
     Burkert = sqrt((6.4*cons.Gpot.value*RHO0*((R_C**3)/r))*(log(1+(r/R_C)) - atan(r/R_C)  + 0.5*log( 1+ (r/R_C)**2) ))
     return Burkert
-
-
 class BURKERT_config:
     parameters = {'RHO0': [None, None, None, True,True],\
     'R_C': [None, None, None, True,True]}
    
-
-#Taken from Aritra, Not pulished yet
-def Fuzzy_DM():
-    r,m,R_C = symbols('r m R_C')
-    #m in eV  r and r_c in kpc and rho_Fuzzy_DM in M/pc**3
-    #rho_Fuzzy_DM = 1.9*(m*10**23)**(-2)*R_C**(-4) /(1+0.091*(r/R_C)**2)**8
-    #MR=4/3.*pi*r**3*rho_Fuzzy_DM
-    #m in 10^-23 eV
-    Fuzzy_DM = sqrt(cons.Gpot.value*4/3.*pi*r**2*(1.9*(m)**(-2)*R_C**(-4) /(1+0.091*(r/R_C)**2)**8)*10**9)
-    return Fuzzy_DM
-    #(m/s)^2*kpc/Msol  *kpc^2 * M/pc**3
-    #1./pc = 1./(10^-3 kpc) =10^3 1./kpc
-
-class Fuzzy_DM_config:
-    parameters = {'m': [None, None, None, True,True],\
-    'R_C': [None, None, None, True,True]}
-  

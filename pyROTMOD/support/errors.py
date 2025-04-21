@@ -5,6 +5,8 @@ class BadFileError(Exception):
     pass
 class CalculateError(Exception):
     pass
+class FailedFitError(Exception):
+    pass
 class InitialGuessWarning(Exception):
     pass
 class InputError(Exception):

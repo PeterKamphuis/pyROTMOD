@@ -29,15 +29,41 @@ Individual Keywords
 
   configuration input file
 
-General Keywords
+Input Keywords
 --------
-*Specified with general*
+*Specified with input*
 
 **ncpu**:
 
   *int, optional, default = 6*
 
   Number CPUs used for threaded parts of pyROTMOD. This is not implemented yet.
+
+
+**RC_File.txt**
+
+  *str, optional, default = 'RCs_For_Fitting.txt'*
+
+  File where RCs can be given to the code without deriving their density profiles.
+  They need to be in the pyROTMOD format. If RC_Construction is disabled this can be the output from a previous run.
+
+**distance**: null
+
+  *float, optional, default = vsys*
+
+  Distance to the galaxy. In case the gas_file is a tirific file the default is vsys from that file. In case of a table no default exists.
+
+
+Output Keywords
+--------
+*Specified with output*
+
+**RC_File.txt**
+
+  *str, optional, default = 'RCs_For_Fitting.txt'*
+
+  File where the all the derived RCs will be written in the pyROTMOD format.
+  !! If RC_Contrustion is enabled this file will be overwritten !!!
 
 **output_dir**:
 
@@ -63,11 +89,6 @@ General Keywords
 
   Switch for printing debug messages in the log. If you are posting an issue with a log on the github please run once with this turned on.
 
-**RC_File.txt**
-
-  *str, optional, default = 'RCs_For_Fitting.txt'*
-
-  File with all the input RCs in the pyROTMOD format. If RC_Contrustion is enabled this is where the RCs are written to if only fitting is enabled this is where the RCs are obtained from.
 
 RC_Construction Keywords
 --------
@@ -77,7 +98,7 @@ RC_Construction Keywords
 
   *bool, optional, default =True*
 
-  Whether to construct the RC from the density files
+  Whether to construct the RC from the density files. If this is disabled the code will only fit the RCs as listed in output directory output RC file.
 
 **optical_file**: null
 
@@ -103,11 +124,6 @@ RC_Construction Keywords
   The RADI can be different and the gas disk should be indicated with DISK_G_# the observed RC as V_OBS  with V_OBS_ERR as its error. In case of a tirific file every pair of even-uneven disks are combined into a single disk under the assumption the def indicates different values of the approaching and receding side that should be averaged.
   The first pair of disks is assumed to be V_OBS. 
 
-**distance**: null
-
-  *float, optional, default = vsys*
-
-  Distance to the galaxy. In case the gas_file is a tirific file the default is vsys from that file. In case of a table no default exists.
 
 **exposure_time**:
 
@@ -182,7 +198,7 @@ General Fitting Keywords
   The minimizer used in the initial estimates. This can be any lmfit minimizer.
 
 
-General Fitting Keywords
+Fitting Keywords
 --------
 *Specified with fitting_parameters*
 
@@ -194,12 +210,13 @@ The list is build up from five parameters
   2. Lower limit (float). if set to null no lower limit is imposed
   3. Upper limit (float). if set to null no upper limit is imposed
   4. Fit parameter (bool). If this item is false the initial guess is fixed in the fitting.
-  5. Include parameter (bool). If this item is set to false the parameter is not included in the final function to be fitted. E.g., if for MG this is False the gas disk is not added to the gas disk.
+  5. Include parameter (bool). If this item is set to false the parameter is not included in the final function to be fitted. E.g., if for gas disk this is False the gas disk is not considered in the fitting at all.
 
 For the parameters of the DM they must be included in the definition of the DM Halo and they will always be included into the final function.
-These parameters are set dynamically and when not included in the final fitting equation they are ignored (5. is False).
+These parameters are set dynamically and when not included in the final fitting equation they are ignored in the evealution of the curve (5. is False).
 Parameters for the baryonic curves should correspond to their type name with a counter (e.g. DISK_GAS, EXPONENTIAL_1,EXPONENTIAL_2, BULGE_1, HERNQUIST_1)
 For the DM halo they should correspond to the parameter being fitted. The code can deal with multiple instance of of optical and gas disk. However, these can quickly become degenerate.
+For complex models it is probably better to run the fitting first and then copy the tyaml file from the log directory to get all parameters.
 
 **DISK_GAS_#**
 
