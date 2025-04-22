@@ -34,15 +34,15 @@ def main():
     font_name = add_font(cfg.input.font)
    
     if cfg.RC_Construction.enable:
-        print_log(f'We start to derive the RCs.\n',cfg,case=['main','screen'])
+        print_log(f'We start to derive the RCs.\n',cfg,case=['main'])
         derived_RCs,total_rc = obtain_RCs(cfg)
-        print_log(f'We managed to derive  the RCs.\n',cfg,case=['main','screen'])
+        print_log(f'We managed to derive  the RCs.\n',cfg,case=['main'])
     else:
         #If we have run before we can simple read from the RC file
-        print_log(f'We start to read the RCs.\n',cfg,case=['main','screen'])  
+        print_log(f'We start to read the RCs.\n',cfg,case=['main'])  
         total_rc, derived_RCs = read_RCs(file=f'{cfg.output.output_dir}{cfg.output.RC_file}'\
             ,cfg=cfg)
-        print_log(f'We managed to read the RCs.\n',cfg,case=['main','screen'])
+        print_log(f'We managed to read the RCs.\n',cfg,case=['main'])
 
     #If there are profiles that are not proper we remove them
     names = [name for name in derived_RCs] 

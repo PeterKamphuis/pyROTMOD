@@ -73,7 +73,7 @@ def combine_SB_profiles(gas_profiles,optical_profiles,total_RC, cfg = None):
                 optical_profiles[name].extend = total_RC.radii[-1]
             if isinstance(optical_profiles[name],Luminosity_Profile):
                 print_log(f'We have found a luminosity profile ({name}) and will deproject it.',\
-                    cfg,case=['main','screen'])
+                    cfg,case=['main'])
                 deprojected_profile = convert_luminosity_profile(\
                     optical_profiles[name],cfg=cfg)
                 profiles[name] = deprojected_profile

@@ -40,7 +40,7 @@ def get_optical_profiles(cfg):
     distance = cfg.input.distance * unit.Mpc
     MLRatio = cfg.RC_Construction.mass_to_light_ratio*unit.Msun/unit.Lsun
     print_log(f"GET_OPTICAL_PROFILES: We are reading the optical parameters from {cfg.RC_Construction.optical_file}. \n"\
-        ,cfg, case = ['main','screen'])
+        ,cfg, case = ['main'])
     if distance.value == 0.:
         raise InputError(f'We cannot convert profiles adequately without a distance.')
     with open(cfg.RC_Construction.optical_file) as file:
@@ -69,7 +69,7 @@ def get_optical_profiles(cfg):
     for name in optical_profiles:
        
         print_log(f"GET_OPTICAL_PROFILES: We are processing the optical parameters for {name}. \n"\
-            ,cfg, case = ['main','screen'])
+            ,cfg, case = ['main'])
         optical_profiles[name].band = cfg.RC_Construction.band
         optical_profiles[name].distance = distance
         optical_profiles[name].MLratio = MLRatio  
@@ -107,7 +107,7 @@ def get_optical_profiles(cfg):
             
         else:
             print_log(f"GET_OPTICAL_PROFILES: We are calculating the optical parameters for {name}. \n"\
-                ,cfg, case = ['main','screen'])
+                ,cfg, case = ['main'])
             optical_profiles[name].calculate_attr(cfg=cfg)
             if optical_profiles[name].type =='hernq+expdisk':
                split['names'].append(name)
@@ -116,7 +116,7 @@ def get_optical_profiles(cfg):
         split_double_profile(optical_profiles,name,cfg=cfg)
         
   
-    print_log(f"We found the following optical components:\n",cfg, case = ['main','screen'])
+    print_log(f"We found the following optical components:\n",cfg, case = ['main'])
     for name in optical_profiles:
         
         # Components are returned as [type,integrated magnitude,scale parameter in arcsec,sercic index or scaleheight in arcsec, axis ratio]

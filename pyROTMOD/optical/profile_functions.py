@@ -142,7 +142,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
 
                 print_log(f'''The fit to {ev} has a red Chi^2 {tmp_red_chisq}.
 As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a mis fit''',\
-                    cfg,case=['main','screen'])
+                    cfg,case=['main'])
                 tmp_red_chisq = float('NaN')
 
             if len(fit_function_dictionary[ev]['Type']) == 2:
@@ -219,7 +219,7 @@ As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a
                 profile_to_fit.type = 'random_disk'
                 return 
         print_log(f'You claim your profile is {type} but we fail to fit a proper function an it is not a disk.',\
-            cfg,case=['main','screen'])
+            cfg,case=['main'])
         raise InputError(f'We can not process profile {function}')
 
     profile = fitted_dict['profile']*unit.Lsun/unit.pc**2
@@ -277,7 +277,7 @@ def single_fit_profile(profile_to_fit,fit_function,initial,cfg=None,\
                         name='Generic',count= 0):
  
     print_log(f'FIT_PROFILE: We are fitting {fit_function.__name__} to {profile_to_fit.name}',cfg,
-              case=['debug_add','screen'])
+              case=['debug_add'])
     inp_fit_function = {'function':fit_function, 'variables':[]}
     parameter_settings = {}
     

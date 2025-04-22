@@ -70,7 +70,7 @@ Output Keywords
   File where the all the derived RCs will be written in the pyROTMOD format. \n
   !! If RC_Contrustion is enabled this file will be overwritten !!!
 
- **out_base**:
+**out_base**:
 
   *str, optional, default = 'Final_Results'*
 

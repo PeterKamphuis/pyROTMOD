@@ -538,7 +538,7 @@ def get_accepted_unit(search_dictionary,attr, acceptable_units = \
         else:
             continue
         print_log(f'''The units of {search_dictionary[check].name} for {attr} are {funit}.
-''',cfg,case=['debug_add','screen'])
+''',cfg,case=['debug_add'])
         if first_value is not None:
             if funit == first_value:
                 funit = None          

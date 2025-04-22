@@ -89,7 +89,7 @@ def build_curve(all_RCs, total_RC, cfg=None):
 
     print_log(f'''BUILD_CURVE:: We are fitting this complete formula:
 {'':8s}{initial_formula.__doc__}
-''',cfg,case=['main','screen'])
+''',cfg,case=['main'])
     # since lmfit is a piece of shit we have to construct our final formula through exec
    
     clean_code = create_formula_code(initial_formula,replace_dict,total_RC,\
@@ -271,7 +271,7 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
 
     print_log(f''' This the code for the formula that is finally fitted.
 {clean_code}
-''',cfg,case=['debug_add','screen'])
+''',cfg,case=['debug_add'])
    
     return clean_code
 create_formula_code.__doc__ =f'''
@@ -300,36 +300,49 @@ create_formula_code.__doc__ =f'''
  NOTE:
 '''
 
-def write_output_file(cfg,final_variable_fits,BIC,output_dir='./',\
+def write_output_file(cfg,final_variable_fits,result_summary,output_dir='./',\
                 results_file = None, red_chisq= None):
     if results_file is None:
-        results_file = f'{get_output_name(cfg)}_results.txt'
+        results_file = f'{get_output_name(cfg)}_results'
     #variables_fitted = [x for x in final_variable_fits]
     variable_line = f'{"Variable":>15s} {"Value":>15s} {"Error":>15s} {"Lower Bound":>15s} {"Upper Bound":>15s} \n'
     with open(f'{output_dir}{results_file}.txt','w') as file:
         file.write('# These are the results from pyROTMOD. \n')
-        file.write('# An error designated as Fixed indicates a parameter that is not fitted. \n')
-        file.write(f'# The Reduced Xi^2 for this fit is {red_chisq}.\n')
-        file.write(f'# The Bayesian Information Criterion for this fit is {BIC}.\n')
-        file.write(variable_line)
-        added = []
-        for variable in final_variable_fits:
-            if variable not in added:
-                if final_variable_fits[variable].include:
-                    if 0.001 < final_variable_fits[variable].value < 10000.:
-                        form = ">15.4f"
-                    else:
-                        form = ">15.4e"
-                    variable_line = f'{variable:>15s} {final_variable_fits[variable].value:{form}}'
-                    min =final_variable_fits[variable].min
-                    max = final_variable_fits[variable].max
-                    if not final_variable_fits[variable].variable:
-                        variable_line += f' {"Fixed":>15s} {min:{form}} {max:{form}} \n'
-                    else:
-                        err = final_variable_fits[variable].stddev
-                        variable_line += f' {err:{form}} {min:{form}} {max:{form}} \n'
-                    file.write(variable_line)
-                    added.append(variable)
+        if result_summary['succes']:
+            file.write(f'''# The fit was a success and the ranges for the free parameters have converged. \n''')
+        else:
+            file.write(f'''# The fit was not a success. \n''') 
+            if result_summary['max_iterations']:
+                file.write(f'''# The fit did not converge after {cfg.fitting_general.max_iterations} iterations. \n''')
+            else:
+                file.write(f'''# The following error occured in the fitting:
+# {result_summary['Error']}\n''')
+        if red_chisq is not None:
+            file.write(f'''# The reduced Chi^2 for this fit is {red_chisq:.4f}.\n''')
+        if result_summary['BIC'] is not None:
+            file.write(f'''# The Bayesian Information Criterion for this fit is {result_summary['BIC']}.\n''')
+
+
+        if result_summary['succes'] or result_summary['max_iterations']:
+            file.write(variable_line)
+            added = []
+            for variable in final_variable_fits:
+                if variable not in added:
+                    if final_variable_fits[variable].include:
+                        if 0.001 < final_variable_fits[variable].value < 10000.:
+                            form = ">15.4f"
+                        else:
+                            form = ">15.4e"
+                        variable_line = f'{variable:>15s} {final_variable_fits[variable].value:{form}}'
+                        min =final_variable_fits[variable].min
+                        max = final_variable_fits[variable].max
+                        if not final_variable_fits[variable].variable:
+                            variable_line += f' {"Fixed":>15s} {min:{form}} {max:{form}} \n'
+                        else:
+                            err = final_variable_fits[variable].stddev
+                            variable_line += f' {err:{form}} {min:{form}} {max:{form}} \n'
+                        file.write(variable_line)
+                        added.append(variable)
 
 def set_RC_style(RC,input=False):
     style_dictionary = {'label':  'V$_{Obs}$',\
@@ -564,15 +577,24 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
             fixed_boundaries= False)
         
         total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['lgamplitude','length_scale']
-    skip_output = False
+    result_summary = {'skip_output': False, 'BIC': None, 'succes': False,
+                      'max_iterations': False, 'Error': 'No Error'}
     if cfg.fitting_general.backend.lower() == 'numpyro':
         try:
-            variable_fits,BIC,succes = numpyro_run(cfg,total_RC, out_dir = out_dir)
+            variable_fits,BIC,fit_summary = numpyro_run(cfg,total_RC, out_dir = out_dir)
+            result_summary['BIC'] = BIC
+            if fit_summary['iterations'] >= cfg.fitting_general.max_iterations:
+                result_summary['max_iterations'] = True
+                result_summary['succes'] = False
+            else:
+                result_summary['succes'] = True
         except FailedFitError as e:
             print_log(f'''The parameters for the function could not be fitted.
 Skipping the output Fase''', cfg, case=['main'])
-            succes = False
-            skip_output =True
+            result_summary['succes'] = False
+            result_summary['skip_output'] =True
+            result_summary['Error'] = e
+            variable_fits = {}
 
     else:
         initial_guesses = initial_guess(cfg, total_RC)
@@ -584,21 +606,26 @@ Skipping the output Fase''', cfg, case=['main'])
         plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
             all_RCs,total_RC,font=font)
        
-        variable_fits,BIC,succes = lmfit_run(cfg, total_RC, original_settings,out_dir = out_dir)
-    if not skip_output:
-        update_RCs(variable_fits,all_RCs,total_RC) 
-        
+        variable_fits,BIC,fit_summary = lmfit_run(cfg, total_RC, original_settings,out_dir = out_dir)
+        result_summary['BIC'] = BIC
+        if fit_summary['iterations'] >= cfg.fitting_general.max_iterations:
+            result_summary['max_iterations'] = True
+            result_summary['succes'] = False
+        else:
+            result_summary['succes'] = True
+
+    red_chisq = None
+    if not result_summary['skip_output']:
+        update_RCs(variable_fits,all_RCs,total_RC)         
         print_log('Plotting and writing',cfg,case=['main'])
         plot_curves(f'{out_dir}/{results_file}_Final_Curves.pdf', \
             all_RCs,total_RC,font=font)      
         
         red_chisq = calculate_red_chisq(total_RC)
 
-        write_output_file(cfg,variable_fits,BIC,output_dir=out_dir, 
-            red_chisq = red_chisq, results_file=f'{results_file}_results.txt')
-    if not succes:
-        raise RunTimeError(f'''The fitting procedure was not successful. See log for details
-''')
+    write_output_file(cfg,variable_fits,result_summary,output_dir=out_dir, 
+        red_chisq = red_chisq, results_file=f'{results_file}_results')
+   
 
 rotmass_main.__doc__ =f'''
  NAME:
