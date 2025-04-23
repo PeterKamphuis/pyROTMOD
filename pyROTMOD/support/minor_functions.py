@@ -579,7 +579,7 @@ def plot_profiles(profiles, cfg= None\
         print_log(f'''We cannot find acceptable units in the profiles.
 {[profiles[x].print() for x in profiles]}
 This is not acceptable for the output.
-''',cfg,case=['main','screen'] )
+''',cfg,case=['main'] )
         raise RunTimeError("No proper units")    
     if first_radii_unit is None:
         print_log(f'''We cannot find acceptable units in the radii in profiles.

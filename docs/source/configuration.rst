@@ -257,6 +257,7 @@ General Fitting Keywords
 
   If set to True the code will assume a single mass to light ratio for all stellar components. If set to False the code will 
   fit a different mass to light ratio for each stellar component.
+
   This is not recommended as it can easily lead to degeneracies.
 
 **single_gas_ML**:
@@ -264,12 +265,13 @@ General Fitting Keywords
 
   If set to True the code will assume a single mass to light ratio for all gas components. 
 
-**fixed_stellar_ML**:
+**stellar_ML**:
 
-  *bool, optional, default = True*
-
-  If set to True the code will assume a fixed mass to light ratio for all stellar components.
-  The individual mass to light ratios set in the fitting_parameters section take precedence. 
+  *list, optional, default = [1.0, None, None, True]*
+  A list of input values to be the default for all stellar mass to light ratios.
+  Following the same layout as in the fitting_parameters. The first item is the value, 
+  the second the lower limit, the third the upper limit and the last if it is variable or not.
+  Individual settings in fitting_parameters take precedence.   
   
 **fixed_gas_ML**:
 

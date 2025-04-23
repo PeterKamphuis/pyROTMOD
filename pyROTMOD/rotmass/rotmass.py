@@ -31,7 +31,7 @@ def build_curve(all_RCs, total_RC, cfg=None):
     for name in all_RCs:
         RC_symbols = [x for x in list(all_RCs[name].curve.free_symbols) if str(x) != 'r']
         print_log(f'''##########################{name}##################
-{'':8s}{[all_RCs[name].fitting_variables[x].print() for x in all_RCs[name].fitting_variables]}
+{'':8s}{[all_RCs[name].fitting_variables[x] for x in all_RCs[name].fitting_variables]}
 {'':8s}{all_RCs[name].curve}
 {'':8s}############################################''',cfg,case=['debug_add'])
         for symbol in RC_symbols:
@@ -543,7 +543,7 @@ def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
   
     for names in all_RCs:
         print_log(f'''For {names} we find the following parameters and fit variables:
-{all_RCs[names].print()}
+{all_RCs[names]}
 ''',cfg,case=['debug_add'])
         
 

@@ -324,17 +324,14 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
                 if metric_values[available_metrics.index('r_hat')] > 2.:
                     count_rhat +=1
                 print_log(f'''The rhat for {var_name} is {metric_values[available_metrics.index('r_hat')]}.
-{available_metrics}
-{metric_values}
 ''',cfg,case=['debug_add'])
                           
                 total_hat += metric_values[available_metrics.index('r_hat')]
-                print_log(f'''The total hat = {total_hat}, prev_hat = {prev_hat}
+            print_log(f'''The total hat = {total_hat}, prev_hat = {prev_hat}
 ''',cfg,case=['debug_add'])
  
             if count_rhat/len(parameter_names) > 0.5:
-                print_log(f'''More than 50% of the parameters have a rhat > 2.
-This is not good. 
+                print_log(f'''More than 50% of the parameters have a rhat > 2. This is not good. 
 ''',cfg,case=['main'])
                 if not fit_tracking['initial_guess']:
                     prev_hat = -1

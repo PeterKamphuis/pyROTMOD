@@ -67,7 +67,8 @@ class Fitting:
     initial_minimizer: str = 'differential_evolution' #Not  functioning for numpyro backend
     HALO: str = 'NFW'
     single_stellar_ML: bool = True
-    fixed_stellar_ML: bool = True # If set to false individual settings in an input yaml still take precedence
+    stellar_ML: List = field(default_factory=lambda: [1.0,None,None,True]) 
+    # If set to false individual settings in an input yaml still take precedence
     fixed_gas_ML: bool = True # If set to false individual settings in an input yaml still take precedence
     single_gas_ML: bool = False
     mcmc_steps: int= 2000 #Amount of steps per parameter
@@ -109,7 +110,7 @@ def add_dynamic(in_dict,in_components, halo = 'NFW'):
                     [1.33, None, None,not in_dict['fitting_general']['fixed_gas_ML'],True]])
             else:
                 dict_elements.append([f'{in_components[name].name}',
-                    [1., None, None,not in_dict['fitting_general']['fixed_stellar_ML'],True]])  
+                    in_dict['fitting_general']['stellar_ML']+[True]])  
             
         for key in halo_config.parameters:          
             dict_elements.append([f'{key}',halo_config.parameters[key]]) 
