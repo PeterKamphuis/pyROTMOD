@@ -9,6 +9,7 @@ class Parameter:
             self.unit = unit
             self.min = min
             self.max = max
+            self.fit_stats = None
             self.fixed_boundaries = fixed_boundaries
             self.variable = variable
             self.include = include

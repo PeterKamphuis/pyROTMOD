@@ -238,7 +238,15 @@ def simple_model(total_RC, fitting_variables, cfg=None):
 def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
     fit_tracking = {'convergence': False,
                     'iterations': -1,
+                    'initial_guess': False,
+                    'total_rhat': 0.,
+                    'prev_rhat': -1,
+           
                     'initial_guess': False}
+    
+                    
+                    
+    
 
     negative = cfg.fitting_general.negative_values
    
@@ -295,7 +303,7 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
             #edv,correction = get_exponent(np.mean(result_emcee.flatchain[parameter_mc]),threshold=3.)
             labels_map[parameter] = get_correct_label(strip_parameter,no)
     azLabeller = arviz.labels.MapLabeller(var_name_map=labels_map)    
-    total_hat = -1.
+    
     while (not fit_tracking['convergence'] and 
         fit_tracking['iterations'] <= cfg.fitting_general.max_iterations):
         with warnings.catch_warnings():
@@ -312,61 +320,10 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
             sampler.run(subkey,total_RC, guess_variables)            
             sampler.print_summary()
             data = arviz.from_numpyro(sampler,log_likelihood=True)  
-            fit_summary = arviz.summary(data, var_names=parameter_names,
-                fmt='xarray',round_to= None)
-            
-            available_metrics = list(fit_summary.metric.values)
-            count_rhat = 0
-            prev_hat = total_hat
-            total_hat = 0.
-            for var_name in parameter_names:
-                metric_values = fit_summary[var_name].values
-                if metric_values[available_metrics.index('r_hat')] > 2.:
-                    count_rhat +=1
-                print_log(f'''The rhat for {var_name} is {metric_values[available_metrics.index('r_hat')]}.
-''',cfg,case=['debug_add'])
-                          
-                total_hat += metric_values[available_metrics.index('r_hat')]
-            print_log(f'''The total hat = {total_hat}, prev_hat = {prev_hat}
-''',cfg,case=['debug_add'])
- 
-            if count_rhat/len(parameter_names) > 0.5:
-                print_log(f'''More than 50% of the parameters have a rhat > 2. This is not good. 
-''',cfg,case=['main'])
-                if not fit_tracking['initial_guess']:
-                    prev_hat = -1
-                    print_log(f'''We will run a differential evolution to estimate the parameters.
-''',cfg,case=['main'])
-                    guess_variables = initial_guess(cfg,total_RC)
-                    fit_tracking['initial_guess'] = True
-                    for var_name in guess_variables:
-                        guess_variables[var_name].min = (guess_variables[var_name].value
-                            - 3.*guess_variables[var_name].stddev)  
-                        if not negative and guess_variables[var_name].min < 0.:
-                            guess_variables[var_name].min = 0.
-                        guess_variables[var_name].max = (guess_variables[var_name].value
-                            + 3.*guess_variables[var_name].stddev)
-                      
-                else:
-                    if total_hat/len(parameter_names) > 10.:
-                        raise FailedFitError(f'''More than half of the parameters have a rhat > 2. And the average rhat is > 10.  ''') 
-                    elif total_hat > 2.*prev_hat:
-                        raise FailedFitError(f'''More than half of the parameters have a rhat > 2. The total rhat ({total_hat}) is increasing ({prev_hat}).  ''') 
-                    else:
-                        print_log(f'''The average rhat ({total_hat/len(parameter_names)}) is not out of control.
- checking the boundaries''',cfg,case=['main'])
-                        fit_tracking['convergence'],setbounds =\
-                            check_boundaries(cfg,guess_variables,
-                                fit_summary,negative=negative,
-                                arviz_output=True,prev_bound = setbounds)
-                        
-            else:
-                print_log(f'''We will check the boundaries of the parameters.
-''',cfg,case=['main'])
-                fit_tracking['convergence'],setbounds = check_boundaries(cfg,guess_variables,
-                    fit_summary,negative=negative,
-                    arviz_output=True,prev_bound = setbounds)
-                              
+
+            fit_tracking,guess_variables,setbounds = process_numpyro_results(
+                    cfg,guess_variables,data,fit_tracking,setbounds,total_RC)
+      
           
     if fit_tracking['iterations'] >= cfg.fitting_general.max_iterations:
         print_log(f''' Your boundaries are not converging. Consider fitting less variables or manually fix the boundaries
@@ -374,7 +331,7 @@ We stopped the iterations  process and will use the last fit as the best guess o
 ''',cfg,case=['main'])
         
      
-    available_metrics = list(fit_summary.metric.values)
+   
     if out_dir:
         if not cfg.output.chain_data is None:
             with open(f"{out_dir}{results_name}_chain_data.pickle", "wb") as f:
@@ -466,8 +423,91 @@ numpyro_run.__doc__ =f'''
  NOTE:
 '''
 
+def set_statistics(cfg,fit_variables,fit_summary):
+    available_metrics = list(fit_summary.metric.values)
+    for variable in fit_variables:
+        if variable in fit_summary:
+            metric_values = fit_summary[variable].values
+            collected_stats = {}
+            for metric in available_metrics:
+                collected_stats[metric] = float(metric_values[available_metrics.index(metric)])
+            fit_variables[variable].fit_stats = collected_stats
+        else:
+            print_log(f'''The parameter {variable} is not in the summary. 
+''',cfg,case=['debug_add'])     
 
 
+def process_parameter_stats(cfg,parameter_names,fit_tracking,fit_variables,total_RC):
+    for var_name in parameter_names:
+        parameter_stats = fit_variables[var_name].fit_stats
+        print_log(f'''The stats for {var_name} are {parameter_stats}.
+''',cfg,case=['debug_add'])
+        if parameter_stats['r_hat'] > 1.5:
+            fit_tracking['rhat_count'] += 1
+        fit_tracking['total_rhat'] += parameter_stats['r_hat']
+        if abs(parameter_stats['mean']-parameter_stats['median'])/parameter_stats['sd'] > 1.0:        
+            fit_tracking['med_mean'] += 1.
+def process_accumulated_stats(cfg,fit_tracking,parameter_count):
+    fit_tracking['statistics_quality'] = {'average_rhat': True,
+                                          'med_mean': True,
+                                          'total_rhat': True, 
+                                          'grow_rhat': True}
+                                          
+    if fit_tracking['rhat_count']/parameter_count > 0.5:
+        print_log(f'''More than 50% of the parameters have a rhat > 2.  This is not good. 
+''',cfg,case=['main'])
+        fit_tracking['statistics_quality']['average_hat'] = False
+    if fit_tracking['med_mean'] >= 1.:
+        print_log(f'''There is parameter where the mean and median differ by more than the std.  This is not good.
+''',cfg,case=['main'])
+        fit_tracking['statistics_quality']['med_mean'] = False
+    
+    if fit_tracking['total_rhat']/parameter_count > 3:
+        print_log(f'''The average rhat is > 3. This is not good.
+''',cfg,case=['main'])
+        fit_tracking['statistics_quality']['total_rhat'] = False
+    if fit_tracking['total_rhat'] > 2.*fit_tracking['prev_hat']:
+        print_log(f'''The total rhat is increasing. This is not good.
+''',cfg,case=['main'])
+        fit_tracking['statistics_quality']['grow_rhat'] = False     
+
+def process_numpyro_results(cfg,fit_variables, mcmc_result,fit_tracking,setbounds):
+    func_dict = stat_func_dict()
+    parameter_names = [name for name in fit_variables if fit_variables[name].variable]    
+    fit_summary = arviz.summary(mcmc_result, var_names=parameter_names,
+        fmt='xarray',round_to= None,stat_funcs=func_dict)
+    set_statistics(cfg,fit_variables,fit_summary)
+    fit_tracking['prev_hat'] = fit_tracking['total_rhat']
+    for reset in ['rhat_count','total_rhat','med_mean','statistics_quality']:
+        fit_tracking[reset] = 0
+   
+    process_parameter_stats(cfg,parameter_names,fit_tracking,fit_variables)                                           
+    process_accumulated_stats(cfg,fit_tracking,len(parameter_names))    
+    if any([not fit_tracking['statistics_quality'][x] for x in fit_tracking['statistics_quality']]):
+        if not fit_tracking['initial_guess']:
+            fit_tracking['prev_hat'] = -1   
+            print_log(f'''We will run a differential evolution to estimate the parameters.
+''',cfg,case=['main'])
+            guess_variables = initial_guess(cfg,total_RC)
+            fit_tracking['initial_guess'] = True
+            for var_name in guess_variables:
+                guess_variables[var_name].min = (guess_variables[var_name].value
+                    - 3.*guess_variables[var_name].stddev)  
+                if not negative and guess_variables[var_name].min < 0.:
+                    guess_variables[var_name].min = 0.
+                guess_variables[var_name].max = (guess_variables[var_name].value
+                    + 3.*guess_variables[var_name].stddev)
+                
+        else:
+            if fit_tracking['statistics_quality']['med_mean']:
+                err_message = create_error_message(fit_tracking)
+                raise FailedFitError(f'''{err_message}''')
+            else:
+                use_median =True    
+    fit_tracking['convergence'],setbounds = check_boundaries(cfg,guess_variables,
+                fit_summary,negative=cfg.fitting_general.negative_values,
+                median=use_median,arviz_output=True,prev_bound = setbounds)
+    
 
 def lmfit_run(cfg,total_RC,original_settings, out_dir = None,optical_profile = False):
     fit_tracking = {'convergence': False,
@@ -598,15 +638,30 @@ lmfit_run.__doc__ =f'''
 
  NOTE:
 '''
-def update_parameter_values(output,var_name,parameter,arviz_output=False):
+
+def create_error_message(fit_tracking):
+    err_message = 'The statistics are off and getting an initial gues does not help. \n'
+    if not fit_tracking['statistics_quality']['total_rhat']:
+        err_message += f'The total rhat ({fit_tracking["total_rhat"]}) is on average > 3. \n'
+    if not fit_tracking['statistics_quality']['average_hat']:
+        err_message += 'More than half of the parameters have a rhat > 1.5 \n'
+    if not fit_tracking['statistics_quality']['grow_rhat']:
+        err_message += f'The total rhat ({fit_tracking["total_rhat"]}) is increasing ({fit_tracking["prev_hat"]}). \n'
+    return err_message
+
+def update_parameter_values(output,var_name,parameter,arviz_output=False,median=False):
     if arviz_output:
-        available_metrics = list(output.metric.values)
-        metric_values = output[var_name].values
-        parameter.value = float(metric_values[available_metrics.index('mean')])
-        parameter.stddev = float(metric_values[available_metrics.index('sd')])
+        stats = parameter.fit_stats
+       
+        if median:
+            parameter.value = float(stats['median'])
+            parameter.stddev = float(stats['mad'])
+        else:
+            parameter.value = float(stats['mean'])
+            parameter.stddev = float(stats['sd'])
         if not parameter.fixed_boundaries:
-            parameter.min = float(metric_values[available_metrics.index('hdi_3%')])
-            parameter.max = float(metric_values[available_metrics.index('hdi_97%')])
+            parameter.min = float(stats['low_3%'])
+            parameter.max = float(stats['high_97%'])
     else:
         if not parameter.fixed_boundaries:
             parameter.min = output.params[var_name].min
@@ -615,7 +670,7 @@ def update_parameter_values(output,var_name,parameter,arviz_output=False):
         parameter.value = float(output.params[var_name].value)
 
 def check_boundaries(cfg,function_variable_settings,output,count=0.,arviz_output=False,
-        prev_bound= None,negative=False):
+        prev_bound= None,negative=False,median=False):
     succes=True
     req_fraction =0.25 #Arrays should be within 25% of each other
     if prev_bound is None:
@@ -629,7 +684,7 @@ def check_boundaries(cfg,function_variable_settings,output,count=0.,arviz_output
         if function_variable_settings[var_name].variable:
             current_parameter =  copy.deepcopy(function_variable_settings[var_name])
             update_parameter_values(output,var_name, current_parameter
-                        ,arviz_output=arviz_output)
+                        ,arviz_output=arviz_output,median=median)
             new_bounds = [float(current_parameter.min),
                           float(current_parameter.max)]
             
@@ -718,3 +773,15 @@ Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.a
     #no_success=True
     return succes,bounds_out           
             
+def stat_func_dict():
+    '''This function returns a dictionary with the functions that are used to calculate the statistics
+    for the arviz summary. The default is mean and sd.'''
+    fdict = {'mean':np.mean,
+             'sd':np.std,
+             'median':np.median,
+             'mad': lambda x: np.median(np.abs(x - np.median(x))),
+             'low_3%': lambda x: np.percentile(x, 3),
+             'high_97%': lambda x: np.percentile(x, 97),
+             'r_hat': arviz.rhat
+             }
+    return fdict

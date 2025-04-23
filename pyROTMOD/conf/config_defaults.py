@@ -5,6 +5,7 @@ from omegaconf import OmegaConf,open_dict
 from typing import List,Optional
 from datetime import datetime
 from pyROTMOD.support.minor_functions import get_uncounted
+from pyROTMOD.support.profile_classes import Rotation_Curve
 import os
 import sys
 import psutil
@@ -118,6 +119,7 @@ def add_dynamic(in_dict,in_components, halo = 'NFW'):
         in_dict.fitting_parameters = {}
         for ell in dict_elements:
             in_dict.fitting_parameters[ell[0]] = ell[1]
+   
     return in_dict
 
 def check_arguments():
@@ -258,12 +260,21 @@ def read_fitting_config(cfg,baryonic_RCs,print_examples=False):
     if halo == 'MOND':
         halo = 'MOND_CLASSIC'
     if print_examples:
-        baryonic_components = {'DISK_GAS_1': [],'EXPONENTIAL_1':{},'HERNQUIST_1': []}
+        baryonic_RCs = {'DISK_GAS_1': Rotation_Curve(name='DISK_GAS_1'),
+                        'EXPONENTIAL_1':  Rotation_Curve(name='EXPONENTIAL_1'),
+                        'HERNQUIST_1': Rotation_Curve(name='HERNQUIST_1'),}
         cfg.fitting_general.HALO = halo
     halo_conf = f'{halo}_config'
     cfg_new = OmegaConf.structured(ExtendConfig)
+    if 'fitting_general' in cfg.file_config:
+        if 'stellar_ML' in cfg.file_config.fitting_general:
+            cfg_new.fitting_general.stellar_ML = cfg.file_config.fitting_general.stellar_ML
+    if 'fitting_general' in cfg.input_config:
+        if 'stellar_ML' in cfg.input_config.fitting_general:
+            cfg_new.fitting_general.stellar_ML = cfg.input_config.fitting_general.stellar_ML
     cfg_new = add_dynamic(cfg_new,baryonic_RCs,halo = halo_conf)
     cfg_new = create_masked_copy(cfg_new,cfg.file_config)
     cfg_new = create_masked_copy(cfg_new,cfg.input_config) 
     cfg_new.fitting_general.HALO = halo
+   
     return cfg_new

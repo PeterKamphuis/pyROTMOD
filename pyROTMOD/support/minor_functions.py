@@ -271,9 +271,11 @@ This is version {pyROTMOD.__version__} of the program.
         name += '_RC_fitting'
     else:
         name += '_RC_construction'
-    name +='.yml'   
-    with open(name,'w') as input_write:
-        input_write.write(OmegaConf.to_yaml(cfg))
+    name +='.yml'
+    if (not fitting and cfg.RC_Construction.enable) or (
+        fitting and cfg.fitting_general.enable):
+        with open(name,'w') as input_write:
+            input_write.write(OmegaConf.to_yaml(cfg))
        
 
     return cfg
