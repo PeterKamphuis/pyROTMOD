@@ -71,7 +71,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
    
     radii = strip_unit(profile_to_fit.radii,variable_type='radii')
     density = strip_unit(profile_to_fit.values,variable_type=profile_to_fit.profile_type)
-    original_backend= copy.deepcopy(cfg.fitting_general.backend)
+    #original_backend= copy.deepcopy(cfg.fitting_general.backend)
     #cfg.fitting_general.backend ='lmfit'
     fit_function_dictionary = {'EXPONENTIAL':
                 {'initial':{'central':density[0], 'h':radii[density < density[0]/np.e ][0]},
@@ -236,7 +236,7 @@ As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a
         profile_to_fit.type= f'{fitted_dict["result"]}'
         profile_to_fit.name=f'{ev_we_want}_{get_uncounted(profile_to_fit.name)[1]}'
   
-    cfg.fitting_general.backend = original_backend
+    #cfg.fitting_general.backend = original_backend
     return
 fit_profile.__doc__ =f'''
  NAME:
@@ -302,7 +302,7 @@ def single_fit_profile(profile_to_fit,fit_function,initial,cfg=None,\
     setattr(profile_to_fit,'numpy_curve',inp_fit_function)
     setattr(profile_to_fit,'fitting_variables',parameter_settings)
     
-   
+    
     if cfg.fitting_general.backend == 'lmfit':
         initial_parameters = initial_guess(cfg,profile_to_fit)
     print_log(f'Starting mcmc for  {name}',cfg,case=['main'])   

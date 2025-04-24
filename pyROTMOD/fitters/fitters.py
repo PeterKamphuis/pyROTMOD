@@ -241,7 +241,7 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
                     'initial_guess': False,
                     'total_rhat': 0.,
                     'prev_rhat': -1,
-           
+                    'failure_count': 0,
                     'initial_guess': False}
     
                     
@@ -321,7 +321,7 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
             sampler.print_summary()
 
             
-            data = arviz.from_numpyro(sampler,log_likelihood=True)  
+            data = arviz.from_numpyro(sampler,log_likelihood=True,num_chains =int(chains))  
             '''
             posterior_samples = sampler.get_samples()
             posterior_predictive = numpyro.infer.Predictive(mod, posterior_samples)(
@@ -453,8 +453,8 @@ def process_parameter_stats(cfg,parameter_names,fit_tracking,fit_variables):
         parameter_stats = fit_variables[var_name].fit_stats
         #print_log(f'''The stats for {var_name} are {parameter_stats}.
 #''',cfg,case=['debug_add'])
-        if parameter_stats['r_hat'] > 2.5:
-            fit_tracking['rhat_count'] += 1
+        if parameter_stats['r_hat'] > 1.5:
+            fit_tracking['count_rhat'] += 1
         fit_tracking['total_rhat'] += parameter_stats['r_hat']
         if abs(parameter_stats['mean']-parameter_stats['median'])/parameter_stats['sd'] > 1.0:        
             fit_tracking['med_mean'] += 1.
@@ -467,10 +467,10 @@ def process_accumulated_stats(cfg,fit_tracking,parameter_count):
                                           'total_rhat': True, 
                                           'grow_rhat': True}
                                           
-    if fit_tracking['rhat_count']/parameter_count > 0.5:
+    if fit_tracking['count_rhat']/parameter_count > 0.5:
         print_log(f'''More than 50% of the parameters have a rhat > 2.  This is not good. 
 ''',cfg,case=['main'])
-        fit_tracking['statistics_quality']['average_hat'] = False
+        fit_tracking['statistics_quality']['average_rhat'] = False
     if fit_tracking['med_mean'] >= 1.:
         print_log(f'''There is parameter where the mean and median differ by more than the std.  This is not good.
 ''',cfg,case=['main'])
@@ -480,7 +480,8 @@ def process_accumulated_stats(cfg,fit_tracking,parameter_count):
         print_log(f'''The average rhat is > 3. This is not good.
 ''',cfg,case=['main'])
         fit_tracking['statistics_quality']['total_rhat'] = False
-    if fit_tracking['total_rhat'] > 2.*fit_tracking['prev_hat']:
+    if fit_tracking['total_rhat'] > 2.*fit_tracking['prev_rhat'] and\
+        fit_tracking['prev_rhat'] > 0.:
         print_log(f'''The total rhat is increasing. This is not good.
 ''',cfg,case=['main'])
         fit_tracking['statistics_quality']['grow_rhat'] = False     
@@ -494,16 +495,17 @@ def process_numpyro_results(cfg,fit_variables, mcmc_result,fit_tracking,setbound
         fmt='xarray',round_to= None,stat_funcs=func_dict)
     print(f'Does this produce the warning FItter 477') 
     set_statistics(cfg,fit_variables,fit_summary)
-    fit_tracking['prev_hat'] = fit_tracking['total_rhat']
-    for reset in ['rhat_count','total_rhat','med_mean','statistics_quality']:
+    fit_tracking['prev_rhat'] = fit_tracking['total_rhat']
+    for reset in ['count_rhat','total_rhat','med_mean','statistics_quality']:
         fit_tracking[reset] = 0
  
     process_parameter_stats(cfg,parameter_names,fit_tracking,fit_variables)                                           
     process_accumulated_stats(cfg,fit_tracking,len(parameter_names))   
    
     if any([not fit_tracking['statistics_quality'][x] for x in fit_tracking['statistics_quality']]):
+        fit_tracking['failure_count'] +=1
         if not fit_tracking['initial_guess']:
-            fit_tracking['prev_hat'] = -1   
+            fit_tracking['prev_rhat'] = -1   
             print_log(f'''We will run a differential evolution to estimate the parameters.
 ''',cfg,case=['main'])
             fit_variables = initial_guess(cfg,total_RC)
@@ -517,8 +519,9 @@ def process_numpyro_results(cfg,fit_variables, mcmc_result,fit_tracking,setbound
                     + 3.* fit_variables[var_name].stddev)
             return  fit_tracking,fit_variables,setbounds   
         if fit_tracking['statistics_quality']['med_mean']:
-            err_message = create_error_message(fit_tracking)
-            raise FailedFitError(f'''{err_message}''')
+            if not fit_tracking['statistics_quality']['grow_rhat'] or fit_tracking['failure_count'] > 4.:
+                err_message = create_error_message(fit_tracking)
+                raise FailedFitError(f'''{err_message}''')
         else:
             use_median =True    
     fit_tracking['convergence'],setbounds = check_boundaries(cfg,fit_variables,
@@ -529,7 +532,8 @@ def process_numpyro_results(cfg,fit_variables, mcmc_result,fit_tracking,setbound
 def lmfit_run(cfg,total_RC,original_settings, out_dir = None,optical_profile = False):
     fit_tracking = {'convergence': False,
                     'iterations': -1,
-                    'initial_guess': False}
+                    'initial_guess': False,
+                    'failure_count': 0,}
 
     function_variable_settings = copy.deepcopy(total_RC.fitting_variables)
     negative = cfg.fitting_general.negative_values
@@ -660,7 +664,7 @@ def create_error_message(fit_tracking):
     err_message = 'The statistics are off and getting an initial guess does not help. \n'
     if not fit_tracking['statistics_quality']['total_rhat']:
         err_message += f'# The total rhat ({fit_tracking["total_rhat"]}) is on average > 3. \n'
-    if not fit_tracking['statistics_quality']['average_hat']:
+    if not fit_tracking['statistics_quality']['average_rhat']:
         err_message += '# More than half of the parameters have a rhat > 1.5 \n'
     if not fit_tracking['statistics_quality']['grow_rhat']:
         err_message += f'# The total rhat ({fit_tracking["total_rhat"]}) is increasing ({fit_tracking["prev_hat"]}). \n'

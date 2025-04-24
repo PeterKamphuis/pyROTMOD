@@ -205,7 +205,7 @@ def read_config():
     # print the default file
     inputconf = OmegaConf.from_cli(argv)
     short_inputconf = OmegaConf.masked_copy(inputconf,\
-                ['print_examples','configuration_file','input','output','RC_Construction'])
+                ['print_examples','configuration_file','input','output','RC_Construction','fitting_general'])
     cfg_input = OmegaConf.merge(cfg,short_inputconf)
    
 
@@ -213,7 +213,7 @@ def read_config():
         try:
             yaml_config = OmegaConf.load(cfg_input.configuration_file)
             short_yaml_config =  OmegaConf.masked_copy(yaml_config,\
-                    ['print_examples','configuration_file','input','output','RC_Construction'])
+                    ['print_examples','configuration_file','input','output','RC_Construction','fitting_general'])
                                                         
     #merge yml file with defaults
           
