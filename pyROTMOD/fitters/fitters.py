@@ -319,8 +319,26 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
             fit_tracking['iterations'] +=1
             sampler.run(subkey,total_RC, guess_variables)            
             sampler.print_summary()
-            data = arviz.from_numpyro(sampler,log_likelihood=True)  
 
+            
+            data = arviz.from_numpyro(sampler,log_likelihood=True)  
+            '''
+            posterior_samples = sampler.get_samples()
+            posterior_predictive = numpyro.infer.Predictive(mod, posterior_samples)(
+                random.PRNGKey(68), total_RC
+            )
+            prior = numpyro.infer.Predictive(mod, num_samples=500)(
+                random.PRNGKey(69), total_RC
+            )
+
+            data = arviz.from_numpyro(
+                sampler,
+                prior=prior,
+                posterior_predictive=posterior_predictive,
+                log_likelihood=True,
+                )
+            '''
+            print(data)
             fit_tracking,guess_variables,setbounds = process_numpyro_results(
                     cfg,guess_variables,data,fit_tracking,setbounds,total_RC)
       
@@ -333,6 +351,8 @@ We stopped the iterations  process and will use the last fit as the best guess o
      
    
     if out_dir:
+        #fit_summary = arviz.summary(data, var_names=parameter_names,
+        #fmt='xarray',round_to= None,stat_funcs=stat_func_dict())
         if not cfg.output.chain_data is None:
             with open(f"{out_dir}{results_name}_chain_data.pickle", "wb") as f:
                 pickle.dump(data, f)
@@ -349,8 +369,8 @@ We stopped the iterations  process and will use the last fit as the best guess o
         ranges = []
         for parameter_mc in parameter_names:    
             strip_parameter,no = get_uncounted(parameter_mc) 
-            edv,correction = get_exponent(fit_summary[parameter_mc].values
-                [available_metrics.index('mean')],threshold=3.)
+            edv,correction = get_exponent(guess_variables[parameter_mc].value
+                ,threshold=3.)
             #inf_data[parameter_mc] = inf_data[parameter_mc]*correction
             lab.append(get_correct_label(strip_parameter,no,exponent= edv))
             ranges.append((setbounds[parameter_mc][0]
@@ -367,16 +387,6 @@ We stopped the iterations  process and will use the last fit as the best guess o
     print_log(f''' Numpyro_RUN: We find the following parameters for this fit. \n''',cfg,case=['main'])
     for variable in guess_variables:
         if guess_variables[variable].variable:
-            guess_variables[variable].min = float(fit_summary[variable].values
-                [available_metrics.index('mean')]-fit_summary[variable].values
-                [available_metrics.index('sd')])
-            guess_variables[variable].max = float(fit_summary[variable].values
-                [available_metrics.index('mean')]+fit_summary[variable].values
-                [available_metrics.index('sd')])
-            guess_variables[variable].value = float(fit_summary[variable].values
-                [available_metrics.index('mean')])
-            guess_variables[variable].stddev = float(fit_summary[variable].values
-                [available_metrics.index('sd')])
             print_log(f'''{variable} = {guess_variables[variable].value} +/- {guess_variables[variable].stddev} within the boundary {guess_variables[variable].min}-{guess_variables[variable].max}
 ''',cfg,case=['main'])
     with warnings.catch_warnings():
@@ -437,16 +447,20 @@ def set_statistics(cfg,fit_variables,fit_summary):
 ''',cfg,case=['debug_add'])     
 
 
-def process_parameter_stats(cfg,parameter_names,fit_tracking,fit_variables,total_RC):
+def process_parameter_stats(cfg,parameter_names,fit_tracking,fit_variables):
+   
     for var_name in parameter_names:
         parameter_stats = fit_variables[var_name].fit_stats
-        print_log(f'''The stats for {var_name} are {parameter_stats}.
-''',cfg,case=['debug_add'])
-        if parameter_stats['r_hat'] > 1.5:
+        #print_log(f'''The stats for {var_name} are {parameter_stats}.
+#''',cfg,case=['debug_add'])
+        if parameter_stats['r_hat'] > 2.5:
             fit_tracking['rhat_count'] += 1
         fit_tracking['total_rhat'] += parameter_stats['r_hat']
         if abs(parameter_stats['mean']-parameter_stats['median'])/parameter_stats['sd'] > 1.0:        
             fit_tracking['med_mean'] += 1.
+
+
+
 def process_accumulated_stats(cfg,fit_tracking,parameter_count):
     fit_tracking['statistics_quality'] = {'average_rhat': True,
                                           'med_mean': True,
@@ -471,43 +485,46 @@ def process_accumulated_stats(cfg,fit_tracking,parameter_count):
 ''',cfg,case=['main'])
         fit_tracking['statistics_quality']['grow_rhat'] = False     
 
-def process_numpyro_results(cfg,fit_variables, mcmc_result,fit_tracking,setbounds):
+def process_numpyro_results(cfg,fit_variables, mcmc_result,fit_tracking,setbounds,total_RC):
     func_dict = stat_func_dict()
-    parameter_names = [name for name in fit_variables if fit_variables[name].variable]    
+    use_median=False
+    parameter_names = [name for name in fit_variables if fit_variables[name].variable]   
+    print(f'Does this produce the warning FItter 474') 
     fit_summary = arviz.summary(mcmc_result, var_names=parameter_names,
         fmt='xarray',round_to= None,stat_funcs=func_dict)
+    print(f'Does this produce the warning FItter 477') 
     set_statistics(cfg,fit_variables,fit_summary)
     fit_tracking['prev_hat'] = fit_tracking['total_rhat']
     for reset in ['rhat_count','total_rhat','med_mean','statistics_quality']:
         fit_tracking[reset] = 0
-   
+ 
     process_parameter_stats(cfg,parameter_names,fit_tracking,fit_variables)                                           
-    process_accumulated_stats(cfg,fit_tracking,len(parameter_names))    
+    process_accumulated_stats(cfg,fit_tracking,len(parameter_names))   
+   
     if any([not fit_tracking['statistics_quality'][x] for x in fit_tracking['statistics_quality']]):
         if not fit_tracking['initial_guess']:
             fit_tracking['prev_hat'] = -1   
             print_log(f'''We will run a differential evolution to estimate the parameters.
 ''',cfg,case=['main'])
-            guess_variables = initial_guess(cfg,total_RC)
+            fit_variables = initial_guess(cfg,total_RC)
             fit_tracking['initial_guess'] = True
-            for var_name in guess_variables:
-                guess_variables[var_name].min = (guess_variables[var_name].value
-                    - 3.*guess_variables[var_name].stddev)  
-                if not negative and guess_variables[var_name].min < 0.:
-                    guess_variables[var_name].min = 0.
-                guess_variables[var_name].max = (guess_variables[var_name].value
-                    + 3.*guess_variables[var_name].stddev)
-                
+            for var_name in  fit_variables:
+                fit_variables[var_name].min = ( fit_variables[var_name].value
+                    - 3.* fit_variables[var_name].stddev)  
+                if not cfg.fitting_general.negative_values and  fit_variables[var_name].min < 0.:
+                     fit_variables[var_name].min = 0.
+                fit_variables[var_name].max = ( fit_variables[var_name].value
+                    + 3.* fit_variables[var_name].stddev)
+            return  fit_tracking,fit_variables,setbounds   
+        if fit_tracking['statistics_quality']['med_mean']:
+            err_message = create_error_message(fit_tracking)
+            raise FailedFitError(f'''{err_message}''')
         else:
-            if fit_tracking['statistics_quality']['med_mean']:
-                err_message = create_error_message(fit_tracking)
-                raise FailedFitError(f'''{err_message}''')
-            else:
-                use_median =True    
-    fit_tracking['convergence'],setbounds = check_boundaries(cfg,guess_variables,
+            use_median =True    
+    fit_tracking['convergence'],setbounds = check_boundaries(cfg,fit_variables,
                 fit_summary,negative=cfg.fitting_general.negative_values,
                 median=use_median,arviz_output=True,prev_bound = setbounds)
-    
+    return  fit_tracking,fit_variables,setbounds    
 
 def lmfit_run(cfg,total_RC,original_settings, out_dir = None,optical_profile = False):
     fit_tracking = {'convergence': False,
@@ -640,16 +657,17 @@ lmfit_run.__doc__ =f'''
 '''
 
 def create_error_message(fit_tracking):
-    err_message = 'The statistics are off and getting an initial gues does not help. \n'
+    err_message = 'The statistics are off and getting an initial guess does not help. \n'
     if not fit_tracking['statistics_quality']['total_rhat']:
-        err_message += f'The total rhat ({fit_tracking["total_rhat"]}) is on average > 3. \n'
+        err_message += f'# The total rhat ({fit_tracking["total_rhat"]}) is on average > 3. \n'
     if not fit_tracking['statistics_quality']['average_hat']:
-        err_message += 'More than half of the parameters have a rhat > 1.5 \n'
+        err_message += '# More than half of the parameters have a rhat > 1.5 \n'
     if not fit_tracking['statistics_quality']['grow_rhat']:
-        err_message += f'The total rhat ({fit_tracking["total_rhat"]}) is increasing ({fit_tracking["prev_hat"]}). \n'
+        err_message += f'# The total rhat ({fit_tracking["total_rhat"]}) is increasing ({fit_tracking["prev_hat"]}). \n'
     return err_message
 
 def update_parameter_values(output,var_name,parameter,arviz_output=False,median=False):
+   
     if arviz_output:
         stats = parameter.fit_stats
        

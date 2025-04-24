@@ -19,6 +19,7 @@ class Parameter:
       def fill_empty(self):
             #If the value is None we set it to a random number between min and max
             #if the min and max are None we set them to 0.1 and 1000.
+          
             if self.min is None:
                   if self.value is not None and self.value != 0.:
                         self.min = self.value/5.
@@ -31,7 +32,7 @@ class Parameter:
                         self.max = 1000.
             if self.min == self.max:
                   self.min = self.min*0.9
-                  self.max = self.max*0.9
+                  self.max = self.max*1.1
            
             if self.stddev is None:
                   self.stddev = (self.max-self.min)/5.
