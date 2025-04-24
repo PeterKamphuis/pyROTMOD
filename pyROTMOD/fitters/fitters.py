@@ -667,7 +667,7 @@ def create_error_message(fit_tracking):
     if not fit_tracking['statistics_quality']['average_rhat']:
         err_message += '# More than half of the parameters have a rhat > 1.5 \n'
     if not fit_tracking['statistics_quality']['grow_rhat']:
-        err_message += f'# The total rhat ({fit_tracking["total_rhat"]}) is increasing ({fit_tracking["prev_hat"]}). \n'
+        err_message += f'# The total rhat ({fit_tracking["total_rhat"]}) is increasing ({fit_tracking["prev_rhat"]}). \n'
     return err_message
 
 def update_parameter_values(output,var_name,parameter,arviz_output=False,median=False):
