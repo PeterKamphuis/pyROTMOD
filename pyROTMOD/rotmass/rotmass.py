@@ -56,6 +56,7 @@ def build_curve(all_RCs, total_RC, cfg=None):
                     replace_dict['symbols'].append(V_replace)
             if symbol == ML:
                 for variable in all_RCs[name].fitting_variables:
+                   
                     if variable.split('_')[0].lower() in ['gamma','ml']:    
                         ML_replace = symbols(variable)
                 for attr in ['curve', 'individual_curve']:

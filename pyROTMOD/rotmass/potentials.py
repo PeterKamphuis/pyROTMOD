@@ -29,13 +29,13 @@ class NFW_config:
     parameters = {'C': [None, None, None, True,True],\
     'R200': [None, None, None, True,True]}
   
-def Log_NFW():
+def LOG_NFW():
     r,lgC,lgR200= symbols('r lgC lgR200')
     nfw = ((10**lgR200)/0.73)*sqrt(((10**lgR200)/r)*((log(1+r*((10**lgC)/(10**lgR200)))
                                     -(r*((10**lgC)/(10**lgR200))/(1+r*((10**lgC)/(10**lgR200)))))
                                     /(log(1+10**lgC) - ((10**lgC)/(1+10**lgC)))))
     return nfw
-class Log_NFW_config:
+class LOG_NFW_config:
     parameters = {'lgC': [None, None, None, True,True],\
     'lgR200': [None, None, None, True,True]}
   

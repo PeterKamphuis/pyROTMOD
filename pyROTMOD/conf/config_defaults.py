@@ -67,6 +67,7 @@ class Fitting:
     negative_values: bool = False
     initial_minimizer: str = 'differential_evolution' #Not  functioning for numpyro backend
     HALO: str = 'NFW'
+    log_ML: bool = False
     single_stellar_ML: bool = True
     stellar_ML: List = field(default_factory=lambda: [1.0,None,None,True]) 
     # If set to false individual settings in an input yaml still take precedence

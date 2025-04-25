@@ -7,29 +7,50 @@ class Parameter:
             self.value = value
             self.stddev = stddev
             self.unit = unit
+      
             self.min = min
             self.max = max
             self.fit_stats = None
             self.fixed_boundaries = fixed_boundaries
             self.variable = variable
             self.include = include
+            if name is not None:
+                  if name[0:2] == 'lg':      
+                        self.log = True
+                  else:
+                        self.log = False
+            else:
+                  self.log = None
       def print(self):
             for attr, value in self.__dict__.items():
                   print(f' {attr} = {value} \n')  
       def fill_empty(self):
             #If the value is None we set it to a random number between min and max
             #if the min and max are None we set them to 0.1 and 1000.
-          
+            if self.log is None:
+                  if self.name[0:2] == 'lg':      
+                        self.log = True
+                  else:
+                        self.log = False
+
+
             if self.min is None:
                   if self.value is not None and self.value != 0.:
                         self.min = self.value/5.
-                  else:      
-                        self.min = 0.1
+                  else: 
+                        if self.log:
+                              self.min = -3.
+                        else:      
+                              self.min = 0.1
             if self.max is None:
                   if self.value is not None and self.value != 0.:
                         self.max = self.value*5.
                   else:
-                        self.max = 1000.
+                        if self.log:
+                              self.max = 3.
+                        else:      
+                              self.max = 1000.
+                  
             if self.min == self.max:
                   self.min = self.min*0.9
                   self.max = self.max*1.1
