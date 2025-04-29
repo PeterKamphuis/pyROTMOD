@@ -53,6 +53,7 @@ def calculate_central_SB(components):
             
             components.central_SB = sersic(0.*unit.kpc,components.L_effective,\
                     components.R_effective,components.sersic_index)
+           
                 
 def calculate_L_effective(components,from_central = False):
     if not components.L_effective is None:

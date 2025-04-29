@@ -123,16 +123,20 @@ import inspect
 '''
 
 def extrapolate_zero(radii,profile):
-    if 0. in radii:
-        index = np.where(radii != 0.)
+    print('Extrapolating zero')
+    print(radii,profile)
+    if 0. in radii or 0. in profile:
+        index = np.where(radii != 0. and profile != 0.)
         extra = interp1d(radii[index].value, profile[index].value, fill_value = "extrapolate")
-        index = np.where(radii == 0.)
+        index = np.where(radii == 0. or profile == 0.)
         profile[index] = extra(radii[index].value)*profile.unit
+    print(radii,profile)
     return profile
 
 def extrapolate_zero_numpyro(radii,profile):
+    start_index =  np.max(np.where(radii != 0. and profile != 0.))
     # This is a numpyro version of the extrapolate_zero function
-    profile = jnp.interp(radii, radii[1:], profile[1:], left = "extrapolate")
+    profile = jnp.interp(radii, radii[start_index:], profile[start_index:], left = "extrapolate")
 
     return profile
 def exponential_numpyro(central,h,r):
@@ -395,6 +399,7 @@ def sersic_profile(components,radii = None):
     s = radii.value/components.R_effective.value
  
     # front factor # This is lacking an 1./R_effective because it cancels with 1./s later on
+    print(components.central_SB,p, q)
     const = 2.*components.central_SB*np.sqrt(p*q)/(2*np.pi)**p
     
     # The meijer g function insympy does not accept arrays
@@ -452,7 +457,8 @@ def get_integers(n):
     # This is a simple function to get the integers that make up the sersic index
     # to limit the array sizes we round n to 5 decimals 
     n = round(n,5)
-    solution= Fraction(n).limit_denominator()
+    #We don't want p and q to be too big especially is p goes to the power
+    solution= Fraction(n).limit_denominator(100)
     return int(solution.numerator),int(solution.denominator)
 
    

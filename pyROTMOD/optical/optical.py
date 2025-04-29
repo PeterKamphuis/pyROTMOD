@@ -19,6 +19,9 @@ def convert_luminosity_profile(profile_in,cfg=None):
     for attr, value in transfer.__dict__.items():
         if attr not in ['central_SB','values']:
             setattr(profiles_out,attr,getattr(profile_in,attr))  
+        elif attr in ['central_SB']:
+            profiles_out.central_SB = (profile_in.central_SB*profile_in.MLratio).decompose()
+          
    
     profiles_out.create_profile() 
     

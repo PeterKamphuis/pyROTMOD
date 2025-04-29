@@ -125,7 +125,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
 
 
     evaluate = determine_profiles_to_fit(type)
-   
+    evaluate = ['SERSIC']
     fitted_dict = {}
     for ev in evaluate:
         try:
