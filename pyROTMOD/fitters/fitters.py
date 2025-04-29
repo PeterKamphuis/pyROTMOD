@@ -108,13 +108,14 @@ def initial_guess(cfg, total_RC,r_last = False):
                         if cfg.fitting_general.use_gp:
                             buffer = buffer*3.
                         #We modify the limit if it was originally unset else we keep it as was
-                        guess_variables[variable].min = float(initial_fit.params[variable].value-buffer \
+                        if not guess_variables[variable].fixed_boundaries:
+                            guess_variables[variable].min = float(initial_fit.params[variable].value-buffer \
                                                 if (total_RC.fitting_variables[variable].min is None) \
                                                 else initial_fit.params[variable].min)
-                        if not negative:
-                            if guess_variables[variable].min < 0.:
-                                guess_variables[variable].min = 0.
-                        guess_variables[variable].max = float(initial_fit.params[variable].value+buffer \
+                            if not negative and not guess_variables[variable].log:
+                                if guess_variables[variable].min < 0.:
+                                    guess_variables[variable].min = 0.
+                            guess_variables[variable].max = float(initial_fit.params[variable].value+buffer \
                                                 if (total_RC.fitting_variables[variable].max is None)\
                                                 else initial_fit.params[variable].max)
                         guess_variables[variable].std = float(initial_fit.params[variable].stderr)
@@ -245,10 +246,7 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
                     'initial_guess': False}
     
                     
-                    
-    
-
-    negative = cfg.fitting_general.negative_values
+      
    
     numpyro.set_host_device_count(cfg.input.ncpu)
    
@@ -272,17 +270,19 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
     setbounds = {}
     for variable in guess_variables:   
         setbounds[variable] = [float(guess_variables[variable].min),float(guess_variables[variable].max)]
-   
     if cfg.fitting_general.use_gp and not optical_profile:
         mod= tiny_gp_model
     else:
         mod = simple_model   
-   
+    if cfg.fitting_general.log_parameters:
+        step_size = 0.1
+    else:
+        step_size = 0.1
     sampler = numpyro.infer.MCMC(
                 numpyro.infer.NUTS(
                     mod,
                     dense_mass=True,
-                    step_size = 0.1,
+                    step_size = step_size,
                     target_accept_prob=0.9,
                     find_heuristic_step_size=True,
                     regularize_mass_matrix=False,
@@ -317,6 +317,8 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
             warnings.filterwarnings("ignore", message="overflow encountered in square")
             warnings.filterwarnings("ignore", message="invalid value encountered in subtract")
             fit_tracking['iterations'] +=1
+            print_log(f'''--------Numpyro_RUN: We are running the {fit_tracking['iterations']} iteration of the fitting process.--------
+''',cfg,case=['main'])
             sampler.run(subkey,total_RC, guess_variables)            
             sampler.print_summary()
 
@@ -338,7 +340,7 @@ def numpyro_run(cfg,total_RC,out_dir = None,optical_profile = False):
                 log_likelihood=True,
                 )
             '''
-            print(data)
+            #print(data)
             fit_tracking,guess_variables,setbounds = process_numpyro_results(
                     cfg,guess_variables,data,fit_tracking,setbounds,total_RC)
       
@@ -490,10 +492,12 @@ def process_numpyro_results(cfg,fit_variables, mcmc_result,fit_tracking,setbound
     func_dict = stat_func_dict()
     use_median=False
     parameter_names = [name for name in fit_variables if fit_variables[name].variable]   
-    print(f'Does this produce the warning FItter 474') 
-    fit_summary = arviz.summary(mcmc_result, var_names=parameter_names,
-        fmt='xarray',round_to= None,stat_funcs=func_dict)
-    print(f'Does this produce the warning FItter 477') 
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        #, message="Shape validation failed")
+        fit_summary = arviz.summary(mcmc_result, var_names=parameter_names,
+            fmt='xarray',round_to= None,stat_funcs=func_dict)
+    
     set_statistics(cfg,fit_variables,fit_summary)
     fit_tracking['prev_rhat'] = fit_tracking['total_rhat']
     for reset in ['count_rhat','total_rhat','med_mean','statistics_quality']:
@@ -693,6 +697,7 @@ def update_parameter_values(output,var_name,parameter,arviz_output=False,median=
 
 def check_boundaries(cfg,function_variable_settings,output,count=0.,arviz_output=False,
         prev_bound= None,negative=False,median=False):
+    
     succes=True
     req_fraction =0.25 #Arrays should be within 25% of each other
     if prev_bound is None:
@@ -700,16 +705,25 @@ def check_boundaries(cfg,function_variable_settings,output,count=0.,arviz_output
         for parameter in function_variable_settings:
             prev_bound[parameter] = [function_variable_settings[parameter].min, 
                                      function_variable_settings[parameter].max]
-    bounds_out = {}        
+    bounds_out = {}   
+    if median:
+        print_log(f'''We are using the median to set the values. \n''',cfg,case=['main'])
+        succes = False
+
     # we have to check that our results are only limited by the boundaries in the user has set them
     for var_name in function_variable_settings:
         if function_variable_settings[var_name].variable:
+            parameter_message = f'------We are checking the boundaries for {var_name}------\n'
             current_parameter =  copy.deepcopy(function_variable_settings[var_name])
+            
             update_parameter_values(output,var_name, current_parameter
                         ,arviz_output=arviz_output,median=median)
             new_bounds = [float(current_parameter.min),
                           float(current_parameter.max)]
-            
+            if current_parameter.log:
+                req_fraction = 0.1
+            else:
+                req_fraction = 0.25
             change = abs(3.*current_parameter.stddev)
             min_bounds = [current_parameter.value-change,
                           current_parameter.value+change]
@@ -723,17 +737,23 @@ def check_boundaries(cfg,function_variable_settings,output,count=0.,arviz_output
             lower_bound = current_parameter.value - change
             upper_bound = current_parameter.value + change
             if current_parameter.fixed_boundaries:
-                print_log(f'''''The boundaries for {var_name} are fixed check that they are reasonable.                            
-''',cfg,case=['main'])
+                parameter_message +=\
+                    f'''The boundaries for {var_name} (min = {prev_bound[var_name][0]}, max = {prev_bound[var_name][1]}) are fixed.
+!!!!!!!!! Check that they are reasonable. !!!!!!!!!\n'''                            
+
                 if prev_bound[var_name][0] < lower_bound:
-                    print_log(f'''The lower bound ({prev_bound[var_name][0]}) for {var_name} deviates more than 5. * std (std = {current_parameter.stddev}).
-consider changing it''',cfg,case=['main'])
+                    parameter_message +=\
+                        f'''For {var_name} the set lower bound ({prev_bound[var_name][0]}) is lower than the optimal lower bound ({lower_bound})
+Consider modifying the lower bound.\n'''
                 if prev_bound[var_name][1] > upper_bound:
-                    print_log(f'''The upper bound ({prev_bound[var_name][1]}) for {var_name} deviates more than 5. * std (std = {current_parameter.stddev}).
-consider changing it''',cfg,case=['main'])
+                   parameter_message +=\
+                        f'''For {var_name} the set upper bound ({prev_bound[var_name][1]}) is higher than the optimal upper bound ({upper_bound})
+Consider modifying the lower bound.\n'''
+                parameter_message +=\
+                    f'''The error on {var_name} is {current_parameter.stddev}. \n'''
                 
                 bounds_out[var_name] = prev_bound[var_name]
-                    
+                print_log(parameter_message,cfg,case=['main'])    
                 #function_variable_settings[var_name].min = prev_bound[var_name][0]
                 #function_variable_settings[var_name].max = prev_bound[var_name][1]     
                 #function_variable_settings[var_name].value = current_parameter.value
@@ -742,7 +762,7 @@ consider changing it''',cfg,case=['main'])
 
             #lower_bound = current_parameter.value - 5.*current_parameter.stddev
             #upper_bound = current_parameter.value + 5.*current_parameter.stddev         
-         
+
             print_log(f'''{var_name} = {current_parameter.value} +/- {current_parameter.stddev} 
 change = {change} lowerbound = {lower_bound}    upperbound = {upper_bound} bounds = {new_bounds} 
 minbounds = {min_bounds} prev_bound = {prev_bound[var_name]}
@@ -772,16 +792,16 @@ minbounds = {min_bounds} prev_bound = {prev_bound[var_name]}
                     new_bounds[1] = prev_bound[var_name][1]    
             if np.allclose(np.array(prev_bound[var_name])/current_parameter.value, 
                     np.array(new_bounds)/current_parameter.value,rtol=req_fraction):
-                print_log(f'''{var_name} is fitted wel in the boundaries {new_bounds[0]} - {new_bounds[1]}. (Old is {prev_bound[var_name][0]} - {prev_bound[var_name][1]} )
-Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.array(new_bounds)/current_parameter.value} with a tolerance of {req_fraction}
-''',    cfg,case=['main'])
+                parameter_message += f'''{var_name} is fitted wel in the boundaries {new_bounds[0]} - {new_bounds[1]}. (Old is {prev_bound[var_name][0]} - {prev_bound[var_name][1]})
+Compared the array {np.array(prev_bound[var_name])/current_parameter.value} to {np.array(new_bounds)/current_parameter.value} with a tolerance of {req_fraction}
+'''
                 function_variable_settings[var_name].min = prev_bound[var_name][0]
                 function_variable_settings[var_name].max = prev_bound[var_name][1]    
             else:
-                print_log(f''' The boundaries for {var_name} are deviating more that {int(req_fraction*100.)}% from those set by 5*std (std = {current_parameter.stddev}) change.
+                parameter_message += f''' The boundaries for {var_name} are deviating more than {int(req_fraction*100.)}% from those set by a 5*std (std = {current_parameter.stddev}) change.
 Setting {var_name} = {current_parameter.value} between {new_bounds[0]}-{new_bounds[1]} (old ={prev_bound[var_name][0]}-{prev_bound[var_name][1]})
 Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.array(new_bounds)/current_parameter.value} with a tolerance of {req_fraction}
-''',cfg,case=['main'])
+'''
                 succes = False
                
                 function_variable_settings[var_name].min = new_bounds[0]
@@ -790,6 +810,7 @@ Compared array {np.array(prev_bound[var_name])/current_parameter.value} to {np.a
             function_variable_settings[var_name].stddev = current_parameter.stddev
             bounds_out[var_name] = new_bounds
             del current_parameter
+            print_log(parameter_message,cfg,case=['main'])
         
 
     #no_success=True

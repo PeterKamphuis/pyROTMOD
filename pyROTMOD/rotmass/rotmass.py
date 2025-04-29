@@ -25,7 +25,7 @@ with warnings.catch_warnings():
 def build_curve(all_RCs, total_RC, cfg=None):
     # First set individual sympy symbols  and the curve for each RC
 
-    ML, V = symbols('ML V')
+    ML, V, lgML = symbols('ML V lgML')
     replace_dict = {'symbols': []}
     total_sympy_curve = None
     for name in all_RCs:
@@ -54,13 +54,13 @@ def build_curve(all_RCs, total_RC, cfg=None):
 
                     
                     replace_dict['symbols'].append(V_replace)
-            if symbol == ML:
+            if symbol in [ML,lgML]:
                 for variable in all_RCs[name].fitting_variables:
-                   
-                    if variable.split('_')[0].lower() in ['gamma','ml']:    
+                  
+                    if variable.split('_')[0].lower() in ['gamma','lggamma','ml','lgml']: 
                         ML_replace = symbols(variable)
                 for attr in ['curve', 'individual_curve']:
-                    setattr(all_RCs[name],attr,getattr(all_RCs[name],attr).subs({ML: ML_replace}))
+                    setattr(all_RCs[name],attr,getattr(all_RCs[name],attr).subs({symbol: ML_replace}))
       
         #RC_symbols = [x for x in list(all_RCs[name].individual_curve.free_symbols) if str(x) != 'r']
         RC_symbols = [x for x in list(all_RCs[name].individual_curve.free_symbols)]
@@ -90,7 +90,7 @@ def build_curve(all_RCs, total_RC, cfg=None):
 
     print_log(f'''BUILD_CURVE:: We are fitting this complete formula:
 {'':8s}{initial_formula.__doc__}
-''',cfg,case=['main'])
+''',cfg,case=['main','screen'])
     # since lmfit is a piece of shit we have to construct our final formula through exec
    
     clean_code = create_formula_code(initial_formula,replace_dict,total_RC,\
@@ -540,12 +540,22 @@ def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
     font = add_font(cfg.input.font)        
     # First combine all RCs that need to be included in the total fit in a single dictionary
     # With their parameters and individual RC curves set 
-    all_RCs = set_fitting_parameters(cfg,baryonic_RCs,total_RC)
   
+    all_RCs = set_fitting_parameters(cfg,baryonic_RCs,total_RC)
+ 
+    if not cfg.fitting_general.log_parameters[0] is None:
+        for name in all_RCs:
+
+            replace_parameters_with_log(cfg,all_RCs[name])
+           
+        replace_parameters_with_log(cfg,total_RC,no_curve=True)
+   
+            # Now we need to set the fitting parameters for the total RC
     for names in all_RCs:
         print_log(f'''For {names} we find the following parameters and fit variables:
-{all_RCs[names]}
+{[all_RCs[names].fitting_variables[x].print() for x in all_RCs[names].fitting_variables]}
 ''',cfg,case=['debug_add'])
+   
         
 
     # Construct the function to be fitted, note that the actual fit_curve is
@@ -694,6 +704,7 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
     no_dm = False
     baryonic = []
     total_RC.fitting_variables = {}
+   
     for x in getattr(potentials, cfg.fitting_general['HALO'])().free_symbols: 
         if str(x) == 'r':
             pass
@@ -714,6 +725,7 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
         add_fitting_dict(all_RCs[name].name,cfg.fitting_parameters[all_RCs[name].name],\
                          component_type=all_RCs[name].component,\
                         fitting_dictionary=fitting_dictionary)
+       
         #Check whether we want to include this RC tot the total
         if not cfg.fitting_parameters[all_RCs[name].name][4]:
             all_RCs[name].include=False
@@ -741,7 +753,9 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
         all_RCs[name].check_unified(cfg.fitting_general.single_stellar_ML,\
                                     cfg.fitting_general.single_gas_ML)
         if all_RCs[name].include:
-            total_RC.fitting_variables.update(all_RCs[name].fitting_variables)
+            #We need a deep copy of the fitting variables
+            # otherwise we will overwrite the some variables and others not in the total rC
+            total_RC.fitting_variables.update(copy.deepcopy(all_RCs[name].fitting_variables))
       
     if not no_dm:
         #We need add the DM RC and the parameters
@@ -765,7 +779,7 @@ If you merely want to fix the variable, set an initial guess and fix it in the i
         all_RCs[cfg.fitting_general['HALO']].curve = getattr(potentials, cfg.fitting_general['HALO'])()
         #Thewre are no negatives for the DM supossedly so the individual curve is the same
         all_RCs[cfg.fitting_general['HALO']].individual_curve = getattr(potentials, cfg.fitting_general['HALO'])()
-        total_RC.fitting_variables.update(all_RCs[cfg.fitting_general['HALO']].fitting_variables)
+        total_RC.fitting_variables.update(copy.deepcopy(all_RCs[cfg.fitting_general['HALO']].fitting_variables))
    
     return all_RCs
 set_fitting_parameters.__doc__ =f'''
@@ -792,8 +806,60 @@ set_fitting_parameters.__doc__ =f'''
  NOTE:
 '''
 
+def replace_parameters_with_log(cfg,RC,no_curve=False):
+    # We need to replace the parameters with their log values
+    if no_curve:
+        # We need to replace the parameters with their log values
+        var_list = [x for x in RC.fitting_variables]
+    else:
+        var_list = [x for x in RC.curve.free_symbols if str(x) not in ['r','V']]
+    if not 'all' in [x.lower() for x in cfg.fitting_general.log_parameters]:
+        new_varlist = []
+        
+        for variable in var_list:
+            if str(variable).lower() in [x.lower() for x in cfg.fitting_general.log_parameters]:
+                new_varlist.append(variable)
+            elif str(variable).upper() in ['ML']:
+                for variable_fit in RC.fitting_variables:
+                    # We need to replace the parameters with their log values
+                    if variable_fit.split('_')[0].lower() in ['gamma','ml'] and\
+                        variable_fit.lower() in [x.lower() for x in 
+                        cfg.fitting_general.log_parameters]:
+                        new_varlist.append(variable)
+              
+    else:
+        new_varlist = var_list
+    for variable in new_varlist:
 
 
+        if str(variable).upper() in ['V']:
+            continue
+        fit_var = str(variable)
+       
+        # Mass to light ratios can also be gamma
+        if str(variable).upper() in ['ML']:       
+            for var in RC.fitting_variables:
+                if var.split('_')[0].lower() in ['gamma','ml']:    
+                    fit_var = var 
+        new_var = f'lg{fit_var}'
+        RC.fitting_variables[new_var] = RC.fitting_variables.pop(fit_var)
+        RC.fitting_variables[new_var].name = new_var
+        RC.fitting_variables[new_var].log = True
+        if RC.fitting_variables[new_var].value is not None:
+            RC.fitting_variables[new_var].value = np.log10(RC.fitting_variables[new_var].value)
+        if RC.fitting_variables[new_var].min is not None:
+            RC.fitting_variables[new_var].min = np.log10(RC.fitting_variables[new_var].min)
+        if RC.fitting_variables[new_var].max is not None:
+            RC.fitting_variables[new_var].max = np.log10(RC.fitting_variables[new_var].max)
+       
+        #Replace the variable in the curve with 10**variable
+        if not no_curve:
+            for attr in ['curve', 'individual_curve']:
+                setattr(RC,attr,getattr(RC,attr).subs({variable: (10**symbols(f'lg{variable}'))}))
+   
+
+        
+       
 
 
 

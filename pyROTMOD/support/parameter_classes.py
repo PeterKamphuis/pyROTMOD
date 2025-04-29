@@ -7,7 +7,7 @@ class Parameter:
             self.value = value
             self.stddev = stddev
             self.unit = unit
-      
+            self.log = None
             self.min = min
             self.max = max
             self.fit_stats = None
@@ -25,9 +25,11 @@ class Parameter:
             for attr, value in self.__dict__.items():
                   print(f' {attr} = {value} \n')  
       def fill_empty(self):
+          
             #If the value is None we set it to a random number between min and max
             #if the min and max are None we set them to 0.1 and 1000.
             if self.log is None:
+                  print(f'self.name {self.name}')
                   if self.name[0:2] == 'lg':      
                         self.log = True
                   else:
@@ -36,15 +38,23 @@ class Parameter:
 
             if self.min is None:
                   if self.value is not None and self.value != 0.:
-                        self.min = self.value/5.
+                        if self.log:
+                              self.min = self.value -np.log10(5.)
+                        else:      
+                              self.min = self.value/5.
+                        
                   else: 
                         if self.log:
-                              self.min = -3.
+                              self.min = -1.
                         else:      
                               self.min = 0.1
             if self.max is None:
                   if self.value is not None and self.value != 0.:
-                        self.max = self.value*5.
+                        if self.log:
+                              self.max = self.value + np.log10(5.)
+                        else:      
+                              #self.max = self.value*5.
+                              self.max = self.value*5.
                   else:
                         if self.log:
                               self.max = 3.
@@ -61,6 +71,7 @@ class Parameter:
                   #no_input = True
                   self.value = float(np.random.rand()*\
                         (self.max-self.min)+self.min)
+           
 def set_parameter_from_cfg(var_name,var_settings):
       # Using a dictionary make the parameter always to be added
       if not var_settings[1] is None and not var_settings[2] is None:

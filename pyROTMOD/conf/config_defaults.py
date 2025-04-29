@@ -67,7 +67,8 @@ class Fitting:
     negative_values: bool = False
     initial_minimizer: str = 'differential_evolution' #Not  functioning for numpyro backend
     HALO: str = 'NFW'
-    log_ML: bool = False
+    log_parameters: List = field(default_factory=lambda: [None])  #add a parameter to add it in log space 'All' will do all parameters in log
+    # 'ML' all mass to light parameters will be done in log space  #With this switch on all parameters are set as 10**parameter instead of pramater
     single_stellar_ML: bool = True
     stellar_ML: List = field(default_factory=lambda: [1.0,None,None,True]) 
     # If set to false individual settings in an input yaml still take precedence
