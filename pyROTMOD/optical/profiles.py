@@ -135,6 +135,7 @@ def extrapolate_zero(radii,profile):
 def extrapolate_zero_numpyro(radii, profile):
     """
     Extrapolate the profile for radii where the value is zero using numpyro-compatible operations.
+    This not workingy
     """
     # Ensure radii and profile are JAX arrays
     radii = jnp.array(radii)
@@ -167,24 +168,6 @@ def extrapolate_zero_numpyro(radii, profile):
     )
 
     return extrapolated_profile
-def extrapolate_zero_numpyro_no_good(radii,profile):
-    start_index =  0.
-    # This is a numpyro version of the extrapolate_zero function
-    #jax is super annoying
-    idn_array = jnp.linspace(0, len(radii)-1, len(radii))
-    jax.debug.print("x: {}", idn_array)
-    start_index = jnp.where(jnp.array(radii) > 0.,idn_array , 0. )
-
-    jax.debug.print("y: {}",start_index)
-    print("WTF")
-    
-    for i in range(len(radii)):
-        print(f'index {i} radii {radii[i]} profile {profile[i]}')  
-   
-    # This is a numpyro version of the extrapolate_zero function
-    profile = jnp.interp(radii, radii[start_index:], profile[start_index:], left = "extrapolate")
-
-    return profile
 def exponential_numpyro(central,h,r):
     profile = central*jnp.exp(-1.*r/h)
     return profile
