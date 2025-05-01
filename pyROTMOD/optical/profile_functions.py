@@ -88,8 +88,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
                             'h':float(profile_to_fit.R_effective.value/1.8153)},
                 'out':['total_luminosity','hernquist_scale_length'],
                 'out_units':[profile_to_fit.total_luminosity.unit,unit.kpc],
-                'function': (hernquist if cfg.fitting_general.backend
-                             == 'lmfit' else hernquist_numpyro),
+                'function': (hernquist),
                 'Type':'hernquist',
                 'max_red_sqr': 3000,
                 'name':'Hernquist',
@@ -114,8 +113,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
                                 profile_to_fit.values.unit,unit.kpc],
                 #'function': lambda r,Ltotal,hern_length,central,h:\
                 #        hernquist(r,Ltotal,hern_length) + exponential(r,central,h),
-                'function': (hernexp if cfg.fitting_general.backend
-                             == 'lmfit' else hernexp_numpyro),
+                'function': hernexp,
                 'separate_functions': [hernquist,exponential],
                 'Type':'hernq+expdisk',
                 'max_red_sqr': 3000,
@@ -125,7 +123,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
 
 
     evaluate = determine_profiles_to_fit(type)
-    evaluate = ['SERSIC']
+    #evaluate = ['EXP+HERN']
     fitted_dict = {}
     for ev in evaluate:
         try:
@@ -201,7 +199,12 @@ As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a
                             'name':fitted_dict[ev]['function'].__name__,
                             'red_chi_square':fitted_dict[ev]['red_chi_sq']}
                         ev = 'HERNQUIST'
-                ev_we_want = copy.deepcopy(ev)
+                    if ev in evaluate:
+                        ev_we_want = copy.deepcopy(ev)
+                    else:
+                        ev_we_want = 'SERSIC'
+                else:
+                    ev_we_want = copy.deepcopy(ev)
             elif not np.isnan(fitted_dict[ev]['red_chi_sq']):
                 rejected[ev] = {'profile': fitted_dict[ev]['profile'],
                             'name':fitted_dict[ev]['function'],
@@ -302,14 +305,15 @@ def single_fit_profile(profile_to_fit,fit_function,initial,cfg=None,\
     setattr(profile_to_fit,'numpy_curve',inp_fit_function)
     setattr(profile_to_fit,'fitting_variables',parameter_settings)
     
-    
-    if cfg.fitting_general.backend == 'lmfit':
+    #Numyro can not extrapolate the zeros in hernquist profile
+    print( fit_function.__name__.lower())
+    if cfg.fitting_general.backend == 'lmfit' or 'hern' in fit_function.__name__.lower():
         initial_parameters = initial_guess(cfg,profile_to_fit)
     print_log(f'Starting mcmc for  {name}',cfg,case=['main'])   
     if profile_to_fit.errors is None:
         profile_to_fit.errors = 0.1*profile_to_fit.values
   
-    if cfg.fitting_general.backend == 'lmfit':
+    if cfg.fitting_general.backend == 'lmfit' or 'hern' in fit_function.__name__.lower():
         original_settings = copy.deepcopy(profile_to_fit.fitting_variables)
         for variable in profile_to_fit.fitting_variables:
             profile_to_fit.fitting_variables[variable] = initial_parameters[variable]
@@ -337,7 +341,7 @@ def single_fit_profile(profile_to_fit,fit_function,initial,cfg=None,\
         profile[profile == 0.] = float('NaN')
         red_chisq = float('NaN')
     else:
-        if cfg.fitting_general.backend == 'lmfit':
+        if cfg.fitting_general.backend == 'lmfit' or 'hern' in fit_function.__name__.lower():
             profile = fit_function(profile_to_fit.radii.value,*tot_parameters)
         elif cfg.fitting_general.backend == 'numpyro':
             profile = fit_function(*tot_parameters,profile_to_fit.radii.value)

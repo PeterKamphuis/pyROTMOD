@@ -2,6 +2,7 @@
 
 from pyROTMOD.support.errors import UnitError
 from pyROTMOD.support.minor_functions import isquantity
+
 from astropy import units as unit
 from fractions import Fraction
 #the individul functions are quicker than the general function https://docs.scipy.org/doc/scipy/reference/special.html
@@ -9,6 +10,7 @@ from scipy.special import k0,k1, gammaincinv
 from scipy.interpolate import interp1d
 from sympy import meijerg
 import numpy as np
+import jax
 from jax import numpy as jnp
 from jax import scipy as jsp
 import warnings
@@ -123,24 +125,67 @@ import inspect
 '''
 
 def extrapolate_zero(radii,profile):
-    print('Extrapolating zero')
-    print(radii,profile)
     if 0. in radii or 0. in profile:
         index = np.where(radii != 0. and profile != 0.)
         extra = interp1d(radii[index].value, profile[index].value, fill_value = "extrapolate")
         index = np.where(radii == 0. or profile == 0.)
         profile[index] = extra(radii[index].value)*profile.unit
-    print(radii,profile)
+    
     return profile
+def extrapolate_zero_numpyro(radii, profile):
+    """
+    Extrapolate the profile for radii where the value is zero using numpyro-compatible operations.
+    """
+    # Ensure radii and profile are JAX arrays
+    radii = jnp.array(radii)
+    profile = jnp.array(profile)
+    idn_array = jnp.linspace(0, len(radii)-1, len(radii))
+    # Find the indices where radii and profile are greater than zero
+    valid_indices  = jnp.where((radii > 0.) & (profile > 0.) ,idn_array , 10000. )
 
-def extrapolate_zero_numpyro(radii,profile):
-    start_index =  np.max(np.where(radii != 0. and profile != 0.))
+   
+
+    # If no valid indices are found, return the original profile
+    if len(valid_indices) == 0:
+        return profile
+
+    # Use the first valid index as the starting point for extrapolation
+    start_index = jnp.min(valid_indices)
+    
+      # Get the valid radii and profile slices using lax.dynamic_slice
+    valid_radii = jax.lax.dynamic_slice(radii, (start_index),
+        (radii.size - start_index))
+    valid_profile = jax.lax.dynamic_slice(profile, (start_index), 
+        (profile.size - start_index,))
+
+    # Perform interpolation and extrapolation
+    extrapolated_profile = jnp.interp(
+        radii,
+        valid_radii,  # Use valid radii for interpolation
+        valid_profile,  # Use valid profile values for interpolation
+        left="extrapolate" # Extrapolate to the left using the first valid value
+    )
+
+    return extrapolated_profile
+def extrapolate_zero_numpyro_no_good(radii,profile):
+    start_index =  0.
+    # This is a numpyro version of the extrapolate_zero function
+    #jax is super annoying
+    idn_array = jnp.linspace(0, len(radii)-1, len(radii))
+    jax.debug.print("x: {}", idn_array)
+    start_index = jnp.where(jnp.array(radii) > 0.,idn_array , 0. )
+
+    jax.debug.print("y: {}",start_index)
+    print("WTF")
+    
+    for i in range(len(radii)):
+        print(f'index {i} radii {radii[i]} profile {profile[i]}')  
+   
     # This is a numpyro version of the extrapolate_zero function
     profile = jnp.interp(radii, radii[start_index:], profile[start_index:], left = "extrapolate")
 
     return profile
 def exponential_numpyro(central,h,r):
-
     profile = central*jnp.exp(-1.*r/h)
     return profile
 def exponential(r,central,h):

@@ -397,7 +397,7 @@ def get_uncounted(key):
 def quantity_array(list,unit):
     #Because astropy is coded by nincompoops Units to not convert into numpy arrays well.
     #It seems impossible to convert a list of Quantities into a quantity  with a list or np array
-    #This means we have to pull some ticks when using numpy functions because they don't accept lists of Quantities
+    #This means we have to pull some tricks when using numpy functions because they don't accept lists of Quantities
     # Major design flaw in astropy unit and one think these nincompoops could incorporate a function like this 
     #Convert a list of quantities into quantity with a numpy array
     return np.array([x.to(unit).value for x in list],dtype=float)*unit 
