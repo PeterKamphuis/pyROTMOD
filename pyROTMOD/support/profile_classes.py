@@ -282,7 +282,8 @@ class Luminosity_Profile(SBR_Profile):
 
             #Fit the profile
             print_log(f'Fitting profile {self.name}',cfg ,case=['debug_add'])
-            succes = fit_profile(self, cfg=cfg)
+            if not cfg.RC_Construction.keep_random_profiles:
+                  succes = fit_profile(self, cfg=cfg)
             #If the fit is succesful copy the new attributes and 
             # if apply the profil
           
@@ -657,23 +658,23 @@ def set_variables_and_ranges(RC):
                               #Too accomadate non ngeative we make sure the lower range is always >= min
                               if (RC.fitting_variables[variable].value-
                                     RC.fitting_variables[variable].stddev < 
-                                    RC.fitting_variables[variable].min):
-                                    range_isbadname[0] = RC.fitting_variables[variable].min
+                                    RC.fitting_variables[variable].boundaries[0]):
+                                    range_isbadname[0] = RC.fitting_variables[variable].boundaries[0]
                               else:
                                     range_isbadname[0] = RC.fitting_variables[variable].value-\
                                           RC.fitting_variables[variable].stddev
                               if (RC.fitting_variables[variable].value+
                                     RC.fitting_variables[variable].stddev > 
-                                    RC.fitting_variables[variable].max):
-                                    range_isbadname[1] = RC.fitting_variables[variable].max
+                                    RC.fitting_variables[variable].boundaries[1]):
+                                    range_isbadname[1] = RC.fitting_variables[variable].boundaries[1]
                               else:
                                     range_isbadname[1] = RC.fitting_variables[variable].value+\
                                           RC.fitting_variables[variable].stddev
                         else:
-                              if not RC.fitting_variables[variable].min is None:
-                                    range_isbadname[0] = RC.fitting_variables[variable].min
-                              if not RC.fitting_variables[variable].max is None:
-                                    range_isbadname[1] = RC.fitting_variables[variable].max
+                              if not RC.fitting_variables[variable].boundaries[0] is None:
+                                    range_isbadname[0] = RC.fitting_variables[variable].boundaries[0]
+                              if not RC.fitting_variables[variable].boundaries[1] is None:
+                                    range_isbadname[1] = RC.fitting_variables[variable].boundaries[1]
                   ranges.append(range_isbadname)              
                 
             

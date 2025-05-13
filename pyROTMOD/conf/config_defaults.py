@@ -33,7 +33,7 @@ class Output:
     debug_functions: List = field(default_factory=lambda: ['ALL'])
     verbose: bool = False
     chain_data: bool = False #If True we save the chain data in a file
-   
+    output_curves : bool = False #If True we save the rotation curves in a file
 @dataclass
 class RCConstruction:
     enable: bool = True
@@ -201,15 +201,17 @@ def correct_type(var,ty):
     return var    
 
 
-def read_config():
+def read_config(file=None):
     argv = check_arguments()
     cfg = OmegaConf.structured(ShortConfig)
     # print the default file
     inputconf = OmegaConf.from_cli(argv)
+    
     short_inputconf = OmegaConf.masked_copy(inputconf,\
                 ['print_examples','configuration_file','input','output','RC_Construction','fitting_general'])
     cfg_input = OmegaConf.merge(cfg,short_inputconf)
-   
+    if not file is None:
+        cfg_input.configuration_file = file    
 
     if cfg_input.configuration_file:
         try:

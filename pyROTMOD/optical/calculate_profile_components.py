@@ -139,7 +139,6 @@ def calculate_total_mass(components):
             total = total.to(unit.Msun)
             components.total_mass = total 
         except:
-            print('The total luminosity could not be calculated')
             components.total_mass = None
 
 def calculate_total_luminosity(components):
@@ -174,7 +173,6 @@ def calculate_total_luminosity(components):
             components.total_luminosity = total 
         #exit()
         except:
-            print('The total luminosity could not be calculated')
             components.total_luminosity = None
     
         

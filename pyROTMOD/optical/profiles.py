@@ -273,8 +273,9 @@ def hernexp_numpyro(Ltotal,hern_length,central,h,r):
     '''
     This is the sum of a Hernquist and an exponential profile
     '''
-    value = hernquist_numpyro(Ltotal,hern_length,r) + exponential_numpyro(central,h,r)
-   
+    hern =  hernquist_numpyro(Ltotal,hern_length,r)
+    exp = exponential_numpyro(central,h,r)
+    value = hern + exp    
     return value
 def hernexp( r,Ltotal,hern_length,central,h):
     '''
@@ -290,7 +291,6 @@ def hernquist_numpyro(total_l,h,r):
     These are presented in Hernquist 1990 Eq 32 and what follows
     M_total/Gamma is replaced by L_total
     '''
-   
     s = r/h
   
     XS_1 = 1./jnp.sqrt(1-s**2)*\
@@ -301,7 +301,6 @@ def hernquist_numpyro(total_l,h,r):
     XS = XS_1+XS_2
     profile = total_l/(2.*jnp.pi*h**2*\
         (1-s**2)**2)*((2+s**2)*XS-3)
-    
     profile = extrapolate_first_numpyro(r,profile)  
     return profile
   
@@ -428,7 +427,6 @@ def sersic_profile(components,radii = None):
     s = radii.value/components.R_effective.value
  
     # front factor # This is lacking an 1./R_effective because it cancels with 1./s later on
-    print(components.central_SB,p, q)
     const = 2.*components.central_SB*np.sqrt(p*q)/(2*np.pi)**p
     
     # The meijer g function insympy does not accept arrays

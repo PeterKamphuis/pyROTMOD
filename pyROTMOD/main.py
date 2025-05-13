@@ -30,6 +30,9 @@ def main():
         warnings.showwarning = warn_with_traceback
    
     cfg = check_input(cfg)
+    #Need to set the number of threads for XLA else it will regularly see only one
+    os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={cfg.input.ncpu}"
+    
     #Add the requested font and get the font name name
     font_name = add_font(cfg.input.font)
    
