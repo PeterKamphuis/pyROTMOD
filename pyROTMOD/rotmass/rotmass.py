@@ -593,7 +593,7 @@ def update_RC(RC,update,reset=False):
             if reset:
                 if RC.fitting_variables[variable].original_value is not None:
                     RC.fitting_variables[variable].value = \
-                        RC.fitting_variables[variable].original_value[0]
+                        RC.fitting_variables[variable].original_value
 
 def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
     out_dir = f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/'
