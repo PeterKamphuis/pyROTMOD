@@ -82,7 +82,7 @@ def initial_guess(cfg, total_RC,chain_data= False):
     Value: {guess_variables[variable].value}
     Min, Max: {','.join([f'{x}' for x in guess_variables[variable].boundaries])}
     Vary: {guess_variables[variable].variable}
-    ''',cfg,case=['debug_add','screen'])
+    ''',cfg,case=['debug_add'])
        
         model.set_param_hint(variable,value=guess_variables[variable].value,\
             min=guess_variables[variable].boundaries[0],\
