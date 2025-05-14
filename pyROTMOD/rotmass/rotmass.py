@@ -580,9 +580,9 @@ def update_RCs(update,RCs,total_RC,reset = False):
         update_RC(RCs[name],update,reset=reset)
     update_RC(total_RC,update,reset=reset)
 
-def update_RC(RC,update,reset=False)
+def update_RC(RC,update,reset=False):
     for variable in update:
-        if variable in [key for key in RCs[name].fitting_variables]:
+        if variable in [key for key in RC.fitting_variables]:
             RC.fitting_variables[variable] = update[variable]
             for i in [0,1]:
                 if RC.fitting_variables[variable].fixed_boundaries[i] and\
