@@ -62,11 +62,27 @@ def initial_guess(cfg, total_RC,chain_data= False):
         if variable == 'r' or variable not in inspect.signature(total_RC.numpy_curve['function']).parameters:
             #We don't need guesses for r
             continue
+        if variable[0:2] == 'lg':
+            #the diffirential does not like larget ranges of boundaries
+            
+            diff = guess_variables[variable].boundaries[1]-\
+                guess_variables[variable].boundaries[0]
+            if diff > 8.:
+                change = (diff-8.)/2.
+                guess_variables[variable].boundaries[1] -= change
+                guess_variables[variable].boundaries[0] += change
+            '''
+            for i in [0,1]:
+                if abs(guess_variables[variable].boundaries[i]) > 10.:
+                    guess_variables[variable].boundaries[i] =\
+                          4.*guess_variables[variable].boundaries[i]\
+                            /abs(guess_variables[variable].boundaries[i])+5*i
+            '''
         print_log(f'''INITIAL_GUESS: Setting the parameter {variable} with the following values:
     Value: {guess_variables[variable].value}
     Min, Max: {','.join([f'{x}' for x in guess_variables[variable].boundaries])}
     Vary: {guess_variables[variable].variable}
-    ''',cfg,case=['debug_add'])
+    ''',cfg,case=['debug_add','screen'])
        
         model.set_param_hint(variable,value=guess_variables[variable].value,\
             min=guess_variables[variable].boundaries[0],\
@@ -98,6 +114,7 @@ def initial_guess(cfg, total_RC,chain_data= False):
             warnings.filterwarnings("ignore", message="divide by zero encountered in divide")
             warnings.filterwarnings("ignore", message="divide by zero encountered in scalar divide")
             '''
+
             initial_fit = model.fit(data=total_RC.values.value, \
                 params=parameters, r=total_RC.radii.value, method= minimizer\
                 ,nan_policy='omit',scale_covar=False)

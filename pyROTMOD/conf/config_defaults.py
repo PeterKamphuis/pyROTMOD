@@ -4,6 +4,7 @@ from dataclasses import dataclass,field
 from omegaconf import OmegaConf,open_dict
 from typing import List,Optional
 from datetime import datetime
+from pyROTMOD.support.errors import InputError
 from pyROTMOD.support.minor_functions import get_uncounted
 from pyROTMOD.support.profile_classes import Rotation_Curve
 import os
@@ -11,6 +12,7 @@ import sys
 import psutil
 import pyROTMOD.rotmass.potentials as potentials
 import pyROTMOD
+import numpy as np
 
 @dataclass
 class Input:
@@ -200,6 +202,41 @@ def correct_type(var,ty):
                 var = None
     return var    
 
+def add_log_parameters(cfg_new,stored):
+    ''' if we have input in a log format we want to add them to the fitting parameters
+    We will keep the non-log defaults in the fitting parameters as well such that we can apply the
+    input after converting the RCs to log.    
+    '''
+    if not cfg_new.fitting_general.log_parameters[0] is None:
+        #We have to check we did not set parameters as lg
+        if  'all' in [x.lower() for x in cfg_new.fitting_general.log_parameters]:
+            to_check = cfg_new.fitting_parameters.keys()
+        else:
+            to_check = cfg_new.fitting_general.log_parameters
+            for i,key in enumerate(to_check):
+                if key[0:2] == 'lg':
+                    to_check[i] = key[2:]
+        #Then copy the cfg to make a new paramater fiting section
+        mask = []
+        for key in cfg_new.__dict__['_content']:
+            if key != 'fitting_parameters':
+                mask.append(key)
+        cfg_log = OmegaConf.masked_copy(cfg_new ,mask)      
+        cfg_log.fitting_parameters = {}
+        for key in cfg_new.fitting_parameters:
+            if key in to_check:
+                lgkey = f'lg{key}'
+                for conftype in [stored.file_config,stored.input_config]:
+                    if 'fitting_parameters' in conftype:    
+                        if lgkey.lower() in [x.lower() for x in conftype['fitting_parameters']]:
+                            cfg_log.fitting_parameters[lgkey] = conftype['fitting_parameters'][lgkey]
+                # add the non-log values
+                cfg_log.fitting_parameters[key] = cfg_new.fitting_parameters[key]
+               
+    else:
+        cfg_log=cfg_new
+       
+    return cfg_log
 
 def read_config(file=None):
     argv = check_arguments()
@@ -280,5 +317,7 @@ def read_fitting_config(cfg,baryonic_RCs,print_examples=False):
     cfg_new = create_masked_copy(cfg_new,cfg.file_config)
     cfg_new = create_masked_copy(cfg_new,cfg.input_config) 
     cfg_new.fitting_general.HALO = halo
+    cfg_new = add_log_parameters(cfg_new,cfg) 
    
+    #We have to check if we have a scaleheight in the input file   
     return cfg_new

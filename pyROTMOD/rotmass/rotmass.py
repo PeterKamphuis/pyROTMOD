@@ -581,9 +581,19 @@ def update_RCs(update,RCs,total_RC):
         for name in RCs:
             if variable in [key for key in RCs[name].fitting_variables]:
                 RCs[name].fitting_variables[variable] = update[variable]
-                    
+                for i in [0,1]:
+                    if RCs[name].fitting_variables[variable].fixed_boundaries[i] and\
+                        (RCs[name].fitting_variables[variable].boundaries[i] !=
+                        RCs[name].fitting_variables[variable].original_boundaries[i]):
+                        RCs[name].fitting_variables[variable].boundaries[i] = \
+                            RCs[name].fitting_variables[variable].original_boundaries[i]
         total_RC.fitting_variables[variable] = update[variable]  
-      
+        for i in [0,1]:
+            if total_RC.fitting_variables[variable].fixed_boundaries[i] and\
+                (total_RC.fitting_variables[variable].boundaries[i] !=
+                total_RC.fitting_variables[variable].original_boundaries[i]):
+                total_RC.fitting_variables[variable].boundaries[i] = \
+                    total_RC.fitting_variables[variable].original_boundaries[i]
 
 
 def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
@@ -602,7 +612,8 @@ def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
             replace_parameters_with_log(cfg,all_RCs[name])
            
         replace_parameters_with_log(cfg,total_RC,no_curve=True)
-   
+       
+      
             # Now we need to set the fitting parameters for the total RC
     #for names in all_RCs:
     #    print_log(f'''For {names} we find the following parameters and fit variables:
@@ -876,6 +887,7 @@ def replace_parameters_with_log(cfg,RC,no_curve=False):
               
     else:
         new_varlist = var_list
+
     for variable in new_varlist:
 
 
@@ -889,19 +901,33 @@ def replace_parameters_with_log(cfg,RC,no_curve=False):
                 if var.split('_')[0].lower() in ['gamma','ml']:    
                     fit_var = var 
         new_var = f'lg{fit_var}'
-        RC.fitting_variables[new_var] = RC.fitting_variables.pop(fit_var)
-        RC.fitting_variables[new_var].name = new_var
-        RC.fitting_variables[new_var].log = True
-        if RC.fitting_variables[new_var].value is not None:
-            RC.fitting_variables[new_var].value = np.log10(RC.fitting_variables[new_var].value)
-        for i in range(2):
-            if RC.fitting_variables[new_var].boundaries[i] is not None:
-                RC.fitting_variables[new_var].boundaries[i] =\
-                    np.log10(RC.fitting_variables[new_var].boundaries[i])
-            if RC.fitting_variables[new_var].original_boundaries[i] is not None:
-                RC.fitting_variables[new_var].original_boundaries[i] =\
-                    np.log10(RC.fitting_variables[new_var].original_boundaries[i])    
-      
+        
+        #First we check wether we have a log value in for the parameter
+        if (new_var in cfg.fitting_parameters or f'lg{RC.name}' in cfg.fitting_parameters): 
+            fitting_name = new_var if new_var in cfg.fitting_parameters else f'lg{RC.name}'
+            RC.fitting_variables[new_var] = set_parameter_from_cfg(new_var,
+                cfg.fitting_parameters[fitting_name])
+            RC.fitting_variables.pop(fit_var)          
+           
+        else:
+            RC.fitting_variables[new_var] = RC.fitting_variables.pop(fit_var)
+            RC.fitting_variables[new_var].name = new_var
+            RC.fitting_variables[new_var].log = True
+            if RC.fitting_variables[new_var].value is not None :
+                RC.fitting_variables[new_var].value = np.log10(
+                    RC.fitting_variables[new_var].value)
+            if RC.fitting_variables[new_var].original_value is not None :
+                RC.fitting_variables[new_var].original_value = np.log10(
+                    RC.fitting_variables[new_var].original_value)
+        
+            for i in range(2):
+                if RC.fitting_variables[new_var].boundaries[i] is not None:
+                    RC.fitting_variables[new_var].boundaries[i] =\
+                        np.log10(RC.fitting_variables[new_var].boundaries[i])
+                if RC.fitting_variables[new_var].original_boundaries[i] is not None:
+                    RC.fitting_variables[new_var].original_boundaries[i] =\
+                        np.log10(RC.fitting_variables[new_var].original_boundaries[i])    
+        
        
         #Replace the variable in the curve with 10**variable
         if not no_curve:
