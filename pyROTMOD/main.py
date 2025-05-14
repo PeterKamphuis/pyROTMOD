@@ -34,7 +34,6 @@ def main():
     os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={cfg.input.ncpu}"
     
     #Add the requested font and get the font name name
-    font_name = add_font(cfg.input.font)
    
     if cfg.RC_Construction.enable:
         print_log(f'We start to derive the RCs.\n',cfg,case=['main'])

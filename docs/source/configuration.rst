@@ -37,12 +37,12 @@ Input Keywords
 
   *int, optional, default = assigned or available in hardware - 1*
 
-  Number of CPUs used for threaded parts of pyROTMOD. In numpyro this determines the number of chains used in the mcmc fitting. In galfit this is the number of threads used for rotation curve fitting.
+  Number of CPUs used for threaded parts of pyROTMOD. In numpyro this determines the number of chains used in the mcmc fitting unless the number of chains is explicitly set. In galfit this is the number of threads used for rotation curve fitting.
 
 
-**RC_File.txt**
+**RC_File**
 
-  *str, optional, default = 'RCs_For_Fitting.txt'*
+  *str, optional, default = None*
 
   File where RCs can be given to the code without deriving their density profiles.
   They need to be in the pyROTMOD format. This file is only read when RC_Construction is enabled to allow for a mixture of density profiles and derived RCs. In case one wants to continue from the output of a previous run the RC file in output is read.
@@ -51,24 +51,29 @@ Input Keywords
 
   *float, required, default = None*
 
-  Distance to the galaxy. In case the gas_file is a tirific file the default is vsys from that file. In case of a table no default exists.
+  Distance to the galaxy. In case the gas_file is a tirific file the default is vsys from that file on a Hubble flow. In case of a table no default exists.
   This is a required parameter and the code will exit if not provided.
 
  **font**: 
 
   *str, optional, default = "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf"*
 
-
+  Font to be used for the plots. This is only used in the plots and not in the fitting. The default is Times New Roman if availabe.
+  
+   
+    
+   
 Output Keywords
 --------
 *Specified with output*
 
-**RC_File.txt**:
+**RC_File**:
 
   *str, optional, default = 'RCs_For_Fitting.txt'*
 
   File where the all the derived RCs will be written in the pyROTMOD format. \n
-  !! If RC_Contrustion is enabled this file will be overwritten !!!
+  !! If RC_Contrustion is enabled this file will be overwritten !!! \n
+  If you want to provide RCs that are not derived and not overwritten please use the RC_file keyword in the input section and run RC_Construction. \n
 
 **out_base**:
 
@@ -113,6 +118,19 @@ Output Keywords
 
   Print more messages then usual to the screen. 
 
+ **chain_data**:
+ 
+  *bool, optional, default = False* 
+  
+  If True we save the chain data of the mcmc in a pickled file. 
+  This is a large file and can be used to plot the chain data or to continue the fitting.
+    
+  **output_curves**
+  
+  *bool, optional, default = False*
+
+  If True we save the final fitted curves that are created from the formulas and the fitted parameters in a pickled file. 
+
 RC_Construction Keywords
 --------
 *Specified with RC_Construction*
@@ -121,10 +139,12 @@ RC_Construction Keywords
 
   *bool, optional, default =True*
 
-  Whether to construct the RC from the density files. If this is disabled the code will only fit the RCs as listed in output directory output RC file.
+  Switch to indicate whether to construct the RC from the density files. If this is disabled the code will only fit the RCs as listed in output directory output RC file.
+
 **out_base**:
 
   *str, optional, default = ''*
+
   Base name of the output files. Additional base_name for output produced in this section
 
 **optical_file**: null
@@ -155,8 +175,8 @@ RC_Construction Keywords
 
   *list, optional, default = [0., None, 'KPC', 'inf_thin']*
 
-  scale height and vertical mode of the optical disks. If 0. or vertical mode = None infinitely thin disks are used.
-  vertical mode options are  ['exp', 'sech-sq','sech', 'constant', 'lorentzian']. Anything in galfit file supersedes this input.
+  scale height and vertical mode of the optical disks. If 0. or vertical mode = None infinitely thin disks and sphrical bulges are assumed.
+  vertical mode options are  ['exp', 'sech-sq','sech', 'constant', 'lorentzian']. Anything in a galfit file supersedes this input.
 
 **truncation_radius**:
 
@@ -203,8 +223,10 @@ RC_Construction Keywords
 
   *bool, optional, default = False*
 
-  If we have random profiles in Lsun/pc^2 we do not fit one of the known functions to them keepand assume they are SBR_Profile when multiplied with MLratio, 
-  if set to false we attempt to fit a profile to them with known functions.
+  If we have random profiles in Lsun/pc^2 we do not fit one of the known functions to them and 
+  simply assume the profile is to be converted to ar SBR Density Profile by mutiplying this profile  
+  with the ML ratio, 
+  If set to false we attempt to fit the input profile with an exponential, sersic, herquist or hernquist+exponential.
 
 **band**:
 
@@ -218,7 +240,6 @@ RC_Construction Keywords
   *str, optional , default = 21cm*
 
   For future use
-
 
 
 General Fitting Keywords
@@ -235,32 +256,45 @@ General Fitting Keywords
 
   *Bool, optional, default = False*
 
-  Allow for negative values for the parameters or Not.
+  Allow for negative values for the parameters or not.
 
 **initial_minimizer**:
   
   *str, optional, default = 'differential_evolution'
 
-  The minimizer used in the initial estimates. This can be any lmfit minimizer. This has no effect when using numpyro as the fitting method. 
-  The default is differential_evolution which is a global minimizer.
+  The minimizer used in the initial estimates. This can be any lmfit minimizer. 
+  LMfit is also used for the initial estimates when using numpyro as the fitting method. 
+  The default is differential_evolution which is a global minimizer. 
+  If the mcmc fails the output will fall back on this initial fit and produce output 
+  but the results file will indicate that the fit is not a succes.
 
 **HALO**:
 
   *str, optional, default =NFW'*
 
   The requested DM halo potential. For now this is NFW, ISO, BURKERT for the NFW profile, the pseudo isothermal halo profile and a Burkert profile.
-  MOND is also an option to fit the classic implementation of MOND.
+  MOND_CLASSIC is also an option to fit the classic implementation of MOND.
+
+**log_parameters**: 
+
+  *list, optional, default = [None]*
+  
+  A list of parameters that should be fitted in log space. If set to None no parameters will be fitted in log
+  'All' will fit all parameters in log. If a list of parameters those parameters will be fit in log.
+  This can be usefull for parameters that span a large range of values or are very small. In principle the 
+  the output should not change but fitting speeds might vary. 
+  
 
 **single_stellar_ML**:
 
   *bool, optional, default = True*
 
-  If set to True the code will assume a single mass to light ratio for all stellar components. If set to False the code will 
-  fit a different mass to light ratio for each stellar component.
-
-  This is not recommended as it can easily lead to degeneracies.
+  If set to True the code will assume a single mass to light ratio for all stellar components. 
+  If set to False the code will fit a different mass to light ratio for each stellar component. The latter
+  is not recommended as it can easily lead to degeneracies.
 
 **single_gas_ML**:
+
   *bool, optional, default = False*
 
   If set to True the code will assume a single mass to light ratio for all gas components. 
@@ -278,8 +312,6 @@ General Fitting Keywords
   *bool, optional, default = True*
 
   If set to True the code will assume a fixed mass to light ratio for all gas components.
-
-
   
 **mcmc_steps**:
 
@@ -291,8 +323,13 @@ General Fitting Keywords
 
   *int, optional, default = 500* 
   
-  Number of steps to discard in MCMC chain per   free parameter
+ 
+    use_gp: bool = True    #numpyro uses tingp and lmfit uses sklearn
+    gp_kernel_type: str = 'RBF'
+    backend : str = 'numpyro' # lmfit or numpyro
+    max_iterations: int = 5
     
+
 **numpyro_chains**: 
 
   *int, optional, default = number of avalaible cpus*
@@ -304,26 +341,41 @@ General Fitting Keywords
   *bool, optional, default = True*
   
   use Gaussian Processes as described in https://arxiv.org/abs/2211.06460 or not (False).
-  Note that that the test in that article only converges due to the boundaries set and the problem is actually unconstrained due to the disk-halo degeneracy. 
-  As such it is not clear to me yet if Gaussian Processes truly change things. Please use this code to further investigate this issue.
-  In the code lmfit uses sklearn and numpyro uses tinygp to implement the Gaussian Processes.
+  Note that for the test persented in that article whithout GP converges due to the boundaries set.
+  pyROTMOD converges on similar boundaries but in principle the problem is not constrained. And the parameters should cover both results
+  As such it is not clear to me yet whether using Gaussian Processes' truly improve the accuracy. 
+  Please use this code to further investigate this issue.
+  
+  In the code lmfit uses sklearn and numpyro uses tinygp to implement the Gaussian Processes. 
+  The LMfit implementation is very slow.
+
+  numpyro_chains: Optional[int] = None # If not set it will be set to the number of available cpus
+    use_gp: bool = True    #numpyro uses tingp and lmfit uses sklearn
+    gp_kernel_type: str = 'RBF'
+    backend : str = 'numpyro' # lmfit or numpyro
+    max_iterations: int = 5
+    
 
 **gp_kernel**:
 
   *str, optional, default = 'RBF'*
 
-  The kernel used in the Gaussian Processes. For now this ahas no effect.
+  The kernel used in the Gaussian Processes. For now this has no effect. 
  
 **backend**:
+
   *str, optional, default = 'numpyro'*
 
   The backend used for the fitting. This can be numpyro or lmfit. Numpyro is the default and is much faster than lmfit.
   
 **max_iterations**:
 
+  *int, optional, default = 10.*
+
   pyROTMOD will run the fitting unitl the limits of the parameters converge to 5*stdev of the parameter. 
-  This ensures that each parameter is well constrained. However, in case of unconstrained fits this it can be that the parameters do not converge
-  and the code will run for a long time. If the code has done max_iterations it will assume that the problem diverges.
+  This ensures that each parameter is constrained. However, in case of unconstrained fits this depends
+  crucial on the the initial guess. It can be that the parameters do not converge
+  and the code will run for a long time. If the code has matched max_iterations it will assume that the problem diverges.
 
 Fitting Keywords
 --------

@@ -545,6 +545,7 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
 ''' ,cfg,case=['main'])
     else:
         gas_profiles = None
+        total_RC = None
      ######################################### Read the optical profiles  #########################################
     if not cfg.RC_Construction.optical_file is None:
         try:
@@ -559,8 +560,16 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
         optical_profiles = None
     ################ We want the profiles to extend to the size of the total RC ###############################
     if not cfg.input.RC_file is None:
-        total_RC, input_RCs = read_RCs(cfg=cfg,file= cfg.input.RC_file)
- 
+        total_read_RC, input_RCs = read_RCs(cfg=cfg,file= cfg.input.RC_file)
+    
+    if total_RC is None and total_read_RC is None:
+        raise InputError(f'We have not found any total RC to fit. Please provide a gas profile or a RC file with a V_OBS or VROT column.')
+    elif not total_RC is None and not total_read_RC is None:
+        raise InputError(f'We have found both a total_RC from the gas profile and a RC file with a V_OBS or VROT column. Please provide only one of them.')
+    else:
+        if total_RC is None:
+            total_RC = total_read_RC    
+         
 
     ################ Combine all profiles and make sure they are all in M_sun/pc^2 or Msun/pc^3 ############################
     profiles = combine_SB_profiles(gas_profiles,optical_profiles,total_RC, cfg=cfg)

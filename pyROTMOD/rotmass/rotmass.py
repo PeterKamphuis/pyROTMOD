@@ -575,26 +575,25 @@ plot_curves.__doc__ =f'''
 
  NOTE:
 '''
-def update_RCs(update,RCs,total_RC):
-    
-    for variable in update:
-        for name in RCs:
-            if variable in [key for key in RCs[name].fitting_variables]:
-                RCs[name].fitting_variables[variable] = update[variable]
-                for i in [0,1]:
-                    if RCs[name].fitting_variables[variable].fixed_boundaries[i] and\
-                        (RCs[name].fitting_variables[variable].boundaries[i] !=
-                        RCs[name].fitting_variables[variable].original_boundaries[i]):
-                        RCs[name].fitting_variables[variable].boundaries[i] = \
-                            RCs[name].fitting_variables[variable].original_boundaries[i]
-        total_RC.fitting_variables[variable] = update[variable]  
-        for i in [0,1]:
-            if total_RC.fitting_variables[variable].fixed_boundaries[i] and\
-                (total_RC.fitting_variables[variable].boundaries[i] !=
-                total_RC.fitting_variables[variable].original_boundaries[i]):
-                total_RC.fitting_variables[variable].boundaries[i] = \
-                    total_RC.fitting_variables[variable].original_boundaries[i]
+def update_RCs(update,RCs,total_RC,reset = False):
+    for name in RCs:
+        update_RC(RCs[name],update,reset=reset)
+    update_RC(total_RC,update,reset=reset)
 
+def update_RC(RC,update,reset=False)
+    for variable in update:
+        if variable in [key for key in RCs[name].fitting_variables]:
+            RC.fitting_variables[variable] = update[variable]
+            for i in [0,1]:
+                if RC.fitting_variables[variable].fixed_boundaries[i] and\
+                    (RC.fitting_variables[variable].boundaries[i] !=
+                    RC.fitting_variables[variable].original_boundaries[i]):
+                    RC.fitting_variables[variable].boundaries[i] = \
+                        RC.fitting_variables[variable].original_boundaries[i]
+            if reset:
+                if RC.fitting_variables[variable].original_value is not None:
+                    RC.fitting_variables[variable].value = \
+                        RC.fitting_variables[variable].original_value[0]
 
 def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
     out_dir = f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/'
@@ -645,7 +644,7 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
         #total_RC.fitting_variables['amplitude'] = [1.,0.1,10.,True,True]
         #total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
         total_RC.fitting_variables['lgamplitude'] = Parameter(name='lgamplitude'
-            ,value= 1.2, variable = True, include = True, original_boundaries = [-3,3.], log= True)
+            ,value= 1., variable = True, include = True, original_boundaries = [-3,3.], log= True)
         total_RC.fitting_variables['length_scale'] = Parameter(name='length_scale'
             ,value= 1., variable = True, include = True, original_boundaries = [0.1,10.])
         
@@ -653,7 +652,7 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
     result_summary = {'skip_output': False, 'BIC': None, 'succes': False,'direction': 'diverging',
                       'max_iterations': False, 'Error': 'No Error'}
     initial_guesses,initial_data = initial_guess(cfg, total_RC,chain_data=True)
-    update_RCs(initial_guesses,all_RCs,total_RC)
+    update_RCs(initial_guesses,all_RCs,total_RC,reset=True)
     plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
             all_RCs,total_RC,font=font)
  

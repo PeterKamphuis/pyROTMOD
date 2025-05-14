@@ -82,7 +82,7 @@ class Fitting:
     use_gp: bool = True    #numpyro uses tingp and lmfit uses sklearn
     gp_kernel_type: str = 'RBF'
     backend : str = 'numpyro' # lmfit or numpyro
-    max_iterations: int = 5
+    max_iterations: int = 10
     
 @dataclass
 class ExtendConfig:
