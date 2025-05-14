@@ -2,6 +2,7 @@
 
 from pyROTMOD.support.errors import UnitError
 from pyROTMOD.support.minor_functions import isquantity
+
 from astropy import units as unit
 from fractions import Fraction
 #the individul functions are quicker than the general function https://docs.scipy.org/doc/scipy/reference/special.html
@@ -9,8 +10,10 @@ from scipy.special import k0,k1, gammaincinv
 from scipy.interpolate import interp1d
 from sympy import meijerg
 import numpy as np
+import jax
 from jax import numpy as jnp
 from jax import scipy as jsp
+from functools import partial
 import warnings
 from functools import partial
 # The edge functions are  untested for now
@@ -123,20 +126,50 @@ import inspect
 '''
 
 def extrapolate_zero(radii,profile):
-    if 0. in radii:
-        index = np.where(radii != 0.)
+    if 0. in radii or 0. in profile:
+        index = np.where(radii != 0. and profile != 0.)
         extra = interp1d(radii[index].value, profile[index].value, fill_value = "extrapolate")
-        index = np.where(radii == 0.)
+        index = np.where(radii == 0. or profile == 0.)
         profile[index] = extra(radii[index].value)*profile.unit
+    
     return profile
 
-def extrapolate_zero_numpyro(radii,profile):
-    # This is a numpyro version of the extrapolate_zero function
-    profile = jnp.interp(radii, radii[1:], profile[1:], left = "extrapolate")
+def extrapolate_first_numpyro(radii, profile):
+    """
+    Extrapolate the profile for radii where the value is zero using numpyro-compatible operations.
+    As jax is stupid and cannot handle variables we are alway extrapolating the first 
+    element just in case the first radius is zero 
+    """
+    # Ensure radii and profile are JAX arrays
+    radii = jnp.array(radii)
+    profile = jnp.array(profile)
+    # Find the indices where radii and profile are greater than zero
+    #mask  = jnp.where((radii > 0.) & (profile > 0.) ,True , False )
+    #mask  = jnp.where((radii > 0.) ,True , False )
+    
+    # If no valid indices are found, return the original profile
+    #if jnp.all(mask):
+    #    return profile
 
-    return profile
+    # Use the first valid index as the starting point for extrapolation
+    #start_index = jnp.min(valid_indices)
+
+    #new_array_size = int(profile.size-start_index)
+    valid_radii = jnp.array(radii[1:])
+    valid_profile = jnp.array(profile[1:])
+
+    
+   
+    # Perform interpolation and extrapolation
+    extrapolated_profile = jnp.interp(
+        radii,
+        valid_radii,  # Use valid radii for interpolation
+        valid_profile,  # Use valid profile values for interpolation
+        left="extrapolate" # Extrapolate to the left using the first valid value
+    )
+
+    return extrapolated_profile
 def exponential_numpyro(central,h,r):
-
     profile = central*jnp.exp(-1.*r/h)
     return profile
 def exponential(r,central,h):
@@ -240,8 +273,9 @@ def hernexp_numpyro(Ltotal,hern_length,central,h,r):
     '''
     This is the sum of a Hernquist and an exponential profile
     '''
-    value = hernquist_numpyro(Ltotal,hern_length,r) + exponential_numpyro(central,h,r)
-   
+    hern =  hernquist_numpyro(Ltotal,hern_length,r)
+    exp = exponential_numpyro(central,h,r)
+    value = hern + exp    
     return value
 def hernexp( r,Ltotal,hern_length,central,h):
     '''
@@ -257,7 +291,6 @@ def hernquist_numpyro(total_l,h,r):
     These are presented in Hernquist 1990 Eq 32 and what follows
     M_total/Gamma is replaced by L_total
     '''
-   
     s = r/h
   
     XS_1 = 1./jnp.sqrt(1-s**2)*\
@@ -268,8 +301,7 @@ def hernquist_numpyro(total_l,h,r):
     XS = XS_1+XS_2
     profile = total_l/(2.*jnp.pi*h**2*\
         (1-s**2)**2)*((2+s**2)*XS-3)
-   
-    profile = extrapolate_zero_numpyro(r,profile)  
+    profile = extrapolate_first_numpyro(r,profile)  
     return profile
   
 
@@ -452,7 +484,8 @@ def get_integers(n):
     # This is a simple function to get the integers that make up the sersic index
     # to limit the array sizes we round n to 5 decimals 
     n = round(n,5)
-    solution= Fraction(n).limit_denominator()
+    #We don't want p and q to be too big especially is p goes to the power
+    solution= Fraction(n).limit_denominator(100)
     return int(solution.numerator),int(solution.denominator)
 
    

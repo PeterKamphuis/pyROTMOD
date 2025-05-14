@@ -53,6 +53,7 @@ def calculate_central_SB(components):
             
             components.central_SB = sersic(0.*unit.kpc,components.L_effective,\
                     components.R_effective,components.sersic_index)
+           
                 
 def calculate_L_effective(components,from_central = False):
     if not components.L_effective is None:
@@ -138,7 +139,6 @@ def calculate_total_mass(components):
             total = total.to(unit.Msun)
             components.total_mass = total 
         except:
-            print('The total luminosity could not be calculated')
             components.total_mass = None
 
 def calculate_total_luminosity(components):
@@ -173,7 +173,6 @@ def calculate_total_luminosity(components):
             components.total_luminosity = total 
         #exit()
         except:
-            print('The total luminosity could not be calculated')
             components.total_luminosity = None
     
         

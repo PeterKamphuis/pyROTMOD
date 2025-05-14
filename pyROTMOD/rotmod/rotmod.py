@@ -12,7 +12,8 @@ from pyROTMOD.support.major_functions import read_columns
 from pyROTMOD.optical.optical import get_optical_profiles,convert_luminosity_profile
 from pyROTMOD.optical.profile_functions import calc_truncation_function
 from pyROTMOD.gas.gas import get_gas_profiles
-
+from pyROTMOD.support.vertical_profiles import select_vertical_function,\
+    check_height,convert_density_to_SB
 from pyROTMOD.support.errors import InputError, RunTimeError, UnitError
 from pyROTMOD.support.profile_classes import Rotation_Curve,Luminosity_Profile,SBR_Profile
 import pyROTMOD.support.constants as c
@@ -73,7 +74,7 @@ def combine_SB_profiles(gas_profiles,optical_profiles,total_RC, cfg = None):
                 optical_profiles[name].extend = total_RC.radii[-1]
             if isinstance(optical_profiles[name],Luminosity_Profile):
                 print_log(f'We have found a luminosity profile ({name}) and will deproject it.',\
-                    cfg,case=['main','screen'])
+                    cfg,case=['main'])
                 deprojected_profile = convert_luminosity_profile(\
                     optical_profiles[name],cfg=cfg)
                 profiles[name] = deprojected_profile
@@ -91,16 +92,16 @@ def combine_SB_profiles(gas_profiles,optical_profiles,total_RC, cfg = None):
     if len(profiles) == 0.:
         profiles = None
     return profiles
-
+'''
 def combined_rad_sech_square(z,x,y,h_z):
-    return interg_function(z,x,y)*norm_sechsquare(z,h_z)
+    return interg_function(z,x,y)*norm_sech_square(z,h_z)
 
 def combined_rad_exp(z,x,y,h_z):
     return interg_function(z,x,y)*norm_exponential(z,h_z)
 
 def combined_rad_sech_simple(z,x,y,h_z):
-    return interg_function(z,x,y)*simple_sech(z,h_z)
-
+    return interg_function(z,x,y)*norm_sech(z,h_z)
+'''
 def convert_dens_rc(profiles, cfg = None,output_dir='./'):
     #these should be dictionaries with their individual radii
     #organized in their typical profiles
@@ -251,14 +252,7 @@ def check_radius(Density_In,RC_Out,cfg=None):
         raise InputError(f'These radii are not in kpc, they should be by now')
     return RC_radii
 
-def check_height(Density_In):
-    '''Check the type of the vertical distributio'''
-    if not Density_In.height_type in  ['sech','exp'] and Density_In.height != 0.:
-        raise InputError(f'We cannot have {Density_In.height_type} with a thick exponential disk. Use a different disk or pick exp or sech')
-    sech = False
-    if Density_In.height_type == 'sech':
-        sech = True
-    return sech
+
 
 def exponential_RC(Density_In,RC_Out,cfg=None):
    
@@ -339,13 +333,13 @@ def exponential_parameter_RC(radii,parameters, cfg=None):
     #print(f'This is the total mass in the parameterized exponential disk {float(parameters[1]):.2e}')
   
     if parameters.height_type != 'inf_thin':
-        #This is not very exact for getting a 3D density
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            area = 2.*quad(sechsquare,0,np.inf,args=parameters.height.value)[0]*unit.pc
-        central = parameters.central_SB/(1000.*area)
+        if parameters.central_SB.unit != unit.Msun/unit.pc**2:
+            convert_SB_to_density(parameters)
 
-        exp_disk_potential = MNP(amp=central,hr=parameters.scale_length,hz=parameters.height,sech=sech)
+        #This is not very exact for getting a 3D density
+       
+
+        exp_disk_potential = MNP(amp=parameters.central_SB,hr=parameters.scale_length,hz=parameters.height,sech=sech)
     else:
         exp_disk_potential = EP(amp=parameters.central_SB,hr=parameters.scale_length)
     with warnings.catch_warnings():
@@ -520,11 +514,12 @@ def integrate_v(radii,density,R,rstart,h_z,step,iterations=200,mode = None ):
 
 def integrate_z(radius,x,h_z,mode):
     if h_z != 0.:
-       
-        vertical_function = select_vertical(mode)
-        # We integrated out to 250*h_z otherwise we get overflow problems
-        # in principle it should be infinite (np.inf)
-        zdz = quad(vertical_function,0.,250.*h_z,args=(radius,x,h_z))[0]
+        vertical = select_vertical_function(mode,normalized=True)
+        combined_function = lambda z,x,y,h_z: interg_function(z,x,y)*vertical(z,h_z)
+        # We integrate the function along the z axis
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore",message='overflow encountered in cosh')
+            zdz = quad(combined_function,0.,np.inf,args=(radius,x,h_z))[0]
         
     else:
         if not (radius == x) and not radius == 0. and not x == 0. and \
@@ -534,10 +529,7 @@ def integrate_z(radius,x,h_z,mode):
             zdz = 0.
     return zdz
 
-def norm_exponential(radii,h):
-    return np.exp(-1.*radii/h)/h
-def norm_sechsquare(radii,h):
-    return 1./(np.cosh(radii/h)**2*h)
+
 
 '''This functions is the global function that creates and reads the RCs if the are not all read from file.
 Basically if the RC_Construction is enabled this function is called.'''
@@ -553,6 +545,7 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
 ''' ,cfg,case=['main'])
     else:
         gas_profiles = None
+        total_RC = None
      ######################################### Read the optical profiles  #########################################
     if not cfg.RC_Construction.optical_file is None:
         try:
@@ -567,8 +560,16 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
         optical_profiles = None
     ################ We want the profiles to extend to the size of the total RC ###############################
     if not cfg.input.RC_file is None:
-        total_RC, input_RCs = read_RCs(cfg=cfg,file= cfg.input.RC_file)
- 
+        total_read_RC, input_RCs = read_RCs(cfg=cfg,file= cfg.input.RC_file)
+    
+    if total_RC is None and total_read_RC is None:
+        raise InputError(f'We have not found any total RC to fit. Please provide a gas profile or a RC file with a V_OBS or VROT column.')
+    elif not total_RC is None and not total_read_RC is None:
+        raise InputError(f'We have found both a total_RC from the gas profile and a RC file with a V_OBS or VROT column. Please provide only one of them.')
+    else:
+        if total_RC is None:
+            total_RC = total_read_RC    
+         
 
     ################ Combine all profiles and make sure they are all in M_sun/pc^2 or Msun/pc^3 ############################
     profiles = combine_SB_profiles(gas_profiles,optical_profiles,total_RC, cfg=cfg)
@@ -595,15 +596,19 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
     return derived_RCs, total_RC
 
 def random_density_disk(radii,density_profile, cfg= None):
-    print_log(f'''We are calculating the random disk with:
+    print_log(f'''We are calculating the random disk of {density_profile.name} with:
 h_z = {density_profile.height} and vertical mode = {density_profile.height_type}
 ''', cfg, case=['main'])
     
-    if density_profile.values.unit != unit.Msun/unit.pc**2:
-        raise UnitError(f'Your profile has to be in Msun/pc^2 for a random density disk')
-    else:
-        density = np.array(density_profile.values.value) *1e6 # Apparently this is done in M-solar/kpc^2
-    
+    if density_profile.profile_type != 'sbr_dens':
+        density_profile= convert_density_to_SB(density_profile)
+
+    try:
+       density = density_profile.values.to(unit.Msun/unit.kpc**2).value 
+    except unit.UnitConversionError:
+        raise UnitError(f'''Your profile is not suitable for random density disk.
+The current units are {density_profile.values.unit}''')
+
     
     if radii.unit != unit.kpc:
         raise UnitError(f'Your radius has to be in kpc for a random density disk')
@@ -671,38 +676,30 @@ h_z = {density_profile.height} and vertical mode = {density_profile.height_type}
     RC = np.array(RC,dtype=float)*unit.km/unit.s
     return RC
 
-def sechsquare(x,b):
-    '''Sech square function '''
-    #sech(x) = 1./cosh(x)
-    return 1./np.float64(np.cosh(x/b))**2
+'''
 
 # Any vertical function goes as long a integral 0 --> inf (vert_func*dz) = 1.
-def select_vertical(mode):
+# This selection function is specific to the integrate_z function and thus 
+# should stay in rotmod not in vertical_profiles as it combined the function with
+# radial integration method
+def select_vertical_mode(mode):
+    vertical= select_vertical_function(mode,normalized=True)
+    combined_function = lambda z,x,y,h_z: interg_function(z,x,y)*vertical(z,h_z)
+    return combined_function
     if mode == 'sech-sq':
         return combined_rad_sech_square
     elif mode == 'exp':
         return combined_rad_exp
     elif mode == 'sech-simple':
-        return combined_rad_sech_simple
+        return combined_rad_sech
     else:
         if mode:
             raise InputError('This vertical mode is not yet implemented')
         else:
             return None
 
-#This appears to be unused
-def selected_vertical_dist(mode):
-    if mode == 'sech-sq':
-        return norm_sechsquare
-    elif mode == 'exp':
-        return norm_exponential
-    elif mode == 'sech-simple':
-        return simple_sech
-    else:
-        return None
-
-def simple_sech(radii,h):
-    return 2./h/np.pi/np.cosh(radii/h)
+#
+'''
 
 def read_RCs(file= 'You_Should_Set_A_File_RC.txt',cfg=None,
             include_gas=True,include_optical=True):

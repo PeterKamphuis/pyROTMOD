@@ -13,7 +13,8 @@ from pyROTMOD.support.minor_functions import get_uncounted,add_font,get_output_n
 from pyROTMOD.support.log_functions import print_log
 from pyROTMOD.fitters.fitters import initial_guess,lmfit_run, numpyro_run
 from sympy import symbols, sqrt,lambdify
-
+import sys
+import pickle
 from jax import numpy as jnp
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -25,13 +26,13 @@ with warnings.catch_warnings():
 def build_curve(all_RCs, total_RC, cfg=None):
     # First set individual sympy symbols  and the curve for each RC
 
-    ML, V = symbols('ML V')
+    ML, V, lgML = symbols('ML V lgML')
     replace_dict = {'symbols': []}
     total_sympy_curve = None
     for name in all_RCs:
         RC_symbols = [x for x in list(all_RCs[name].curve.free_symbols) if str(x) != 'r']
         print_log(f'''##########################{name}##################
-{'':8s}{[all_RCs[name].fitting_variables[x].print() for x in all_RCs[name].fitting_variables]}
+{'':8s}{[all_RCs[name].fitting_variables[x] for x in all_RCs[name].fitting_variables]}
 {'':8s}{all_RCs[name].curve}
 {'':8s}############################################''',cfg,case=['debug_add'])
         for symbol in RC_symbols:
@@ -54,12 +55,13 @@ def build_curve(all_RCs, total_RC, cfg=None):
 
                     
                     replace_dict['symbols'].append(V_replace)
-            if symbol == ML:
+            if symbol in [ML,lgML]:
                 for variable in all_RCs[name].fitting_variables:
-                    if variable.split('_')[0].lower() in ['gamma','ml']:    
+                  
+                    if variable.split('_')[0].lower() in ['gamma','lggamma','ml','lgml']: 
                         ML_replace = symbols(variable)
                 for attr in ['curve', 'individual_curve']:
-                    setattr(all_RCs[name],attr,getattr(all_RCs[name],attr).subs({ML: ML_replace}))
+                    setattr(all_RCs[name],attr,getattr(all_RCs[name],attr).subs({symbol: ML_replace}))
       
         #RC_symbols = [x for x in list(all_RCs[name].individual_curve.free_symbols) if str(x) != 'r']
         RC_symbols = [x for x in list(all_RCs[name].individual_curve.free_symbols)]
@@ -271,7 +273,7 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
 
     print_log(f''' This the code for the formula that is finally fitted.
 {clean_code}
-''',cfg,case=['debug_add','screen'])
+''',cfg,case=['debug_add'])
    
     return clean_code
 create_formula_code.__doc__ =f'''
@@ -300,36 +302,81 @@ create_formula_code.__doc__ =f'''
  NOTE:
 '''
 
-def write_output_file(cfg,final_variable_fits,BIC,output_dir='./',\
+def write_output_file(cfg,final_variable_fits,result_summary,output_dir='./',\
                 results_file = None, red_chisq= None):
     if results_file is None:
-        results_file = f'{get_output_name(cfg)}_results.txt'
+        results_file = f'{get_output_name(cfg)}_results'
+    #check wether log parameters are used and if so we need to set the values back to the original
+    
+    log_parameters = []
+    log_too_large = []
+    max_float = sys.float_info.max_10_exp-10
+    min_float = sys.float_info.min_10_exp+10
+    for variable in final_variable_fits:
+        print((variable,final_variable_fits[variable].value,final_variable_fits[variable].boundaries))
+        if final_variable_fits[variable].log:
+            if ((min_float < final_variable_fits[variable].value < max_float)
+                and min_float < final_variable_fits[variable].boundaries[0]
+                and final_variable_fits[variable].boundaries[1] < max_float):
+                log_parameters.append(variable)
+                final_variable_fits[variable].value = (
+                    10**final_variable_fits[variable].value)
+                final_variable_fits[variable].boundaries = [
+                    10**x for x in final_variable_fits[variable].boundaries]
+                final_variable_fits[variable].stddev =(
+                    final_variable_fits[variable].value*np.log(10)*
+                    final_variable_fits[variable].stddev)
+                final_variable_fits[variable].log = False  
+            else:
+                log_too_large.append(variable)
+                  
     #variables_fitted = [x for x in final_variable_fits]
     variable_line = f'{"Variable":>15s} {"Value":>15s} {"Error":>15s} {"Lower Bound":>15s} {"Upper Bound":>15s} \n'
+    sep_line =''.join([f'-']*80)
     with open(f'{output_dir}{results_file}.txt','w') as file:
         file.write('# These are the results from pyROTMOD. \n')
-        file.write('# An error designated as Fixed indicates a parameter that is not fitted. \n')
-        file.write(f'# The Reduced Xi^2 for this fit is {red_chisq}.\n')
-        file.write(f'# The Bayesian Information Criterion for this fit is {BIC}.\n')
-        file.write(variable_line)
-        added = []
-        for variable in final_variable_fits:
-            if variable not in added:
-                if final_variable_fits[variable].include:
-                    if 0.001 < final_variable_fits[variable].value < 10000.:
-                        form = ">15.4f"
-                    else:
-                        form = ">15.4e"
-                    variable_line = f'{variable:>15s} {final_variable_fits[variable].value:{form}}'
-                    min =final_variable_fits[variable].min
-                    max = final_variable_fits[variable].max
-                    if not final_variable_fits[variable].variable:
-                        variable_line += f' {"Fixed":>15s} {min:{form}} {max:{form}} \n'
-                    else:
-                        err = final_variable_fits[variable].stddev
-                        variable_line += f' {err:{form}} {min:{form}} {max:{form}} \n'
-                    file.write(variable_line)
-                    added.append(variable)
+        if result_summary['succes']:
+            file.write(f'''# The fit was a success and the ranges for the free parameters have converged. \n''')
+        else:
+            file.write(f'''# The fit was not a success. \n''') 
+            if result_summary['max_iterations']:
+                file.write(f'''# The fit did not converge after {cfg.fitting_general.max_iterations} iterations. \n''')
+            else:
+                file.write(f'''# We are using the initial guesses for the final output.
+# The following error occured in the mcmc:
+# {result_summary['Error']}''')
+        if red_chisq is not None:
+            file.write(f'''# The reduced Chi^2 for this fit is {red_chisq:.4f}.\n''')
+        if result_summary['BIC'] is not None:
+            file.write(f'''# The Bayesian Information Criterion for this fit is {result_summary['BIC']}.\n''')
+        if len(log_parameters) > 0:
+            file.write(f'''# {sep_line}\n''')
+            file.write(f'''# The parameters {','.join(log_parameters)} were fitted in log space and are now converted to linear space.\n''')
+        if len(log_too_large) > 0:
+            file.write(f'''# {sep_line}\n''')
+            file.write(f'''# The parameters {','.join(log_parameters)} were fitted in log space but were not converted to linear space as they would exceed the maximum float size.\n''')
+ 
+        file.write(f'''# {sep_line}\n''')
+        if len([x for x in final_variable_fits]) > 0:
+            file.write(variable_line)
+            added = []
+            for variable in final_variable_fits:
+                if variable not in added:
+                    if final_variable_fits[variable].include:
+                        if 0.001 < final_variable_fits[variable].value < 10000.:
+                            form = ">15.4f"
+                        else:
+                            form = ">15.4e"
+                        variable_line = f'{variable:>15s} {final_variable_fits[variable].value:{form}}'
+                        min = final_variable_fits[variable].boundaries[0]
+                        max = final_variable_fits[variable].boundaries[1]
+                        if not final_variable_fits[variable].variable:
+                            variable_line += f' {"Fixed":>15s} {min:{form}} {max:{form}} \n'
+                        else:
+                            err = final_variable_fits[variable].stddev
+                            variable_line += f' {err:{form}} {min:{form}} {max:{form}} \n'
+                        file.write(variable_line)
+                        added.append(variable)
 
 def set_RC_style(RC,input=False):
     style_dictionary = {'label':  'V$_{Obs}$',\
@@ -394,7 +441,7 @@ def set_RC_style(RC,input=False):
         
 
 
-def plot_individual_RC(RC,ax1,input=False):
+def plot_individual_RC(RC,ax1,input=False,output=False):
     if input:
         plot_values = RC.values
     else:
@@ -432,6 +479,9 @@ def plot_individual_RC(RC,ax1,input=False):
     ax1.legend()
     ax1.set_xlabel(f'R (kpc)', fontdict=dict(weight='bold',size=16))
     ax1.set_ylabel(f'V (km/s)', fontdict=dict(weight='bold',size=16))
+    if output:
+        rc = {'radii': RC.radii.value, 'values': plot_values, 'errors': plot_err}
+        return ax1,rc
     return ax1
 
 def calculate_residual(RC,ax2):
@@ -460,30 +510,47 @@ def calculate_residual(RC,ax2):
             bbox=dict(facecolor='white',edgecolor='white',pad=0.5,alpha=0.),\
             zorder=7, backgroundcolor= 'white',fontdict=dict(weight='bold',size=16),transform = ax2.transAxes)
     return ax2
-
-def plot_curves(filename,RCs,total_RC,interactive = False, font = 'Times New Roman'):
-
-    
+def plot_curves(filename, RCs, total_RC, interactive=False, font='Times New Roman'
+        , return_ax=False, output = False):
+    """
+    Plot the current curves. Optionally return the plot as a single ax object instead of saving to a file.
+    """
     labelfont = {'family': font,
-             'weight': 'bold',
-             'size': 14}
-    plt.rc('font',**labelfont)
+                 'weight': 'bold',
+                 'size': 14}
+    plt.rc('font', **labelfont)
     plt.rcParams['xtick.direction'] = 'in'
     plt.rcParams['ytick.direction'] = 'in'
     plt.rc('axes', linewidth=2)
-    figure,  (ax1, ax2) = plt.subplots(nrows=2, ncols=1,figsize=(10,10), gridspec_kw={'height_ratios': [3, 1]})
+    collected_rcs= {}
+    figure, (ax1, ax2) = plt.subplots(nrows=2, ncols=1, figsize=(10, 10), gridspec_kw={'height_ratios': [3, 1]})
     for name in RCs:
         if RCs[name].include:
-            ax1 = plot_individual_RC(RCs[name],ax1)
-    ax1 = plot_individual_RC(total_RC,ax1)
-    ax1 = plot_individual_RC(total_RC,ax1, input=True)
-    ax2 = calculate_residual(total_RC,ax2)
-    if interactive:
-        raise InputError(f"An interactive mode is not available yet, feel free to right a Gui. Here you can plot the curves")
+            if output:
+                ax1, tmp_rc = plot_individual_RC(RCs[name], ax1,output=output)
+                collected_rcs[name] = tmp_rc
+            else:
+                ax1 = plot_individual_RC(RCs[name], ax1)
+    if output:
+        ax1,collected_rcs['total_fit'] = plot_individual_RC(total_RC, ax1,output=output)
+        ax1,collected_rcs['total_obs'] = plot_individual_RC(total_RC, ax1, input=True,output=output)
+   
     else:
-        plt.savefig(filename,dpi=300, bbox_inches='tight')
-    #return red_Chi_2
+        ax1 = plot_individual_RC(total_RC, ax1)
+        ax1 = plot_individual_RC(total_RC, ax1, input=True)
+    ax2 = calculate_residual(total_RC, ax2)
 
+    if return_ax:
+        # Return the figure and axes objects instead of saving the plot
+        return figure, (ax1, ax2)
+
+    if interactive:
+        raise InputError(f"An interactive mode is not available yet, feel free to write a GUI. Here you can plot the curves")
+    else:
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        if output:
+            return collected_rcs
 
 
 plot_curves.__doc__ =f'''
@@ -508,16 +575,25 @@ plot_curves.__doc__ =f'''
 
  NOTE:
 '''
-def update_RCs(update,RCs,total_RC):
-    
-    for variable in update:
-        for name in RCs:
-            if variable in [key for key in RCs[name].fitting_variables]:
-                RCs[name].fitting_variables[variable] = update[variable]
-                    
-        total_RC.fitting_variables[variable] = update[variable]  
-      
+def update_RCs(update,RCs,total_RC,reset = False):
+    for name in RCs:
+        update_RC(RCs[name],update,reset=reset)
+    update_RC(total_RC,update,reset=reset)
 
+def update_RC(RC,update,reset=False):
+    for variable in update:
+        if variable in [key for key in RC.fitting_variables]:
+            RC.fitting_variables[variable] = update[variable]
+            for i in [0,1]:
+                if RC.fitting_variables[variable].fixed_boundaries[i] and\
+                    (RC.fitting_variables[variable].boundaries[i] !=
+                    RC.fitting_variables[variable].original_boundaries[i]):
+                    RC.fitting_variables[variable].boundaries[i] = \
+                        RC.fitting_variables[variable].original_boundaries[i]
+            if reset:
+                if RC.fitting_variables[variable].original_value is not None:
+                    RC.fitting_variables[variable].value = \
+                        RC.fitting_variables[variable].original_value
 
 def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
     out_dir = f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/'
@@ -526,12 +602,23 @@ def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
     font = add_font(cfg.input.font)        
     # First combine all RCs that need to be included in the total fit in a single dictionary
     # With their parameters and individual RC curves set 
-    all_RCs = set_fitting_parameters(cfg,baryonic_RCs,total_RC)
   
-    for names in all_RCs:
-        print_log(f'''For {names} we find the following parameters and fit variables:
-{all_RCs[names].print()}
-''',cfg,case=['debug_add'])
+    all_RCs = set_fitting_parameters(cfg,baryonic_RCs,total_RC)
+ 
+    if not cfg.fitting_general.log_parameters[0] is None:
+        for name in all_RCs:
+
+            replace_parameters_with_log(cfg,all_RCs[name])
+           
+        replace_parameters_with_log(cfg,total_RC,no_curve=True)
+       
+      
+            # Now we need to set the fitting parameters for the total RC
+    #for names in all_RCs:
+    #    print_log(f'''For {names} we find the following parameters and fit variables:
+#{[all_RCs[names].fitting_variables[x].print() for x in all_RCs[names].fitting_variables]}
+#''',cfg,case=['debug_add'])
+   
         
 
     # Construct the function to be fitted, note that the actual fit_curve is
@@ -557,48 +644,56 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
         #total_RC.fitting_variables['amplitude'] = [1.,0.1,10.,True,True]
         #total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
         total_RC.fitting_variables['lgamplitude'] = Parameter(name='lgamplitude'
-            ,value= 1.2, min= -3. ,max = 3., variable = True, include = True, 
-            fixed_boundaries= False)
+            ,value= 1., variable = True, include = True, original_boundaries = [-3,3.], log= True)
         total_RC.fitting_variables['length_scale'] = Parameter(name='length_scale'
-            ,value= 1., min= 0.5 ,max = 5., variable = True, include = True ,
-            fixed_boundaries= False)
+            ,value= 1., variable = True, include = True, original_boundaries = [0.1,10.])
         
         total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['lgamplitude','length_scale']
-    skip_output = False
-    if cfg.fitting_general.backend.lower() == 'numpyro':
-        try:
-            variable_fits,BIC,succes = numpyro_run(cfg,total_RC, out_dir = out_dir)
-        except FailedFitError as e:
+    result_summary = {'skip_output': False, 'BIC': None, 'succes': False,'direction': 'diverging',
+                      'max_iterations': False, 'Error': 'No Error'}
+    initial_guesses,initial_data = initial_guess(cfg, total_RC,chain_data=True)
+    update_RCs(initial_guesses,all_RCs,total_RC,reset=True)
+    plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
+            all_RCs,total_RC,font=font)
+ 
+    try: 
+        if cfg.fitting_general.backend.lower() == 'numpyro':           
+            variable_fits,BIC,fit_summary,chain_data = numpyro_run(cfg,total_RC, out_dir = out_dir)
+        else:
+            variable_fits,BIC,fit_summary,chain_data = lmfit_run(cfg, total_RC,out_dir = out_dir)
+        
+        result_summary['BIC'] = BIC
+        if fit_summary['iterations'] >= cfg.fitting_general.max_iterations:
+            result_summary['max_iterations'] = True
+            result_summary['succes'] = False
+        else:
+            result_summary['succes'] = True
+       
+    except FailedFitError as e:
             print_log(f'''The parameters for the function could not be fitted.
 Skipping the output Fase''', cfg, case=['main'])
-            succes = False
-            skip_output =True
+            result_summary['succes'] = False
+            result_summary['skip_output'] = False
+            result_summary['Error'] = e
+            variable_fits = initial_guesses
 
-    else:
-        initial_guesses = initial_guess(cfg, total_RC)
-        original_settings = copy.deepcopy(total_RC.fitting_variables)
-        for variable in original_settings:
-            original_settings[variable].fill_empty()
-        update_RCs(initial_guesses,all_RCs,total_RC) 
-        
-        plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
-            all_RCs,total_RC,font=font)
-       
-        variable_fits,BIC,succes = lmfit_run(cfg, total_RC, original_settings,out_dir = out_dir)
-    if not skip_output:
-        update_RCs(variable_fits,all_RCs,total_RC) 
-        
+    red_chisq = None
+    if not result_summary['skip_output']:
+        update_RCs(variable_fits,all_RCs,total_RC)         
         print_log('Plotting and writing',cfg,case=['main'])
-        plot_curves(f'{out_dir}/{results_file}_Final_Curves.pdf', \
-            all_RCs,total_RC,font=font)      
+        plot_rcs = plot_curves(f'{out_dir}/{results_file}_Final_Curves.pdf', \
+            all_RCs,total_RC,font=font,output=True)      
         
         red_chisq = calculate_red_chisq(total_RC)
+        #all_RCs['V_OBS'] = total_RC
+        if cfg.output.output_curves:
+            with open(f"{out_dir}{results_file}_Final_Curves.pickle", "wb") as f:
+                pickle.dump(plot_rcs, f)
 
-        write_output_file(cfg,variable_fits,BIC,output_dir=out_dir, 
-            red_chisq = red_chisq, results_file=f'{results_file}_results.txt')
-    if not succes:
-        raise RunTimeError(f'''The fitting procedure was not successful. See log for details
-''')
+
+    write_output_file(cfg,variable_fits,result_summary,output_dir=out_dir, 
+        red_chisq = red_chisq, results_file=f'{results_file}_results')
+   
 
 rotmass_main.__doc__ =f'''
  NAME:
@@ -666,6 +761,7 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
     no_dm = False
     baryonic = []
     total_RC.fitting_variables = {}
+   
     for x in getattr(potentials, cfg.fitting_general['HALO'])().free_symbols: 
         if str(x) == 'r':
             pass
@@ -686,6 +782,7 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
         add_fitting_dict(all_RCs[name].name,cfg.fitting_parameters[all_RCs[name].name],\
                          component_type=all_RCs[name].component,\
                         fitting_dictionary=fitting_dictionary)
+       
         #Check whether we want to include this RC tot the total
         if not cfg.fitting_parameters[all_RCs[name].name][4]:
             all_RCs[name].include=False
@@ -713,7 +810,9 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
         all_RCs[name].check_unified(cfg.fitting_general.single_stellar_ML,\
                                     cfg.fitting_general.single_gas_ML)
         if all_RCs[name].include:
-            total_RC.fitting_variables.update(all_RCs[name].fitting_variables)
+            #We need a deep copy of the fitting variables
+            # otherwise we will overwrite the some variables and others not in the total rC
+            total_RC.fitting_variables.update(copy.deepcopy(all_RCs[name].fitting_variables))
       
     if not no_dm:
         #We need add the DM RC and the parameters
@@ -737,7 +836,7 @@ If you merely want to fix the variable, set an initial guess and fix it in the i
         all_RCs[cfg.fitting_general['HALO']].curve = getattr(potentials, cfg.fitting_general['HALO'])()
         #Thewre are no negatives for the DM supossedly so the individual curve is the same
         all_RCs[cfg.fitting_general['HALO']].individual_curve = getattr(potentials, cfg.fitting_general['HALO'])()
-        total_RC.fitting_variables.update(all_RCs[cfg.fitting_general['HALO']].fitting_variables)
+        total_RC.fitting_variables.update(copy.deepcopy(all_RCs[cfg.fitting_general['HALO']].fitting_variables))
    
     return all_RCs
 set_fitting_parameters.__doc__ =f'''
@@ -764,8 +863,79 @@ set_fitting_parameters.__doc__ =f'''
  NOTE:
 '''
 
+def replace_parameters_with_log(cfg,RC,no_curve=False):
+    # We need to replace the parameters with their log values
+    if no_curve:
+        # We need to replace the parameters with their log values
+        var_list = [x for x in RC.fitting_variables]
+    else:
+        var_list = [x for x in RC.curve.free_symbols if str(x) not in ['r','V']]
+    if not 'all' in [x.lower() for x in cfg.fitting_general.log_parameters]:
+        new_varlist = []
+        
+        for variable in var_list:
+            if str(variable).lower() in [x.lower() for x in cfg.fitting_general.log_parameters]:
+                new_varlist.append(variable)
+            elif str(variable).upper() in ['ML']:
+                for variable_fit in RC.fitting_variables:
+                    # We need to replace the parameters with their log values
+                    if variable_fit.split('_')[0].lower() in ['gamma','ml'] and\
+                        variable_fit.lower() in [x.lower() for x in 
+                        cfg.fitting_general.log_parameters]:
+                        new_varlist.append(variable)
+              
+    else:
+        new_varlist = var_list
+
+    for variable in new_varlist:
 
 
+        if str(variable).upper() in ['V']:
+            continue
+        fit_var = str(variable)
+       
+        # Mass to light ratios can also be gamma
+        if str(variable).upper() in ['ML']:       
+            for var in RC.fitting_variables:
+                if var.split('_')[0].lower() in ['gamma','ml']:    
+                    fit_var = var 
+        new_var = f'lg{fit_var}'
+        
+        #First we check wether we have a log value in for the parameter
+        if (new_var in cfg.fitting_parameters or f'lg{RC.name}' in cfg.fitting_parameters): 
+            fitting_name = new_var if new_var in cfg.fitting_parameters else f'lg{RC.name}'
+            RC.fitting_variables[new_var] = set_parameter_from_cfg(new_var,
+                cfg.fitting_parameters[fitting_name])
+            RC.fitting_variables.pop(fit_var)          
+           
+        else:
+            RC.fitting_variables[new_var] = RC.fitting_variables.pop(fit_var)
+            RC.fitting_variables[new_var].name = new_var
+            RC.fitting_variables[new_var].log = True
+            if RC.fitting_variables[new_var].value is not None :
+                RC.fitting_variables[new_var].value = np.log10(
+                    RC.fitting_variables[new_var].value)
+            if RC.fitting_variables[new_var].original_value is not None :
+                RC.fitting_variables[new_var].original_value = np.log10(
+                    RC.fitting_variables[new_var].original_value)
+        
+            for i in range(2):
+                if RC.fitting_variables[new_var].boundaries[i] is not None:
+                    RC.fitting_variables[new_var].boundaries[i] =\
+                        np.log10(RC.fitting_variables[new_var].boundaries[i])
+                if RC.fitting_variables[new_var].original_boundaries[i] is not None:
+                    RC.fitting_variables[new_var].original_boundaries[i] =\
+                        np.log10(RC.fitting_variables[new_var].original_boundaries[i])    
+        
+       
+        #Replace the variable in the curve with 10**variable
+        if not no_curve:
+            for attr in ['curve', 'individual_curve']:
+                setattr(RC,attr,getattr(RC,attr).subs({variable: (10**symbols(f'lg{variable}'))}))
+   
+
+        
+       
 
 
 

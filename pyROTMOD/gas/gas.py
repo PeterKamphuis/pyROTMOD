@@ -3,7 +3,7 @@ import numpy as np
 from pyROTMOD.support.major_functions import read_columns
 from pyROTMOD.support.minor_functions import print_log, propagate_mean_error,\
     translate_string_to_unit
-
+from pyROTMOD.support.constants import H_0
 from pyROTMOD.support.errors import InputError
 from pyROTMOD.support.profile_classes import SBR_Profile,Rotation_Curve
 from astropy import units as unit
@@ -188,6 +188,11 @@ def get_gas_profiles(cfg,log=None, debug =False):
         nur = load_tirific(filename, Variables=['NDISKS'])[0]
         disk = 1
         count = 1
+        if cfg.input.distance is None:
+            vsys= load_tirific(filename, Variables=['VSYS'])[0]*unit.km/unit.s
+            cfg.input.distance = vsys/H_0
+            print_log(f'''You have not set a distance in the config file.
+We will assume a distance {cfg.input.distance} based on the vsys ({vsys})''',cfg,case = ['main'])
         while disk < nur:
             if disk == 1:
                 sbr, RC = \
@@ -199,7 +204,7 @@ def get_gas_profiles(cfg,log=None, debug =False):
                                         debug = cfg.output.debug)
             sbr.name = f'DISK_GAS_{count}'
             gas_density[f'DISK_GAS_{count}']= sbr    
-          
+            
             count += 1
             disk = disk+2
     else:

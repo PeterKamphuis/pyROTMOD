@@ -66,11 +66,17 @@ linenumber.__doc__ =f'''
 def print_log(log_statement,cfg, case = None):
     '''Print statements to log if existent and screen if Request'''
     if cfg is None:
-        setattr(cfg,'output',None)
-        setattr(cfg.output,'debug',False) 
-        setattr(cfg.output,'log',None)
-        setattr(cfg.output,'log_directory','./')
-        setattr(cfg.output,'verbose',False)
+     
+        class output:
+            def __init__(self):
+                self.debug = False
+                self.log = None
+                self.log_directory = './'
+                self.verbose = False
+        class config: 
+            def __init__(self):
+                self.output = output()
+        cfg = config()
 
     if case is None:
         case=['main']

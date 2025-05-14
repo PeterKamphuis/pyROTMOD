@@ -271,9 +271,11 @@ This is version {pyROTMOD.__version__} of the program.
         name += '_RC_fitting'
     else:
         name += '_RC_construction'
-    name +='.yml'   
-    with open(name,'w') as input_write:
-        input_write.write(OmegaConf.to_yaml(cfg))
+    name +='.yml'
+    if (not fitting and cfg.RC_Construction.enable) or (
+        fitting and cfg.fitting_general.enable):
+        with open(name,'w') as input_write:
+            input_write.write(OmegaConf.to_yaml(cfg))
        
 
     return cfg
@@ -395,7 +397,7 @@ def get_uncounted(key):
 def quantity_array(list,unit):
     #Because astropy is coded by nincompoops Units to not convert into numpy arrays well.
     #It seems impossible to convert a list of Quantities into a quantity  with a list or np array
-    #This means we have to pull some ticks when using numpy functions because they don't accept lists of Quantities
+    #This means we have to pull some tricks when using numpy functions because they don't accept lists of Quantities
     # Major design flaw in astropy unit and one think these nincompoops could incorporate a function like this 
     #Convert a list of quantities into quantity with a numpy array
     return np.array([x.to(unit).value for x in list],dtype=float)*unit 
@@ -538,7 +540,7 @@ def get_accepted_unit(search_dictionary,attr, acceptable_units = \
         else:
             continue
         print_log(f'''The units of {search_dictionary[check].name} for {attr} are {funit}.
-''',cfg,case=['debug_add','screen'])
+''',cfg,case=['debug_add'])
         if first_value is not None:
             if funit == first_value:
                 funit = None          
@@ -579,7 +581,7 @@ def plot_profiles(profiles, cfg= None\
         print_log(f'''We cannot find acceptable units in the profiles.
 {[profiles[x].print() for x in profiles]}
 This is not acceptable for the output.
-''',cfg,case=['main','screen'] )
+''',cfg,case=['main'] )
         raise RunTimeError("No proper units")    
     if first_radii_unit is None:
         print_log(f'''We cannot find acceptable units in the radii in profiles.

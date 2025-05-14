@@ -4,12 +4,15 @@ from dataclasses import dataclass,field
 from omegaconf import OmegaConf,open_dict
 from typing import List,Optional
 from datetime import datetime
+from pyROTMOD.support.errors import InputError
 from pyROTMOD.support.minor_functions import get_uncounted
+from pyROTMOD.support.profile_classes import Rotation_Curve
 import os
 import sys
 import psutil
 import pyROTMOD.rotmass.potentials as potentials
 import pyROTMOD
+import numpy as np
 
 @dataclass
 class Input:
@@ -32,7 +35,7 @@ class Output:
     debug_functions: List = field(default_factory=lambda: ['ALL'])
     verbose: bool = False
     chain_data: bool = False #If True we save the chain data in a file
-   
+    output_curves : bool = False #If True we save the rotation curves in a file
 @dataclass
 class RCConstruction:
     enable: bool = True
@@ -66,8 +69,11 @@ class Fitting:
     negative_values: bool = False
     initial_minimizer: str = 'differential_evolution' #Not  functioning for numpyro backend
     HALO: str = 'NFW'
+    log_parameters: List = field(default_factory=lambda: [None])  #add a parameter to add it in log space 'All' will do all parameters in log
+    # 'ML' all mass to light parameters will be done in log space  #With this switch on all parameters are set as 10**parameter instead of pramater
     single_stellar_ML: bool = True
-    fixed_stellar_ML: bool = True # If set to false individual settings in an input yaml still take precedence
+    stellar_ML: List = field(default_factory=lambda: [1.0,None,None,True]) 
+    # If set to false individual settings in an input yaml still take precedence
     fixed_gas_ML: bool = True # If set to false individual settings in an input yaml still take precedence
     single_gas_ML: bool = False
     mcmc_steps: int= 2000 #Amount of steps per parameter
@@ -76,7 +82,7 @@ class Fitting:
     use_gp: bool = True    #numpyro uses tingp and lmfit uses sklearn
     gp_kernel_type: str = 'RBF'
     backend : str = 'numpyro' # lmfit or numpyro
-    max_iterations: int = 5
+    max_iterations: int = 10
     
 @dataclass
 class ExtendConfig:
@@ -109,7 +115,7 @@ def add_dynamic(in_dict,in_components, halo = 'NFW'):
                     [1.33, None, None,not in_dict['fitting_general']['fixed_gas_ML'],True]])
             else:
                 dict_elements.append([f'{in_components[name].name}',
-                    [1., None, None,not in_dict['fitting_general']['fixed_stellar_ML'],True]])  
+                    in_dict['fitting_general']['stellar_ML']+[True]])  
             
         for key in halo_config.parameters:          
             dict_elements.append([f'{key}',halo_config.parameters[key]]) 
@@ -117,6 +123,7 @@ def add_dynamic(in_dict,in_components, halo = 'NFW'):
         in_dict.fitting_parameters = {}
         for ell in dict_elements:
             in_dict.fitting_parameters[ell[0]] = ell[1]
+   
     return in_dict
 
 def check_arguments():
@@ -195,22 +202,59 @@ def correct_type(var,ty):
                 var = None
     return var    
 
+def add_log_parameters(cfg_new,stored):
+    ''' if we have input in a log format we want to add them to the fitting parameters
+    We will keep the non-log defaults in the fitting parameters as well such that we can apply the
+    input after converting the RCs to log.    
+    '''
+    if not cfg_new.fitting_general.log_parameters[0] is None:
+        #We have to check we did not set parameters as lg
+        if  'all' in [x.lower() for x in cfg_new.fitting_general.log_parameters]:
+            to_check = cfg_new.fitting_parameters.keys()
+        else:
+            to_check = cfg_new.fitting_general.log_parameters
+            for i,key in enumerate(to_check):
+                if key[0:2] == 'lg':
+                    to_check[i] = key[2:]
+        #Then copy the cfg to make a new paramater fiting section
+        mask = []
+        for key in cfg_new.__dict__['_content']:
+            if key != 'fitting_parameters':
+                mask.append(key)
+        cfg_log = OmegaConf.masked_copy(cfg_new ,mask)      
+        cfg_log.fitting_parameters = {}
+        for key in cfg_new.fitting_parameters:
+            if key in to_check:
+                lgkey = f'lg{key}'
+                for conftype in [stored.file_config,stored.input_config]:
+                    if 'fitting_parameters' in conftype:    
+                        if lgkey.lower() in [x.lower() for x in conftype['fitting_parameters']]:
+                            cfg_log.fitting_parameters[lgkey] = conftype['fitting_parameters'][lgkey]
+                # add the non-log values
+                cfg_log.fitting_parameters[key] = cfg_new.fitting_parameters[key]
+               
+    else:
+        cfg_log=cfg_new
+       
+    return cfg_log
 
-def read_config():
+def read_config(file=None):
     argv = check_arguments()
     cfg = OmegaConf.structured(ShortConfig)
     # print the default file
     inputconf = OmegaConf.from_cli(argv)
+    
     short_inputconf = OmegaConf.masked_copy(inputconf,\
-                ['print_examples','configuration_file','input','output','RC_Construction'])
+                ['print_examples','configuration_file','input','output','RC_Construction','fitting_general'])
     cfg_input = OmegaConf.merge(cfg,short_inputconf)
-   
+    if not file is None:
+        cfg_input.configuration_file = file    
 
     if cfg_input.configuration_file:
         try:
             yaml_config = OmegaConf.load(cfg_input.configuration_file)
             short_yaml_config =  OmegaConf.masked_copy(yaml_config,\
-                    ['print_examples','configuration_file','input','output','RC_Construction'])
+                    ['print_examples','configuration_file','input','output','RC_Construction','fitting_general'])
                                                         
     #merge yml file with defaults
           
@@ -257,12 +301,23 @@ def read_fitting_config(cfg,baryonic_RCs,print_examples=False):
     if halo == 'MOND':
         halo = 'MOND_CLASSIC'
     if print_examples:
-        baryonic_components = {'DISK_GAS_1': [],'EXPONENTIAL_1':{},'HERNQUIST_1': []}
+        baryonic_RCs = {'DISK_GAS_1': Rotation_Curve(name='DISK_GAS_1'),
+                        'EXPONENTIAL_1':  Rotation_Curve(name='EXPONENTIAL_1'),
+                        'HERNQUIST_1': Rotation_Curve(name='HERNQUIST_1'),}
         cfg.fitting_general.HALO = halo
     halo_conf = f'{halo}_config'
     cfg_new = OmegaConf.structured(ExtendConfig)
+    if 'fitting_general' in cfg.file_config:
+        if 'stellar_ML' in cfg.file_config.fitting_general:
+            cfg_new.fitting_general.stellar_ML = cfg.file_config.fitting_general.stellar_ML
+    if 'fitting_general' in cfg.input_config:
+        if 'stellar_ML' in cfg.input_config.fitting_general:
+            cfg_new.fitting_general.stellar_ML = cfg.input_config.fitting_general.stellar_ML
     cfg_new = add_dynamic(cfg_new,baryonic_RCs,halo = halo_conf)
     cfg_new = create_masked_copy(cfg_new,cfg.file_config)
     cfg_new = create_masked_copy(cfg_new,cfg.input_config) 
     cfg_new.fitting_general.HALO = halo
+    cfg_new = add_log_parameters(cfg_new,cfg) 
+   
+    #We have to check if we have a scaleheight in the input file   
     return cfg_new
