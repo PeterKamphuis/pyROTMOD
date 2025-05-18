@@ -61,7 +61,9 @@ class Component:
                                     'density':u.Msun/u.pc**3},\
                               'PA': u.degree,\
                               'R_effective': u.kpc,\
-                              'L_effective': u.Lsun/u.pc**2,\
+                              'L_effective': {'sbr_lum': u.Lsun/u.pc**2,
+                                    'sbr_dens': u.Msun/u.pc**2,\
+                                    'density':u.Msun/u.pc**3},\
                               'extend': u.kpc,\
                               'truncation_radius': u.kpc,\
                               'softening_length': u.kpc,\
