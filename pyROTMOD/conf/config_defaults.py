@@ -60,6 +60,7 @@ class RCConstruction:
     keep_random_profiles: bool = False #If we have random profiles in Lsun/pc^2
     # we keep them and assume they are SBR_Profile when multiplied with MLratio, 
     # if set to false we attempt to fit a profile to them with known functions.
+    optical_functions: List = field(default_factory=lambda: ['EXPONENTIAL','HERNQUIST','SERSIC','EXP+HERN'])
     band: str='SPITZER3.6'
     gas_band: str = '21cm'
 

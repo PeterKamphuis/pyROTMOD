@@ -8,13 +8,15 @@ from fractions import Fraction
 #the individul functions are quicker than the general function https://docs.scipy.org/doc/scipy/reference/special.html
 from scipy.special import k0,k1, gammaincinv
 from scipy.interpolate import interp1d
-from sympy import meijerg
+from sympy import meijerg as meijergsp
+from mpmath import meijerg as OG
 import numpy as np
 import jax
 from jax import numpy as jnp
 from jax import scipy as jsp
 from functools import partial
 import warnings
+import datetime
 from functools import partial
 # The edge functions are  untested for now
 def edge_numpyro(central,h,r):
@@ -127,9 +129,9 @@ import inspect
 
 def extrapolate_zero(radii,profile):
     if 0. in radii or 0. in profile:
-        index = np.where(radii != 0. and profile != 0.)
+        index = np.where((radii != 0.) & (profile != 0.))
         extra = interp1d(radii[index].value, profile[index].value, fill_value = "extrapolate")
-        index = np.where(radii == 0. or profile == 0.)
+        index = np.where((radii == 0.) | (profile == 0.))
         profile[index] = extra(radii[index].value)*profile.unit
     
     return profile
@@ -408,41 +410,83 @@ def sersic_luminosity(components,radii=None):
     return profile
      
 def sersic_profile(components,radii = None):
-    # This is the deprojected surface density profile from Baes & gentile 2010 Equation 22
-    # With this it should be possible use an Einasto profile/potential
     if radii is None:
         radii = components.radii
-    #first we need to derive the integer numbers that make up the  sersic index
- 
-    p, q = get_integers(components.sersic_index)
-    # The a and b vectors of equation 22
- 
-    avect = np.array([x/q for x in range(1,q)],dtype=float)
-    bvect = np.array([x/(2.*p) for x in range(1,2*p)]+\
-            [x/(2.*q) for x in range(1,2*q,2)],dtype=float)
-   
-    # Obtain the b vector:
- 
-    b = get_sersic_b(components.sersic_index)
-    s = radii.value/components.R_effective.value
- 
-    # front factor # This is lacking an 1./R_effective because it cancels with 1./s later on
-    const = 2.*components.central_SB*np.sqrt(p*q)/(2*np.pi)**p
+    # Following the  exponential profile the inf disk does not get deprojected
+    if components.height_type == 'inf_thin':
+        density_profile = sersic(radii, components.central_SB, components.R_effective,\
+                         components.sersic_index )
+        components.profile_type='sbr_dens'
+    else:
+    # This is the deprojected surface density profile from Baes & gentile 2010 Equation 22
+        # With this it should be possible use an Einasto profile/potential
+        components.profile_type='density'
+        #first we need to derive the integer numbers that make up the  sersic index
+        p, q = get_integers(components.sersic_index)
+        # The a and b vectors of equation 22
     
-    # The meijer g function insympy does not accept arrays
-    # We could consider mpmath but it is an additional package
-    meijer_result = []
-    for s_ind in s:
-        meijer_input =  (b/(2*p))**(2*p) * s_ind**(2*q)
-        meijer_result.append(meijerg([[],avect],[bvect,[]],meijer_input).evalf())
-   
-    meijer_result = np.array(meijer_result,dtype=float)
-    #This is with 1/rad instead of 1/s as we dropped the R_eff from the const 
-    # central_SB is M/pc**2 with /rad makes M/pc**3 ----> This is a problem for cassertano
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        density_profile =  const/radii.to(unit.pc)*meijer_result
-        density_profile = extrapolate_zero(radii,density_profile)           
+        #avect = np.array([x/q for x in range(1,q)],dtype=float)
+        #bvect = np.array([x/(2.*p) for x in range(1,2*p)]+\
+        #        [x/(2.*q) for x in range(1,2*q,2)],dtype=float)
+        #This goes wrong with meijer G of mpmath inf numpy arrays
+        avect = [x/q for x in range(1,q)]
+        bvect = [x/(2.*p) for x in range(1,2*p)]+\
+                [x/(2.*q) for x in range(1,2*q,2)]
+    
+        # Obtain the b vector:
+    
+        b = get_sersic_b(components.sersic_index)
+        s = radii.value/components.R_effective.value
+    
+        # front factor # This is lacking an 1./R_effective because it cancels with 1./s later on
+        const = 2.*components.central_SB*np.sqrt(p*q)/(2*np.pi)**p
+        
+        # The meijer g function insympy does not accept arrays
+        # We could consider mpmath but it is an additional package
+        meijer_result = []
+        '''
+        counter = 0.
+        print(p,q,s,q,b)
+        start = datetime.datetime.now()
+        for s_ind in s:
+            print(f"\r Evaluting the expensive sersic meijer result: {counter/float(len(s))*100.:.1f} % Done.",\
+                        end =" ",flush = True) 
+            meijer_input =  (b/(2*p))**(2*p) * s_ind**(2*q)
+            meijer_result.append(OG([[],avect],
+                                        [bvect,[]],
+                                        meijer_input))
+            counter += 1.
+        end = datetime.datetime.now()
+        print(meijer_result)
+        print(f"Obtained meijer results in {end-start}.")
+        print(f'use sympy')
+        meijer_result = []
+        '''
+        counter = 0.
+        #sympy is slightly slower than mpmath but it is not worth the extra package
+        # Obtained meijer results in 0:02:45.557986. mpmath
+        # Obtained meijer results in 0:02:53.999324. sympy
+        print(f'starting the meijer calculation at {datetime.datetime.now()}')
+        print(f'with p = {p} and q = {q}')
+        for s_ind in s:
+            print(f"\r Evaluting the expensive sersic meijer result: {counter/float(len(s))*100.:.1f} % Done.",\
+                        end =" ",flush = True) 
+            meijer_input =  (b/(2*p))**(2*p) * s_ind**(2*q)
+            meijer_result.append(meijergsp([[],avect],[bvect,[]],meijer_input).evalf())
+            #print(check,meijer_result[-1])
+            counter += 1.
+        print(f'\n')
+        #end = datetime.datetime.now()
+        #print(meijer_result)
+        #print(f"Obtained meijer results in {end-start}.")
+        #exit()
+        meijer_result = np.array(meijer_result,dtype=float)
+        #This is with 1/rad instead of 1/s as we dropped the R_eff from the const 
+        # central_SB is M/pc**2 with /rad makes M/pc**3 ----> This is a problem for cassertano
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            density_profile =  const/radii.to(unit.pc)*meijer_result
+    density_profile = extrapolate_zero(radii,density_profile)           
     return density_profile
 sersic_profile.__doc__ = f'''
 NAME:
@@ -485,7 +529,7 @@ def get_integers(n):
     # to limit the array sizes we round n to 5 decimals 
     n = round(n,5)
     #We don't want p and q to be too big especially is p goes to the power
-    solution= Fraction(n).limit_denominator(100)
+    solution= Fraction(n).limit_denominator(50)
     return int(solution.numerator),int(solution.denominator)
 
    

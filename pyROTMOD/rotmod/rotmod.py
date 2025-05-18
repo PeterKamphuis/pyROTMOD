@@ -139,7 +139,7 @@ this one is very close to a disk so we will transform to an exponential disk. \n
 this one is very close to a bulge so we will transform to a hernquist profile. \n''',cfg,case=['main'])
                     bulge_RC(profiles[name],  RCs[name], cfg=cfg)
                 else:
-                    print_log(f'''This is a sersic density profile which we will treat as a random density disk ''',cfg,case=['main'])
+                    print_log(f'''This is a sersic density profile which we will treat as a random density disk ''',cfg,case=['main','screen'])
                     random_RC(profiles[name], RCs[name],cfg=cfg) 
                   
         elif profiles[name].type in ['random_bulge','hernquist']:
@@ -602,7 +602,6 @@ h_z = {density_profile.height} and vertical mode = {density_profile.height_type}
     
     if density_profile.profile_type != 'sbr_dens':
         density_profile= convert_density_to_SB(density_profile)
-
     try:
        density = density_profile.values.to(unit.Msun/unit.kpc**2).value 
     except unit.UnitConversionError:
@@ -616,7 +615,7 @@ The current units are {density_profile.values.unit}''')
         rad_unit = radii.unit
         radii = radii.value
    
-    ntimes =50.
+    ntimes = 50.
     mode = density_profile.height_type
     if density_profile.height.unit != unit.kpc:
         raise UnitError(f'The scale height is not in kpc, it should be by now. (height = {density_profile.height}, name = {density_profile.name})')

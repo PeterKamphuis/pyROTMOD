@@ -4,6 +4,7 @@
 import numpy as np
 import jax.numpy as jnp
 import astropy.units as unit
+from astropy.units import UnitConversionError
 from pyROTMOD.support.profile_classes import SBR_Profile,copy_attributes
 from pyROTMOD.support.minor_functions import quantity_array
 from scipy.integrate import quad
@@ -21,8 +22,11 @@ def convert_density_to_SB(density_profile,invert=False):
     '''Convert the volume density to a surface brightness'''
     '''As these conversion require integration of the height profile they are in this module '''
     #First select the height function
-    vertical_function = select_vertical_function(density_profile.height_type)
-    integrated_function = calculate_height_integral(vertical_function,
+    if density_profile.height_type == 'inf_thin':
+        integrated_function = [1.*unit.pc,0.*unit.pc]
+    else:
+        vertical_function = select_vertical_function(density_profile.height_type)
+        integrated_function = calculate_height_integral(vertical_function,
                 density_profile.height.to(unit.pc).value)*unit.pc
     if invert:
         integrated_function = 1./integrated_function
@@ -39,16 +43,16 @@ def convert_density_to_SB(density_profile,invert=False):
                 new_value = 'sbr_dens'
         elif attr == 'error':
             new_value= []
-            unit = None
+            value_unit = None
             for i,x in enumerate(density_profile.values):
                 if not value[i] is None:
                     new_value.append(np.sqrt(x**2*integrated_function[1]**2
                     +value[i]**2*integrated_function[0]**2))
-                    unit = new_value[-1].unit
+                    value_unit = new_value[-1].unit
                 else:
                     new_value.append(None)
-            if not unit is None:
-                new_value = quantity_array(new_value,unit)
+            if not value_unit is None:
+                new_value = quantity_array(new_value, value_unit)
             else:
                 new_value = None
         elif attr == 'values':
@@ -58,9 +62,13 @@ def convert_density_to_SB(density_profile,invert=False):
             try:
                 value.unit.to(unit.Msun/unit.pc**3) 
                 new_value = value*integrated_function[0]
-            except unit.UnitConversionError:
+            except UnitConversionError:
+                continue
+            except AttributeError:
                 continue
         setattr(sbr_profile, attr, new_value)
+    print(f'Converted {density_profile.name} to {sbr_profile.name}')
+   
     return sbr_profile
 
 def calculate_height_integral(function,height):

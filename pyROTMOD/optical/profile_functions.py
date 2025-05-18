@@ -35,7 +35,7 @@ def determine_density_profile(type, n):
             prof_type = 'sersic'
     return prof_type
 
-def determine_profiles_to_fit(type):
+def determine_profiles_to_fit(cfg,type):
     if type.upper() in ['DENSITY','RANDOM_DISK','RANDOM_BULGE']:
         evaluate = ['EXPONENTIAL','EXP+HERN','SERSIC']
     elif type.upper() in ['BULGE', 'HERNQUIST']:
@@ -44,7 +44,11 @@ def determine_profiles_to_fit(type):
         evaluate = ['EXPONENTIAL','SERSIC']
     else:
         evaluate = [type]
-    return evaluate
+    final_evaluate = []
+    for ev in evaluate:
+        if ev in cfg.RC_Construction.optical_functions:
+            final_evaluate.append(ev)
+    return final_evaluate
  
 def fit_profile(profile_to_fit,cfg=None):
     '''We only implemented the functions for the luminosity profiles 
@@ -124,7 +128,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
                 }
 
 
-    evaluate = determine_profiles_to_fit(type)
+    evaluate = determine_profiles_to_fit(cfg,type)
    
     fitted_dict = {}
     for ev in evaluate:

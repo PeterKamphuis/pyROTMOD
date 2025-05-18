@@ -204,7 +204,6 @@ class SBR_Profile(Component):
                   self.profile_type='density'
             elif self.type in ['sersic','devauc']:
                   self.values = sersic_profile(self)
-                  self.profile_type='density'
             elif self.type in ['bulge','hernquist']:
                   self.values = hernquist_profile(self)
                   self.profile_type='density'
