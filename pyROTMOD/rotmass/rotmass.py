@@ -402,20 +402,20 @@ def set_RC_style(RC,input=False):
 
         elif RC.component.lower() == 'dm':
             style_dictionary['linestyle'] = '-.'
-            style_dictionary['color'] = colors.to_rgba('b',alpha=1.)
+            style_dictionary['color'] = colors.to_rgba('dodgerblue',alpha=1.)
             style_dictionary['label'] =  f'V$_{{{RC.halo}}}$'
             style_dictionary['zorder'] = 6
         elif RC.component.lower() == 'gas':
             rcs,no = get_uncounted(RC.name)
             style_dictionary['linestyle'] = ':'
-            style_dictionary['color'] = colors.to_rgba('g',alpha=1.)
+            style_dictionary['color'] = colors.to_rgba('lime',alpha=1.)
             style_dictionary['label'] = f'V$_{{Gas\\_Disk_{no}}}$'
             style_dictionary['zorder'] = 4
         elif RC.component.lower() == 'stars':
             rcs,no = get_uncounted(RC.name)
             style_dictionary['linestyle'] = '--'
             if rcs in ['EXPONENTIAL','DISK']:
-                style_dictionary['color'] = colors.to_rgba('cyan',alpha=1.)
+                style_dictionary['color'] = colors.to_rgba('blueviolet',alpha=1.)
                 style_dictionary['label'] =  f'V$_{{Stellar\\_Disk_{no}}}$'
                 style_dictionary['zorder'] = 3
             elif rcs in ['HERNQUIST','BULGE','SERSIC_BULGE']:
@@ -423,11 +423,11 @@ def set_RC_style(RC,input=False):
                 style_dictionary['label'] = f'V$_{{Stellar\\_Bulge_{no}}}$'
                 style_dictionary['zorder'] = 2
             elif rcs in ['SERSIC','SERSIC_DISK']:
-                style_dictionary['color'] = colors.to_rgba('blue',alpha=1.)
+                style_dictionary['color'] = colors.to_rgba('violet',alpha=1.)
                 style_dictionary['label'] =  f'V$_{{Stellar\\_Sersic_{no}}}$'
                 style_dictionary['zorder'] = 3
             else:
-                style_dictionary['color'] = colors.to_rgba('orange',alpha=1.)
+                style_dictionary['color'] = colors.to_rgba('magenta',alpha=1.)
                 style_dictionary['label'] =  f'V$_{{Stellar\\_Random_{no}}}$'
                 style_dictionary['zorder'] = 3
 
@@ -591,9 +591,27 @@ def update_RC(RC,update,reset=False):
                     RC.fitting_variables[variable].boundaries[i] = \
                         RC.fitting_variables[variable].original_boundaries[i]
             if reset:
-                if RC.fitting_variables[variable].original_value is not None:
-                    RC.fitting_variables[variable].value = \
-                        RC.fitting_variables[variable].original_value
+                reset_variables_to_original(RC,variable)
+
+def reset_variables_to_original(RC,variable):
+    for i in [0,1]:
+        if RC.fitting_variables[variable].original_boundaries[i] is not None:
+            RC.fitting_variables[variable].boundaries[i] =\
+                RC.fitting_variables[variable].original_boundaries[i]            
+    if RC.fitting_variables[variable].original_value is not None:
+        if (RC.fitting_variables[variable].boundaries[0] < 
+            RC.fitting_variables[variable].original_value < 
+            RC.fitting_variables[variable].boundaries[1]):
+                RC.fitting_variables[variable].value = \
+                    RC.fitting_variables[variable].original_value
+        else:
+            for i in [0,1]:
+                if not RC.fitting_variables[variable].fixed_boundaries[i]:
+                    diff = (RC.fitting_variables[variable].boundaries[i] - 
+                        RC.fitting_variables[variable].value)
+                    RC.fitting_variables[variable].boundaries[i] = \
+                        RC.fitting_variables[variable].original_value + diff
+           
 
 def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
     out_dir = f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/'
@@ -652,7 +670,7 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
     result_summary = {'skip_output': False, 'BIC': None, 'succes': False,'direction': 'diverging',
                       'max_iterations': False, 'Error': 'No Error'}
     initial_guesses,initial_data = initial_guess(cfg, total_RC,chain_data=True)
-    update_RCs(initial_guesses,all_RCs,total_RC,reset=True)
+    update_RCs(initial_guesses,all_RCs,total_RC,reset=cfg.fitting_general.reset_initial_guesses)
     plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
             all_RCs,total_RC,font=font)
  

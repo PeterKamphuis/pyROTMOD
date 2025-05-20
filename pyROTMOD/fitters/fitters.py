@@ -148,7 +148,7 @@ Try smaller boundaries or set your initial values or use a different minimizer''
                         for i in [0,1]:
                             guess_variables[variable].previous_boundaries[i] =\
                                 copy.deepcopy(guess_variables[variable].boundaries[i]) 
-                        if not guess_variables[variable].fixed_boundaries:
+                        if not all(guess_variables[variable].fixed_boundaries):
                             guess_variables[variable].previous_boundaries =\
                                 copy.deepcopy(guess_variables[variable].boundaries)
                         if not guess_variables[variable].fixed_boundaries[0]:

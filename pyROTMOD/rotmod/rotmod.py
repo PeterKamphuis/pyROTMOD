@@ -333,8 +333,8 @@ def exponential_parameter_RC(radii,parameters, cfg=None):
     #print(f'This is the total mass in the parameterized exponential disk {float(parameters[1]):.2e}')
   
     if parameters.height_type != 'inf_thin':
-        if parameters.central_SB.unit != unit.Msun/unit.pc**2:
-            convert_SB_to_density(parameters)
+        if parameters.central_SB.unit != unit.Msun/unit.pc**3:
+            convert_density_to_SB(parameters,invert=True)
 
         #This is not very exact for getting a 3D density
        
@@ -518,7 +518,7 @@ def integrate_z(radius,x,h_z,mode):
         combined_function = lambda z,x,y,h_z: interg_function(z,x,y)*vertical(z,h_z)
         # We integrate the function along the z axis
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore",message='overflow encountered in cosh')
+            warnings.filterwarnings("ignore",message='overflow encountered in cosh')
             zdz = quad(combined_function,0.,np.inf,args=(radius,x,h_z))[0]
         
     else:
@@ -580,6 +580,7 @@ and a central mass density {gas_profiles[profile].values[0]:.2f}.
     ########################################## Make a nice file with all the different components as a column ######################3
         write_profiles(profiles,output_dir = cfg.output.output_dir, cfg=cfg,\
             filename=f'{cfg.RC_Construction.out_base}SBR_Profiles.txt')
+        
     ######################################### Convert to Rotation curves ################################################
         derived_RCs = convert_dens_rc(profiles, cfg=cfg)
     ######################################### Read any RCs provided directly ################################################
@@ -603,7 +604,7 @@ h_z = {density_profile.height} and vertical mode = {density_profile.height_type}
     if density_profile.profile_type != 'sbr_dens':
         density_profile= convert_density_to_SB(density_profile)
     try:
-       density = density_profile.values.to(unit.Msun/unit.kpc**2).value 
+        density = density_profile.values.to(unit.Msun/unit.kpc**2).value 
     except unit.UnitConversionError:
         raise UnitError(f'''Your profile is not suitable for random density disk.
 The current units are {density_profile.values.unit}''')

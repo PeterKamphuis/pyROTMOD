@@ -232,9 +232,15 @@ def exponential_profile(components,radii = None):
             components.profile_type='sbr_dens' 
         else:
             #Equation 24 in Gentile and Baes
+            print(components.central_SB,components.scale_length)
             profile = components.central_SB/(np.pi*components.scale_length)\
                 *k0(radii/components.scale_length)
-            components.profile_type='density' 
+            components.profile_type='density'
+            if radii[0] == 0.:
+                components.central_SB = profile[0]
+            else:
+                components.central_SB = extrapolate_zero(radii,profile)[0] 
+
     else:
         raise UnitError(f'The unit of the radii ({radii.unit}) does not match the scale length ({components.scale_length.unit})')
     #profile = [x.value for x in profile]
@@ -414,7 +420,7 @@ def sersic_profile(components,radii = None):
         radii = components.radii
     # Following the  exponential profile the inf disk does not get deprojected
     if components.height_type == 'inf_thin':
-        density_profile = sersic(radii, components.central_SB, components.R_effective,\
+        density_profile = sersic(radii, components.L_effective, components.R_effective,\
                          components.sersic_index )
         components.profile_type='sbr_dens'
     else:

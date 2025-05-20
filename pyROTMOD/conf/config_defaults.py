@@ -69,13 +69,15 @@ class Fitting:
     enable: bool = True
     negative_values: bool = False
     initial_minimizer: str = 'differential_evolution' #Not  functioning for numpyro backend
+    reset_initial_guesses: bool = False #If True we reset the initial guesses to all fitting parameters that we not none.
+    # to the values in the input file
     HALO: str = 'NFW'
     log_parameters: List = field(default_factory=lambda: [None])  #add a parameter to add it in log space 'All' will do all parameters in log
     # 'ML' all mass to light parameters will be done in log space  #With this switch on all parameters are set as 10**parameter instead of pramater
     single_stellar_ML: bool = True
     stellar_ML: List = field(default_factory=lambda: [1.0,None,None,True]) 
     # If set to false individual settings in an input yaml still take precedence
-    fixed_gas_ML: bool = True # If set to false individual settings in an input yaml still take precedence
+    gas_ML: List = field(default_factory=lambda: [1.33,None,None,False])   # If set to false individual settings in an input yaml still take precedence
     single_gas_ML: bool = False
     mcmc_steps: int= 2000 #Amount of steps per parameter
     burn: int = 500 #Number of steps to discard in MCMC chain per   free parameter
@@ -113,7 +115,7 @@ def add_dynamic(in_dict,in_components, halo = 'NFW'):
             component,no = get_uncounted(in_components[name].name)
             if 'GAS' in component.upper():
                 dict_elements.append([f'{in_components[name].name}',
-                    [1.33, None, None,not in_dict['fitting_general']['fixed_gas_ML'],True]])
+                    in_dict['fitting_general']['gas_ML']+[True]])
             else:
                 dict_elements.append([f'{in_components[name].name}',
                     in_dict['fitting_general']['stellar_ML']+[True]])  
@@ -284,6 +286,7 @@ Exiting pyROTMOD.''')
    
     cfg = OmegaConf.merge(cfg,short_yaml_config)
     cfg = OmegaConf.merge(cfg,short_inputconf) 
+    
     return cfg
 
 

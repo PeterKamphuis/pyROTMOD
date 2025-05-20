@@ -5,13 +5,15 @@ import numpy as np
 import jax.numpy as jnp
 import astropy.units as unit
 from astropy.units import UnitConversionError
+from pyROTMOD.support.errors import InputError
 from pyROTMOD.support.profile_classes import SBR_Profile,copy_attributes
 from pyROTMOD.support.minor_functions import quantity_array
 from scipy.integrate import quad
-
+import warnings 
 def check_height(Density_In):
     '''Check the type of the vertical distributio'''
     if not Density_In.height_type in  ['sech','exp'] and Density_In.height != 0.:
+        # This limitation comes from the input of MN# potaetial in galpy.
         raise InputError(f'We cannot have {Density_In.height_type} with a thick exponential disk. Use a different disk or pick exp or sech')
     sech = False
     if Density_In.height_type == 'sech':
@@ -73,7 +75,10 @@ def convert_density_to_SB(density_profile,invert=False):
 
 def calculate_height_integral(function,height):
     '''Calculate the height integral for the sech or exp function'''
-    new_value = 2.*quad(function,0,np.inf,args=(height))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        quadout = np.array(quad(function,0.,np.inf,args=(height)),dtype=float)
+    new_value = 2.*quadout
     return new_value
          
 
