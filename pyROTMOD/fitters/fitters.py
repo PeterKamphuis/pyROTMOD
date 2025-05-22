@@ -493,7 +493,7 @@ def create_corner_plot(cfg,data,guess_variables,parameter_names,
                                     guess_variables[parameter_names[i]].stddev, color='cyan', linestyle='--')
                     ax_hist.axvline(guess_variables[parameter_names[i]].value-\
                                     guess_variables[parameter_names[i]].stddev, color='cyan', linestyle='--')
-                    title_string = f'{parameter_label} = {guess_variables[parameter_names[i]].value/correction:.2f} $\pm$ {guess_variables[parameter_names[i]].stddev/correction:.2f}'
+                    title_string = f'{parameter_label} = {guess_variables[parameter_names[i]].value/correction:.2f} $\\pm$ {guess_variables[parameter_names[i]].stddev/correction:.2f}'
                     if edv != 0.:
                         title_string += f'$\\times 10^{{{edv}}} '
                     ax_hist.set_title(title_string,fontsize=15.,loc='left',
