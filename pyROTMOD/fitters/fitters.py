@@ -600,7 +600,8 @@ def process_results(cfg,fit_variables, mcmc_result,fit_tracking,lmfit=False):
         fit_tracking['failure_count'] +=1
         err_message = create_error_message(fit_tracking)
         print_log(f'''{err_message}''',cfg,case=['main'])
-        if not fit_tracking['statistics_quality']['stable_rhat'] or fit_tracking['failure_count'] > 3.:
+        if (not fit_tracking['statistics_quality']['stable_rhat'] and fit_tracking['failure_count'] > 2.)\
+            or fit_tracking['failure_count'] > 4.:
             raise FailedFitError(f'''{err_message}''')
        
     check_boundaries(cfg,fit_variables,fit_summary, fit_tracking)
