@@ -123,14 +123,19 @@ def convert_dens_rc(profiles, cfg = None,output_dir='./'):
             profiles[name].softening_length )
         
         if profiles[name].type in ['expdisk','edgedisk']:
+
             print_log(f'We have detected the input to be an disk',cfg,case=['main'])
-            exponential_RC(profiles[name],  RCs[name],cfg=cfg)
+            if profiles[name].height_type in ['inf_thin','sech','exp']:
+                exponential_RC(profiles[name],  RCs[name],cfg=cfg)
+            else:
+                random_RC(profiles[name], RCs[name],cfg=cfg) 
         elif profiles[name].type in ['random_disk','random']: 
             print_log(f'This is a random density disk',cfg,case=['main'])
             random_RC(profiles[name], RCs[name],cfg=cfg) 
         elif profiles[name].type in ['sersic','devauc']:
                 #This should work fine for a devauc profile which is simply sersic with n= 4
-                if  0.9 < profiles[name].sersic_index < 1.1:
+                if  0.9 < profiles[name].sersic_index < 1.1 and \
+                    profiles[name].height_type in ['inf_thin','sech','exp']:
                     print_log(f'''We have detected the input to be a sersic profile.
 this one is very close to a disk so we will transform to an exponential disk. \n''' ,cfg,case=['main'])
                     exponential_RC(profiles[name],  RCs[name], cfg=cfg)

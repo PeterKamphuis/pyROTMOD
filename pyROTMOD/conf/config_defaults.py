@@ -44,7 +44,7 @@ class RCConstruction:
     gas_file: Optional[str] = None
     #Scale height for the optical profiles provided as  [value, error, unit, type]
     #If value = 0 or or type = None use infinitely thin disks (inf_thin), !!!This basically means that the profile is not deprojected
-    #Other type options are ['exp', 'sech-sq','sech', 'constant', 'lorentzian']. If a galfit fit provides a scale height this takes precedence
+    #Other type options are ['exp', 'sech-square','sech', 'constant', 'lorentzian']. If a galfit fit provides a scale height this takes precedence
     # 0 for a bulge profile will be a spherical bulge
     # units can be 'PC', "KPC', "ARCSEC', 'ARCMIN', 'DEGREE'
     scaleheight: List = field(default_factory=lambda: [0., None, 'KPC', 'inf_thin']) 
