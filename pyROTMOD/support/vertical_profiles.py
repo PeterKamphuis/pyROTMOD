@@ -109,7 +109,7 @@ def sech_square(r,h):
     return sech(r,h)**2
 
 def select_vertical_function(mode,normalized= False):
-    if mode == 'sech-square':
+    if mode == 'sech-square' or mode == 'sech_square':
         if normalized:
             return norm_sech_square
         else:

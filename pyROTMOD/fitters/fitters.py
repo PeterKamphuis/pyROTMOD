@@ -697,11 +697,13 @@ def lmfit_run(cfg,total_RC, out_dir = None,optical_profile = False):
                 added.append(variable)
    
     parameters = model.make_params()
-    #Why only 1 worker?
-    #if total_RC.numpy_curve['function'].__name__ == 'total_numpy_curve':
-    #    workers =1
-    #else:
-    workers = cfg.input.ncpu
+    #Why only 1 worker? Because lmfit doesn't spawn the multiprocesses correct on MAC
+    
+    if total_RC.numpy_curve['function'].__name__ == 'total_numpy_curve' and\
+        sys.platform == 'darwin':
+        workers =1
+    else:
+        workers = cfg.input.ncpu
 
     emcee_kws = dict(steps=steps, burn=burning, thin=10, is_weighted=True,\
         workers=workers)
