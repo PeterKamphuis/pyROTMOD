@@ -21,3 +21,10 @@ class RunTimeError(Exception):
     pass
 class SupportRunError(Exception):
     pass
+
+
+class DeprojectionWarning(Warning):
+    """
+    Warning for deprojection issues.
+    """
+    pass

@@ -601,6 +601,7 @@ def random_density_disk(radii,density_profile, cfg= None):
 h_z = {density_profile.height} and vertical mode = {density_profile.height_type}
 ''', cfg, case=['main'])
     
+    
     if density_profile.profile_type != 'sbr_dens':
         density_profile= convert_density_to_SB(density_profile)
     try:

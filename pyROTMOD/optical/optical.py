@@ -5,13 +5,21 @@ import numpy as np
 from pyROTMOD.support.minor_functions import print_log,translate_string_to_unit,get_uncounted
 from pyROTMOD.support.major_functions import read_columns
 from pyROTMOD.optical.conversions import mag_to_lum
-from pyROTMOD.support.errors import InputError, BadFileError, UnitError
+from pyROTMOD.support.errors import InputError, BadFileError, UnitError,DeprojectionWarning
 from pyROTMOD.support.profile_classes import SBR_Profile,Component,Luminosity_Profile,copy_attributes
 
 from astropy import units as unit
-
+import warnings
 #Convert on sky profiles to in plane SBR profiles
 def convert_luminosity_profile(profile_in,cfg=None):
+    if 'random' in profile_in.type:
+        if profile_in.height_type == 'inf_thin':
+            warnings.warn(f'''The profile {profile_in.name} is a random profile. These are supposed to be in the plane 
+of  the galaxy. We cannot deproject these profiles.''',DeprojectionWarning) 
+        else:
+            raise InputError(f'''The profile {profile_in.name} is a random profile.
+We cannot deproject a random profile, if this is an in plane surface brightness profile use 'inf_thin'.
+''')                              
     transfer=Component()
     profiles_out = SBR_Profile(distance=profile_in.distance\
         ,radii=profile_in.radii,MLratio=profile_in.MLratio,
@@ -28,7 +36,7 @@ def convert_luminosity_profile(profile_in,cfg=None):
     
     if 'random' in profile_in.type:
         profiles_out.values = profile_in.values*profile_in.MLratio  
-        profiles_out.radii = profile_in.radii 
+        profiles_out.radii = profile_in.radii
     if profiles_out.values.unit not in [unit.Msun/unit.kpc**2,unit.Msun/unit.pc**2] and\
         profiles_out.profile_type == 'sbr_dens:':
         raise UnitError(f'The unit {profiles_out.unit} is not recognized for the surface brightness profile {profiles_out.name}')

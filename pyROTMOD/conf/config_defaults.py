@@ -35,15 +35,15 @@ class Output:
     debug_functions: List = field(default_factory=lambda: ['ALL'])
     verbose: bool = False
     chain_data: bool = False #If True we save the chain data in a file
-    output_curves : bool = False #If True we save the rotation curves in a file
+    output_curves : bool = False #If True we save the rotation curves in a pickled file
 @dataclass
 class RCConstruction:
     enable: bool = True
-    out_base: str = ''
+    out_base:  Optional[str] = None # If not present it will default to output.out_base
     optical_file: Optional[str] = None
     gas_file: Optional[str] = None
     #Scale height for the optical profiles provided as  [value, error, unit, type]
-    #If value = 0 or or type = None use infinitely thin disks (inf_thin),
+    #If value = 0 or or type = None use infinitely thin disks (inf_thin), !!!This basically means that the profile is not deprojected
     #Other type options are ['exp', 'sech-sq','sech', 'constant', 'lorentzian']. If a galfit fit provides a scale height this takes precedence
     # 0 for a bulge profile will be a spherical bulge
     # units can be 'PC', "KPC', "ARCSEC', 'ARCMIN', 'DEGREE'
@@ -86,6 +86,7 @@ class Fitting:
     gp_kernel_type: str = 'RBF'
     backend : str = 'numpyro' # lmfit or numpyro
     max_iterations: int = 10
+    adapt_boundaries: bool = True
     
 @dataclass
 class ExtendConfig:
@@ -286,7 +287,7 @@ Exiting pyROTMOD.''')
    
     cfg = OmegaConf.merge(cfg,short_yaml_config)
     cfg = OmegaConf.merge(cfg,short_inputconf) 
-    
+  
     return cfg
 
 

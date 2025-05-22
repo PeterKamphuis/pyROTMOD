@@ -1,6 +1,6 @@
 # -*- coding: future_fstrings -*-
 
-from pyROTMOD.support.errors import UnitError
+from pyROTMOD.support.errors import UnitError,InputError
 from pyROTMOD.support.minor_functions import isquantity
 
 from astropy import units as unit
@@ -77,14 +77,17 @@ def edge_profile(components,radii = None):
    
     if radii is None:
         radii = components.radii
+    if components.height_type == 'inf_thin':
+        raise InputError(f'The edge profile is not defined for an inf thin disk')    
     #The edge luminosity in galfit is taken from vdKruit and Searle which is the
-    # edge-on projection of an exponential luminosity density (See Eg 5 in vd Kruit and Searle) 
+    # edge-on projection of an in plane exponential luminosity density  (See Eg 5 in vd Kruit and Searle) 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if radii.unit == components.scale_length.unit:    
-            #Equation 5 in vd Kruit and Searle with z 0
+            #Equation 8 in vd Kruit and Searle with z 0
             L0 = components.total_mass/(4.*np.pi*components.scale_length**2*components.height)
             ### This makes this a 3D profile with M/pc**3
+            ### As it should for deprojected profiles
             profile = exponential(radii,L0,components.scale_length)
           
         else:
@@ -227,12 +230,12 @@ def exponential_profile(components,radii = None):
         radii = components.radii
     
     if radii.unit == components.scale_length.unit:
+        # for the infinite thin disk we assume the surface prightness profile is in plane
         if components.height_type == 'inf_thin':
             profile= exponential(radii, components.central_SB, components.scale_length)  
             components.profile_type='sbr_dens' 
         else:
-            #Equation 24 in Gentile and Baes
-            print(components.central_SB,components.scale_length)
+            #Equation 24 in Gentile and Baes  
             profile = components.central_SB/(np.pi*components.scale_length)\
                 *k0(radii/components.scale_length)
             components.profile_type='density'
@@ -362,6 +365,8 @@ def hernquist_profile(components,radii=None):
     '''
     if radii is None:
         radii = components.radii
+    if components.height_type == 'inf_thin':
+        raise InputError(f'The Hernquist profile is not defined for an inf thin disk')
     if radii.unit == components.hernquist_scale_length.unit:  
         a = components.hernquist_scale_length
         profile = components.total_mass/(2.*np.pi)*a/radii*1./(radii+a)**3

@@ -309,29 +309,33 @@ def write_output_file(cfg,final_variable_fits,result_summary,output_dir='./',\
     #check wether log parameters are used and if so we need to set the values back to the original
     
     log_parameters = []
+    max_parameters = []
     log_too_large = []
     max_float = sys.float_info.max_10_exp-10
     min_float = sys.float_info.min_10_exp+10
     for variable in final_variable_fits:
-        print((variable,final_variable_fits[variable].value,final_variable_fits[variable].boundaries))
         if final_variable_fits[variable].log:
             if ((min_float < final_variable_fits[variable].value < max_float)
                 and min_float < final_variable_fits[variable].boundaries[0]
                 and final_variable_fits[variable].boundaries[1] < max_float):
                 log_parameters.append(variable)
-                final_variable_fits[variable].value = (
-                    10**final_variable_fits[variable].value)
+              
                 final_variable_fits[variable].boundaries = [
                     10**x for x in final_variable_fits[variable].boundaries]
+                # Do the error first as it depends on the log value
                 final_variable_fits[variable].stddev =(
                     final_variable_fits[variable].value*np.log(10)*
                     final_variable_fits[variable].stddev)
+                final_variable_fits[variable].value = (
+                    10**final_variable_fits[variable].value)
                 final_variable_fits[variable].log = False  
             else:
                 log_too_large.append(variable)
+        if final_variable_fits[variable].stat_use == 'Max':
+            max_parameters.append(variable)
                   
     #variables_fitted = [x for x in final_variable_fits]
-    variable_line = f'{"Variable":>15s} {"Value":>15s} {"Error":>15s} {"Lower Bound":>15s} {"Upper Bound":>15s} \n'
+    variable_line = f'{"Variable":>15s} {"Value":>15s} {"Error":>15s} {"Lower Bound":>15s} {"Upper Bound":>15s} {"Distr. Stat":>15s}\n'
     sep_line =''.join([f'-']*80)
     with open(f'{output_dir}{results_file}.txt','w') as file:
         file.write('# These are the results from pyROTMOD. \n')
@@ -355,6 +359,9 @@ def write_output_file(cfg,final_variable_fits,result_summary,output_dir='./',\
         if len(log_too_large) > 0:
             file.write(f'''# {sep_line}\n''')
             file.write(f'''# The parameters {','.join(log_parameters)} were fitted in log space but were not converted to linear space as they would exceed the maximum float size.\n''')
+        if len(max_parameters) > 0:
+            file.write(f'''# {sep_line}\n''')
+            file.write(f'''# For the parameters {','.join(max_parameters)} the maximum occurence was taken. This indicates non-gaussianity in the parameter distribution.\n''')
  
         file.write(f'''# {sep_line}\n''')
         if len([x for x in final_variable_fits]) > 0:
@@ -371,10 +378,11 @@ def write_output_file(cfg,final_variable_fits,result_summary,output_dir='./',\
                         min = final_variable_fits[variable].boundaries[0]
                         max = final_variable_fits[variable].boundaries[1]
                         if not final_variable_fits[variable].variable:
-                            variable_line += f' {"Fixed":>15s} {min:{form}} {max:{form}} \n'
+                            variable_line += f' {"Fixed":>15s}'
                         else:
                             err = final_variable_fits[variable].stddev
-                            variable_line += f' {err:{form}} {min:{form}} {max:{form}} \n'
+                            variable_line += f' {err:{form}}'
+                        variable_line += f'{min:{form}} {max:{form}} {final_variable_fits[variable].stat_use:>15s}\n'
                         file.write(variable_line)
                         added.append(variable)
 
@@ -586,8 +594,7 @@ def update_RC(RC,update,reset=False):
             RC.fitting_variables[variable] = update[variable]
             for i in [0,1]:
                 if RC.fitting_variables[variable].fixed_boundaries[i] and\
-                    (RC.fitting_variables[variable].boundaries[i] !=
-                    RC.fitting_variables[variable].original_boundaries[i]):
+                    RC.fitting_variables[variable].original_boundaries[i] is not None:
                     RC.fitting_variables[variable].boundaries[i] = \
                         RC.fitting_variables[variable].original_boundaries[i]
             if reset:
@@ -662,9 +669,14 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
         #total_RC.fitting_variables['amplitude'] = [1.,0.1,10.,True,True]
         #total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
         total_RC.fitting_variables['lgamplitude'] = Parameter(name='lgamplitude'
-            ,value= 1., variable = True, include = True, original_boundaries = [-3,3.], log= True)
+            ,value= 1., variable = True, include = True,
+            original_boundaries = [-3,3.], log= True)
         total_RC.fitting_variables['length_scale'] = Parameter(name='length_scale'
-            ,value= 1., variable = True, include = True, original_boundaries = [0.1,10.])
+            ,value= 1., variable = True, include = True, 
+            original_boundaries = [0.5,len(total_RC.radii.value)*3./4.])
+
+        #It makes no sense to have a very long length scale for the GP
+     
         
         total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['lgamplitude','length_scale']
     result_summary = {'skip_output': False, 'BIC': None, 'succes': False,'direction': 'diverging',
@@ -751,7 +763,7 @@ rotmass_main.__doc__ =f'''
 '''
 
 
-def add_fitting_dict(name, parameters, component_type = 'stars', fitting_dictionary = {}):
+def add_fitting_dict(cfg,name, parameters, component_type = 'stars', fitting_dictionary = {}):
 
     variable = None
     #V_disk and V_bulge, V_sersic are place holders for the values to be inserted in the final formulas
@@ -770,7 +782,7 @@ def add_fitting_dict(name, parameters, component_type = 'stars', fitting_diction
     
     # We need to add the parameter to the fitting dictionary    
     fitting_dictionary[variable] = set_parameter_from_cfg(variable,
-        parameters) 
+        parameters, adapt_boundaries = cfg.fitting_general.adapt_boundaries) 
     # We need to add the parameter to the fitting dictionary    
   
 def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
@@ -797,7 +809,7 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
         
         fitting_dictionary = {} 
         all_RCs[name].check_component()
-        add_fitting_dict(all_RCs[name].name,cfg.fitting_parameters[all_RCs[name].name],\
+        add_fitting_dict(cfg,all_RCs[name].name,cfg.fitting_parameters[all_RCs[name].name],\
                          component_type=all_RCs[name].component,\
                         fitting_dictionary=fitting_dictionary)
        
@@ -812,7 +824,8 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
             for variable in dm_parameters:
                 # Using a dictionary make the parameter always to be added
                 fitting_dictionary[variable] = set_parameter_from_cfg(variable,
-                    cfg.fitting_parameters[variable]) 
+                    cfg.fitting_parameters[variable],
+                    adapt_boundaries=cfg.fitting_general.adapt_boundaries) 
         else:
             ML, V = symbols(f"ML V")
             all_RCs[name].halo = 'NEWTONIAN'
@@ -840,7 +853,8 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
         for variable in dm_parameters:
             # Using a dictionary make the parameter always to be added
             fitting_dictionary[variable] =set_parameter_from_cfg(variable,
-                    cfg.fitting_parameters[variable]) 
+                    cfg.fitting_parameters[variable],
+                    adapt_boundaries=cfg.fitting_general.adapt_boundaries) 
             if not bool(cfg.fitting_parameters[variable][4]):
                 raise  InputError(f'''You have requested the {cfg.fitting_generals['HALO']} DM halo but want to exclude {variable} from the fitting.
 You cannot change the DM formula, if this is your aim please add a potential in the rotmass potential file.
@@ -923,7 +937,8 @@ def replace_parameters_with_log(cfg,RC,no_curve=False):
         if (new_var in cfg.fitting_parameters or f'lg{RC.name}' in cfg.fitting_parameters): 
             fitting_name = new_var if new_var in cfg.fitting_parameters else f'lg{RC.name}'
             RC.fitting_variables[new_var] = set_parameter_from_cfg(new_var,
-                cfg.fitting_parameters[fitting_name])
+                cfg.fitting_parameters[fitting_name],
+                adapt_boundaries=cfg.fitting_general.adapt_boundaries)
             RC.fitting_variables.pop(fit_var)          
            
         else:

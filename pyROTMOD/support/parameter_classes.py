@@ -15,7 +15,7 @@ class Parameter:
             self.original_boundaries = original_boundaries
             self.original_value = original_value
             self.fit_stats = None
-            self.use_median = False #Trigger to use a median value instaed of the mean
+            self.stat_use = 'Mean' #Trigger to use a the Mean, Median or Max of the occurence max occurence  instead of the mean
             self.fit_direction = [None, None]  #Following stage of the fit 'intitial_guess', diverging, 'stable' [value,boundaries] set in check_boundaries
             self.fixed_boundaries = fixed_boundaries #Boolean to indicate if the parameter has fixed boundaries [min,max]
             self.variable = variable
@@ -68,16 +68,23 @@ class Parameter:
                   self.value = float(np.random.rand()*\
                         (self.boundaries[1]-self.boundaries[0])+self.boundaries[0])
            
-def set_parameter_from_cfg(var_name,var_settings):
+def set_parameter_from_cfg(var_name,var_settings,adapt_boundaries = True):
       # Using a dictionary make the parameter always to be added
-      fixed_bounds = [False,False]
+      if adapt_boundaries:
+            fixed_bounds = [False,False]
+      else:
+            fixed_bounds = [True,True]
       original_boundaries = [None, None]
-      if not var_settings[1] is None: 
-            fixed_bounds[0] = True
+      if not var_settings[1] is None:
             original_boundaries[0] = var_settings[1]
-      if not var_settings[2] is None: 
-            fixed_bounds[1] = True
+      else:
+            #if the boundary is unset we have to adapt regardless of adapt_boundaries
+            fixed_bounds[0] = False  
+      if not var_settings[2] is None:
             original_boundaries[1] = var_settings[2]
+      else:
+            #if the boundary is unset we have to adapt regardless of adapt_boundaries
+            fixed_bounds[1] = False  
     
       return Parameter(name=var_name,
             value = var_settings[0],

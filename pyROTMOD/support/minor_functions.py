@@ -264,6 +264,18 @@ This is version {pyROTMOD.__version__} of the program.
 ''',cfg,case=['main'])
     # return the cfg and log name
 
+    # Set the outputbase  
+    if cfg.RC_Construction.out_base is None and cfg.output.out_base != 'Final_Results':
+        cfg.RC_Construction.out_base = f'{cfg.output.out_base}_'
+    # avoid setting the scaleheight to 0 if have a vertical profile    
+    if (cfg.RC_Construction.scaleheight[0] is None or 
+        cfg.RC_Construction.scaleheight[0] == 0.) and \
+        cfg.RC_Construction.scaleheight[3].lower() != 'inf_thin':
+            cfg.RC_Construction.scaleheight[0] = 0.0001
+    return cfg
+
+
+
     #write the input to the log dir.
    
     name = f'{cfg.output.log_directory}/{cfg.output.out_base}_input'

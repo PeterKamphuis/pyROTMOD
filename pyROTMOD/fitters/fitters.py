@@ -12,7 +12,7 @@ import arviz
 import xarray
 import sys
 from pyROTMOD.support.minor_functions import get_uncounted,\
-    get_correct_label,get_exponent,get_output_name
+    get_correct_label,get_exponent,get_output_name,setup_fig
 from pyROTMOD.support.log_functions import print_log
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
@@ -160,10 +160,12 @@ Try smaller boundaries or set your initial values or use a different minimizer''
                         if not guess_variables[variable].fixed_boundaries[1]:
                             guess_variables[variable].boundaries[1] = float(
                                 initial_fit.params[variable].value+buffer) 
+                        '''    
                         for i in [0,1]:
                             if guess_variables[variable].original_boundaries[i] is None:
                                 guess_variables[variable].original_boundaries[i] =\
                                     copy.deepcopy(guess_variables[variable].boundaries[i]) 
+                        '''
                         guess_variables[variable].previous_value =  copy.deepcopy(guess_variables[variable].value)            
                         guess_variables[variable].std = float(initial_fit.params[variable].stderr)
                         guess_variables[variable].value = float(initial_fit.params[variable].value)
@@ -271,30 +273,7 @@ def set_model(total_RC, fitting_variables, cfg=None, simple=True):
         mu = gp_function.mean_function(x)
         numpyro.deterministic("mu", mu)
 
-'''
-def tiny_gp_model(total_RC, fitting_variables, cfg=None):
-    parameters = set_parameters_for_model(fitting_variables)
-    y = jnp.array(total_RC.values.value)
-    x = jnp.linspace(total_RC.radii.value.min(), total_RC.radii.value.max(), 1000)
-    gp = build_GP(total_RC, parameters, cfg=cfg, no_log=True)
-    #, no_log=True)
-    numpyro.sample("y", gp.numpyro_dist(), obs=y)   
-    # calculate the predicted V_rot (i.e. the mean function) of the model
-    mu = gp.mean_function(x)
-    numpyro.deterministic("mu", mu)
-
-def simple_model(total_RC, fitting_variables, cfg=None):
-    parameters = set_parameters_for_model(fitting_variables)
-    y =jnp.array(total_RC.values.value)
-    x = jnp.array(total_RC.radii.value)
-    x_res = jnp.linspace(total_RC.radii.value.min(), total_RC.radii.value.max(), 1000) 
-    function_with_parr,yerr = build_GP(total_RC, parameters, cfg=cfg,no_log=True,no_gp=True)
-    numpyro.sample("y", numpyro.distributions.Normal(function_with_parr(x), yerr), obs=y)
-        
-    # calculate properties of the model
-    numpyro.deterministic("mu", function_with_parr(x_res)) 
-    
-'''       
+     
 
 
 def set_tracking():
@@ -303,7 +282,7 @@ def set_tracking():
                     'reliable': True,
                     'iterations': -1,
                     'total_rhat': 0.,
-                    'med_mean_count': 0.,
+                    'non_gaussian': 0.,
                     'prev_rhat': -1,
                     'failure_count': 0,
                     'statistics_quality': reset_statistics_quality() 
@@ -312,7 +291,7 @@ def set_tracking():
 
 def reset_statistics_quality():
     return {'low_ind_rhat': True, #Traces that the individual rhat is < 1.5 for more than half of the parameter
-            'similar_med_mean': True, #Ensures that the mean and median are similar
+            'similar_stat': True, #Ensures that the mean and median are similar
             'low_average_rhat': True, #Traces the avreage rhat is < 3
             'stable_rhat': True} #Traces that the rhat is not doubling
 
@@ -413,26 +392,9 @@ We stopped the iterations  process and will use the last fit as the best guess o
        
         plt.savefig(f"{out_dir}{results_name}_Numpyro_trace.pdf",dpi=300)
         plt.close()
-      
-        #lab = []
-        ranges = []
-        for parameter_mc in parameter_names:    
-            #strip_parameter,no = get_uncounted(parameter_mc) 
-            #edv,correction = get_exponent(guess_variables[parameter_mc].value
-            #    ,threshold=3.)
-            #inf_data[parameter_mc] = inf_data[parameter_mc]*correction
-            #lab.append(get_correct_label(strip_parameter,no,exponent= edv))
-            ranges.append((guess_variables[parameter_mc].previous_boundaries[0],
-                           guess_variables[parameter_mc].previous_boundaries[1]))
-          
+        create_corner_plot(cfg,data,guess_variables,parameter_names,
+            results_plot_name=f"{out_dir}{results_name}_Numpyro_COV_Fits.pdf")
        
-       
-        fig = corner.corner(data, bins=40, ranges =ranges, labeller = azLabeller, 
-            show_titles=True,title_kwargs={"fontsize": 15},quantiles=[0.16, 0.5, 0.84]
-            ,var_names=parameter_names,divergence =True)
-        #,labels=lab)
-        plt.savefig(f"{out_dir}{results_name}_Numpyro_COV_Fits.pdf",dpi=150)
-        plt.close()
     print_log(f''' Numpyro_RUN: We find the following parameters for this fit. \n''',cfg,case=['main'])
     for variable in guess_variables:
         if guess_variables[variable].variable:
@@ -492,6 +454,70 @@ numpyro_run.__doc__ =f'''
  NOTE:
 '''
 
+def create_corner_plot(cfg,data,guess_variables,parameter_names,
+        results_plot_name = 'COV_plot.pdf'):
+
+        ndim = len(parameter_names)
+     #lab = []
+        ranges = []
+        levels = []
+        for parameter_mc in parameter_names:    
+            #strip_parameter,no = get_uncounted(parameter_mc) 
+            #edv,correction = get_exponent(guess_variables[parameter_mc].value
+            #    ,threshold=3.)
+            #inf_data[parameter_mc] = inf_data[parameter_mc]*correction
+            #lab.append(get_correct_label(strip_parameter,no,exponent= edv))
+            ranges.append((guess_variables[parameter_mc].previous_boundaries[0],
+                           guess_variables[parameter_mc].previous_boundaries[1]))
+            levels.append(guess_variables[parameter_mc].stddev)
+       
+        fig = setup_fig(figsize=(3*ndim,3*ndim),size_factor=1.5)
+     
+        fig = corner.corner(data, bins=40, ranges =ranges,
+            levels= [0.393,0.864],fig=fig ,       
+            show_titles=False,title_kwargs={"fontsize": 15},
+            var_names=parameter_names,divergence =True)
+      
+        axes = np.array(fig.axes).reshape((ndim, ndim))
+        for i in range(ndim):
+            edv,correction = get_exponent(guess_variables[parameter_names[i]].value,threshold=3.)
+            parameter_label = get_correct_label(*get_uncounted(parameter_names[i]))
+            for y in range(i+1):
+                edvy,correctiony = get_exponent(guess_variables[parameter_names[y]].value,threshold=3.)
+                parameter_label_y = get_correct_label(*get_uncounted(parameter_names[y]))
+                ax_hist = axes[i, y]
+                if y == i:
+                 
+                    ax_hist.axvline(guess_variables[parameter_names[i]].value, color='b', linestyle='-')
+                    ax_hist.axvline(guess_variables[parameter_names[i]].value+\
+                                    guess_variables[parameter_names[i]].stddev, color='cyan', linestyle='--')
+                    ax_hist.axvline(guess_variables[parameter_names[i]].value-\
+                                    guess_variables[parameter_names[i]].stddev, color='cyan', linestyle='--')
+                    title_string = f'{parameter_label} = {guess_variables[parameter_names[i]].value/correction:.2f} $\pm$ {guess_variables[parameter_names[i]].stddev/correction:.2f}'
+                    if edv != 0.:
+                        title_string += f'$\\times 10^{{{edv}}} '
+                    ax_hist.set_title(title_string,fontsize=15.,loc='left',
+                        verticalalignment='top')
+                else:
+                   
+                    ax_hist.axvline(guess_variables[parameter_names[y]].value,
+                        color="b")
+                    ax_hist.axhline(guess_variables[parameter_names[i]].value,
+                        color="b")
+                    ax_hist.plot(guess_variables[parameter_names[y]].value,
+                        guess_variables[parameter_names[i]].value,'sb')
+                if i == ndim-1:
+                    ax_hist.set_xlabel(parameter_label_y,fontsize=15.,labelpad=0.5)
+                if y == 0 and i > 0:
+                    ax_hist.set_ylabel(parameter_label,fontsize=15.,labelpad=0.5)
+                #ax_hist.set_xlabel(f'y = {y} i= {i}',fontsize=15.)
+                #ax_hist.set_ylabel(f'y = {y} i= {i}',fontsize=15.)
+
+        fig.tight_layout()
+        plt.savefig(results_plot_name,dpi=150)
+        plt.close()
+       
+
 def set_parameter_statistics(cfg,fit_variables,fit_summary):
     available_metrics = list(fit_summary.metric.values)
     for variable in fit_variables:
@@ -510,16 +536,21 @@ def process_parameter_stats(cfg,parameter_names,fit_tracking,fit_variables):
    
     for var_name in parameter_names:
         parameter_stats = fit_variables[var_name].fit_stats
-        #print_log(f'''The stats for {var_name} are {parameter_stats}.
-#''',cfg,case=['debug_add'])
+
         if parameter_stats['r_hat'] > 1.5:
             fit_tracking['count_rhat'] += 1
         fit_tracking['total_rhat'] += parameter_stats['r_hat']
-        if abs(parameter_stats['mean']-parameter_stats['median'])/parameter_stats['sd'] > 1.0: 
-            fit_tracking['med_mean_count'] += 1       
-            fit_variables[var_name].use_median = True
+
+
+
+       
+        stat_err = np.mean([parameter_stats['sd'],parameter_stats['mad'],parameter_stats['max_error']])
+        if abs(parameter_stats['mean']-parameter_stats['max'])/stat_err > 0.5: 
+            if parameter_stats['max_error'] > parameter_stats['sd']:
+                fit_tracking['non_gaussian'] += 1       
+            fit_variables[var_name].stat_use = 'Max'
         else:
-            fit_variables[var_name].use_median = False
+            fit_variables[var_name].stat_use = 'Mean'
           
 
 def process_accumulated_stats(cfg,fit_tracking,parameter_count):
@@ -530,10 +561,10 @@ def process_accumulated_stats(cfg,fit_tracking,parameter_count):
         print_log(f'''More than 50% of the parameters have a rhat > 1.5  This is not good. 
 ''',cfg,case=['main'])
         fit_tracking['statistics_quality']['low_ind_rhat'] = False
-    if fit_tracking['med_mean_count'] >= 0.5:
-        print_log(f'''We have a parameter where the mean and median differ by more than the std.  This is not good.
+    if fit_tracking['non_gaussian']/parameter_count >= 0.5:
+        print_log(f'''More than half of the parameters differ by more than the std in mena max.  This indicates non-gausianity of the distribution .
 ''',cfg,case=['main'])
-        fit_tracking['statistics_quality']['similar_med_mean'] = False
+        fit_tracking['statistics_quality']['similar_stat'] = False
     if fit_tracking['total_rhat']/parameter_count > 3:
         print_log(f'''The average rhat is > 3. This is not good.
 ''',cfg,case=['main'])
@@ -556,9 +587,10 @@ def process_results(cfg,fit_variables, mcmc_result,fit_tracking,lmfit=False):
         else:
             fit_summary = arviz.summary(mcmc_result, var_names=parameter_names,
                 fmt='xarray',round_to= None,stat_funcs=func_dict)
+    print(fit_summary)
     set_parameter_statistics(cfg,fit_variables,fit_summary)
     fit_tracking['prev_rhat'] = copy.deepcopy(fit_tracking['total_rhat'])
-    for reset in ['count_rhat','total_rhat','med_mean_count']:
+    for reset in ['count_rhat','total_rhat','non_gaussian']:
         fit_tracking[reset] = 0
  
     process_parameter_stats(cfg,parameter_names,fit_tracking,fit_variables)                                           
@@ -729,13 +761,13 @@ The fit has the following evaluation:
                 lab.append(get_correct_label(strip_parameter,no,exponent= edv))
                 ranges.append((function_variable_settings[parameter_mc].previous_boundaries[0],
                            function_variable_settings[parameter_mc].previous_boundaries[1]))
-                print(ranges[-1])
+            
         #xdata= xarray.Dataset.from_dataframe(result_emcee.flatchain)
         #ardata = arviz.InferenceData(xdata) 
          
        
         fig = corner.corner(result_emcee.flatchain, bins=40, ranges =ranges, labels=lab, 
-            show_titles=True,title_kwargs={"fontsize": 15},quantiles=[0.16, 0.5, 0.84]
+            show_titles=True,title_kwargs={"fontsize": 15},quantiles=[0.393, 0.864]
             ,divergence =True)
         #fig = corner.corner(result_emcee.flatchain, quantiles=[0.16, 0.5, 0.84],show_titles=True,
         #                title_kwargs={"fontsize": 15},labels=lab)
@@ -786,8 +818,8 @@ lmfit_run.__doc__ =f'''
 
 def create_error_message(fit_tracking):
     err_message = f'''The fit did not converge. The following problems were detected: \n'''
-    if not fit_tracking['statistics_quality']['similar_med_mean']:
-        err_message += f'# The mean and median differ by more than the std for than hasl of the parameters. \n'
+    if not fit_tracking['statistics_quality']['similar_stat']:
+        err_message += f'# The mean and max differ by more than the std for more than half of the parameters. \n'
     if fit_tracking['failure_count'] > 4:
         err_message += f'# The fit has failed more than 4 times. \n'
     if not fit_tracking['statistics_quality']['low_average_rhat']:
@@ -812,13 +844,19 @@ def update_parameter_values(cfg,var_name,parameter):
     parameter.previous_boundaries = copy.deepcopy(parameter.boundaries)
    
     stats = parameter.fit_stats
-    if parameter.use_median:
-        print_log(f'''We will use the median for {var_name}''',cfg,case=['main'])
+    if parameter.stat_use == 'Max':
+        print_log(f'''We will use the maximum for {var_name}''',cfg,case=['main'])
+        parameter.value = float(stats['max'])
+        parameter.stddev = float(stats['max_error'])
+    elif parameter.stat_use == 'Mean':
+        parameter.value = float(stats['mean'])
+        parameter.stddev = float(stats['sd'])
+    elif parameter.stat_use == 'Median':
         parameter.value = float(stats['median'])
         parameter.stddev = float(stats['mad'])
     else:
-        parameter.value = float(stats['mean'])
-        parameter.stddev = float(stats['sd'])
+        raise ValueError(f'''The statistic {parameter.stat_use} is not valid.
+''')    
     boun_stats = [float(stats['low_3%']),
                 float(stats['high_97%'])]
     if avoid_negative(cfg,parameter,boun_stats[0]):
@@ -869,7 +907,7 @@ Consider modifying the lower bound.\n'''
                 continue
 
             print_log(f'''{var_name} = {current_parameter.value} +/- {current_parameter.stddev} 
-change = {change}  bounds = {current_parameter.boundaries} 
+change = {change}  bounds = {current_parameter.boundaries} original_boundaries = {current_parameter.original_boundaries}
 minbounds = {min_bounds} prev_bound = {current_parameter.previous_boundaries}
 ''',cfg,case=['debug_add'])
             
@@ -894,13 +932,17 @@ minbounds = {min_bounds} prev_bound = {current_parameter.previous_boundaries}
                     current_parameter.boundaries[i] = min_bounds[i]
                 # after the first succesful fit we do not allow the 
                 # boundaries to shrink towards the value 
-                     
                 if fit_tracking['iterations']-fit_tracking['failure_count'] > 0.:
                     if ((-2.*i+1)*current_parameter.boundaries[i]+
                         (i*2.-1)*current_parameter.previous_boundaries[i] > 0.):
-                       
                         current_parameter.boundaries[i] = copy.deepcopy(current_parameter.previous_boundaries[i])
-           
+                # We never allow the boundaries to be grow beyond the original boundaries
+                if not current_parameter.original_boundaries[i] is None:
+                    if ((-2.*i+1)*current_parameter.boundaries[i]+
+                        (i*2.-1)*current_parameter.original_boundaries[i] < 0.):
+                      current_parameter.boundaries[i] = copy.deepcopy(current_parameter.original_boundaries[i])
+
+
             boundary_distance = [abs(current_parameter.value - x) for x in current_parameter.previous_boundaries]
           
             if abs(boundary_distance[0]-boundary_distance[1]) > 0.05*np.mean(boundary_distance):
@@ -976,6 +1018,24 @@ def statistic_func_dict():
              'mad': lambda x: np.median(np.abs(x - np.median(x))),
              'low_3%': lambda x: np.percentile(x, 3),
              'high_97%': lambda x: np.percentile(x, 97),
+             'max': calc_max_occurence,
+             'max_error': lambda x: calc_max_occurence(x,error=True),
              'r_hat': arviz.rhat
              }
     return fdict
+
+def calc_max_occurence(x,error =False):
+    #Create the histogram
+    hist, bin_edges = np.histogram(x, bins=40)
+    # get the index of the maximum value in the histogram
+    max_index = np.where(np.nanmax(hist) == hist)[0][0]
+    # get the value of the maximum occurence
+    max_value = (bin_edges[max_index]+bin_edges[max_index+1])/2. 
+    if error:
+        # get the index of the maximum value in the histogram
+        indices = np.where(np.nanmax(hist)/2. < hist)[0]
+        minv = (bin_edges[indices[0]]+bin_edges[indices[0]+1])/2.
+        maxv = (bin_edges[indices[-1]]+bin_edges[indices[-1]+1])/2.
+        error = ((maxv-max_value)+(max_value-minv))/2. 
+        return error
+    return max_value

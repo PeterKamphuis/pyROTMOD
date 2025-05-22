@@ -175,7 +175,9 @@ RC_Construction Keywords
 
   *list, optional, default = [0., None, 'KPC', 'inf_thin']*
 
-  scale height and vertical mode of the optical disks. If 0. or vertical mode = None infinitely thin disks and sphrical bulges are assumed.
+  scale height and vertical mode of the optical disks. If an 'inf_thin' disk is specified it is assumed that the input is in the galaxy plane 
+  and that no deprojection is required to go from the surface brightness profile to the in plane density profile. If 0. or None but a density mode is provided 
+  the value is set to 0.001 to avoid infinity in the calculations. However, deprojections are performed.
   vertical mode options are  ['exp', 'sech-sq','sech', 'constant', 'lorentzian']. Anything in a galfit file supersedes this input.
 
 **truncation_radius**:
@@ -307,12 +309,12 @@ General Fitting Keywords
   the second the lower limit, the third the upper limit and the last if it is variable or not.
   Individual settings in fitting_parameters take precedence.   
   
-**fixed_gas_ML**:
+**gas_ML**:
 
-  *bool, optional, default = True*
-
-  If set to True the code will assume a fixed mass to light ratio for all gas components.
+  *list, optional, default = [1.33, None, None, True]*
   
+  as for the stellar ML
+ 
 **mcmc_steps**:
 
   *int, optional, default= 2000*
@@ -323,11 +325,6 @@ General Fitting Keywords
 
   *int, optional, default = 500* 
   
- 
-    use_gp: bool = True    #numpyro uses tingp and lmfit uses sklearn
-    gp_kernel_type: str = 'RBF'
-    backend : str = 'numpyro' # lmfit or numpyro
-    max_iterations: int = 5
     
 
 **numpyro_chains**: 
@@ -348,20 +345,23 @@ General Fitting Keywords
   
   In the code lmfit uses sklearn and numpyro uses tinygp to implement the Gaussian Processes. 
   The LMfit implementation is very slow.
-
-  numpyro_chains: Optional[int] = None # If not set it will be set to the number of available cpus
-    use_gp: bool = True    #numpyro uses tingp and lmfit uses sklearn
-    gp_kernel_type: str = 'RBF'
-    backend : str = 'numpyro' # lmfit or numpyro
-    max_iterations: int = 5
     
 
-**gp_kernel**:
+**gp_kernel_type**:
 
   *str, optional, default = 'RBF'*
 
   The kernel used in the Gaussian Processes. For now this has no effect. 
- 
+
+**adapt_boundaries**:
+
+  *bool, optional, default = True*
+
+  If set to True the code will adapt the boundaries of the parameters to the data. 
+  This is done by taking the 5*stdev of the parameter and setting this as the upper and lower limit. 
+  If boundaries are provided as input they can shrink but not grow.
+  If set to False the code will not adapt the boundaries unless they are set to null.
+  
 **backend**:
 
   *str, optional, default = 'numpyro'*
