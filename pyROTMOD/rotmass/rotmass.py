@@ -43,8 +43,10 @@ def build_curve(all_RCs, total_RC, cfg=None):
 
                 all_RCs[name].match_radii(total_RC)
                 #Here we need to set it all to the radii of the total_RC else we can not match  
+                print( all_RCs[name].include)
                 if all_RCs[name].include: 
                     if cfg.fitting_general.backend.lower() == 'lmfit':
+                        print(f'REPLACE: {V} with {V_replace}')
                         replace_dict[f'V_{all_RCs[name].name}']= {'values':
                             all_RCs[name].matched_values.value, 'radii':
                             all_RCs[name].matched_radii.value}
@@ -62,7 +64,7 @@ def build_curve(all_RCs, total_RC, cfg=None):
                         ML_replace = symbols(variable)
                 for attr in ['curve', 'individual_curve']:
                     setattr(all_RCs[name],attr,getattr(all_RCs[name],attr).subs({symbol: ML_replace}))
-      
+        
         #RC_symbols = [x for x in list(all_RCs[name].individual_curve.free_symbols) if str(x) != 'r']
         RC_symbols = [x for x in list(all_RCs[name].individual_curve.free_symbols)]
         all_RCs[name].numpy_curve ={'function': lambdify(RC_symbols,all_RCs[name].individual_curve,"numpy"),
@@ -257,6 +259,7 @@ def create_formula_code(initial_formula,replace_dict,total_RC,\
         if i == 1:
             for key in dictionary_trans:
                 line = line.replace(key,dictionary_trans[key])
+         
             for key in replace_dict:
                 if key != 'symbols':
                     print_log(f'REPLACE: {key} with {replace_dict[key]}',cfg,
@@ -335,7 +338,7 @@ def write_output_file(cfg,final_variable_fits,result_summary,output_dir='./',\
             max_parameters.append(variable)
                   
     #variables_fitted = [x for x in final_variable_fits]
-    variable_line = f'{"Variable":>15s} {"Value":>15s} {"Error":>15s} {"Lower Bound":>15s} {"Upper Bound":>15s} {"Distr. Stat":>15s}\n'
+    variable_line = f'{"Variable":<30s} {"Value":>15s} {"Error":>15s} {"Lower Bound":>15s} {"Upper Bound":>15s} {"Distr. Stat":>15s}\n'
     sep_line =''.join([f'-']*80)
     with open(f'{output_dir}{results_file}.txt','w') as file:
         file.write('# These are the results from pyROTMOD. \n')
@@ -374,7 +377,7 @@ def write_output_file(cfg,final_variable_fits,result_summary,output_dir='./',\
                             form = ">15.4f"
                         else:
                             form = ">15.4e"
-                        variable_line = f'{variable:>15s} {final_variable_fits[variable].value:{form}}'
+                        variable_line = f'{variable:<30s} {final_variable_fits[variable].value:{form}}'
                         min = final_variable_fits[variable].boundaries[0]
                         max = final_variable_fits[variable].boundaries[1]
                         if not final_variable_fits[variable].variable:
@@ -670,7 +673,7 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
         #total_RC.fitting_variables['length_scale'] = [1.,0.1,10.,True,True]
         total_RC.fitting_variables['lgamplitude'] = Parameter(name='lgamplitude'
             ,value= 1., variable = True, include = True,
-            original_boundaries = [-3,3.], log= True)
+            original_boundaries = [-5.,5.], log= True)
         total_RC.fitting_variables['length_scale'] = Parameter(name='length_scale'
             ,value= 1., variable = True, include = True, 
             original_boundaries = [0.5,len(total_RC.radii.value)*3./4.])
@@ -681,6 +684,7 @@ for your current settings the variables are {','.join(total_RC.numpy_curve['vari
         total_RC.numpy_curve['variables'] = total_RC.numpy_curve['variables'] + ['lgamplitude','length_scale']
     result_summary = {'skip_output': False, 'BIC': None, 'succes': False,'direction': 'diverging',
                       'max_iterations': False, 'Error': 'No Error'}
+    #Run the initial Guess
     initial_guesses,initial_data = initial_guess(cfg, total_RC,chain_data=True)
     update_RCs(initial_guesses,all_RCs,total_RC,reset=cfg.fitting_general.reset_initial_guesses)
     plot_curves(f'{out_dir}/{results_file}_Initial_Guess_Curves.pdf',\
@@ -809,6 +813,7 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
         
         fitting_dictionary = {} 
         all_RCs[name].check_component()
+       
         add_fitting_dict(cfg,all_RCs[name].name,cfg.fitting_parameters[all_RCs[name].name],\
                          component_type=all_RCs[name].component,\
                         fitting_dictionary=fitting_dictionary)

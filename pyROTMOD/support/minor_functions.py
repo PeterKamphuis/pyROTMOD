@@ -272,6 +272,10 @@ This is version {pyROTMOD.__version__} of the program.
         cfg.RC_Construction.scaleheight[0] == 0.) and \
         cfg.RC_Construction.scaleheight[3].lower() != 'inf_thin':
             cfg.RC_Construction.scaleheight[0] = 0.0001
+    if cfg.fitting_general.enable:
+        cfg.fitting_general.backend = cfg.fitting_general.backend.lower()
+        if not cfg.fitting_general.backend in ['numpyro','lmfit']:
+            raise InputError(f'We do not know the backend {cfg.fitting_general.backend}.\n')
     return cfg
 
 
@@ -603,7 +607,7 @@ This is not acceptable for the output.
         raise RunTimeError("No proper units")
     tot_opt ={'Profile': [],'Radii': []}
     doubleplot = False
-    fig = setup_fig()
+    fig = setup_fig(cfg)
     ax = fig.add_subplot(111)
     leg_lines = []
     for name in profiles:
@@ -655,7 +659,6 @@ This is not acceptable for the output.
     labs = [l.get_label() for l in leg_lines]
     ax.legend(leg_lines, labs, loc=0)
 
-    
     plt.savefig(output_file)
    
     plt.close()
@@ -795,14 +798,14 @@ def select_axis_label(input):
                         'SomethingIsWrong': None}
     return translation_dict[input]
 
-def setup_fig(size_factor=1.5,figsize= [7,7]):
+def setup_fig(cfg,size_factor=1.5,figsize= [7,7]):
     Overview = plt.figure(2, figsize=figsize, dpi=300, facecolor='w', edgecolor='k')
 #stupid pythonic layout for grid spec, which means it is yx instead of xy like for normal human beings
     try:
-        mpl_fm.fontManager.addfont( "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf")
-        font_name = mpl_fm.FontProperties(fname= "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf").get_name()
+        mpl_fm.fontManager.addfont(cfg.input.font)
+        font_name = mpl_fm.FontProperties(fname=cfg.input.font).get_name()
     except FileNotFoundError:
-        font_name= 'Deja Vu'
+        font_name= 'DejaVu Sans'
         
     labelfont = {'family': font_name,
          'weight': 'normal',

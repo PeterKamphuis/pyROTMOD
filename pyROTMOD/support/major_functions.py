@@ -2,15 +2,7 @@
 
 import copy
 import numpy as np
-import os
-import warnings
 
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    import matplotlib
-    matplotlib.use('pdf')
-    import matplotlib.pyplot as plt
-    import matplotlib.font_manager as mpl_fm
 
 from astropy import units as u
 

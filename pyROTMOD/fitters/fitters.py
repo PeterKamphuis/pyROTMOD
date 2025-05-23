@@ -471,7 +471,7 @@ def create_corner_plot(cfg,data,guess_variables,parameter_names,
                            guess_variables[parameter_mc].previous_boundaries[1]))
             levels.append(guess_variables[parameter_mc].stddev)
        
-        fig = setup_fig(figsize=(3*ndim,3*ndim),size_factor=1.5)
+        fig = setup_fig(cfg,figsize=(3*ndim,3*ndim),size_factor=1.5)
      
         fig = corner.corner(data, bins=40, ranges =ranges,
             levels= [0.393,0.864],fig=fig ,       
@@ -513,8 +513,11 @@ def create_corner_plot(cfg,data,guess_variables,parameter_names,
                 #ax_hist.set_xlabel(f'y = {y} i= {i}',fontsize=15.)
                 #ax_hist.set_ylabel(f'y = {y} i= {i}',fontsize=15.)
 
-        fig.tight_layout()
-        plt.savefig(results_plot_name,dpi=150)
+     
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            fig.tight_layout()
+            plt.savefig(results_plot_name,dpi=150)
         plt.close()
        
 
@@ -753,42 +756,12 @@ The fit has the following evaluation:
         if not cfg.output.chain_data is None:
             with open(f"{out_dir}{results_name}_chain_data.pickle", "wb") as f:
                 pickle.dump(result_emcee.flatchain, f)
-        lab = []
-        ranges= []
-        for parameter_mc in result_emcee.params:
-            if result_emcee.params[parameter_mc].vary:
-                print(f'for {parameter_mc} we find:')
-                strip_parameter,no = get_uncounted(parameter_mc) 
-                edv,correction = get_exponent(np.mean(result_emcee.flatchain[parameter_mc]),threshold=3.)
-                result_emcee.flatchain[parameter_mc] = result_emcee.flatchain[parameter_mc]*correction
-                lab.append(get_correct_label(strip_parameter,no,exponent= edv))
-                ranges.append((function_variable_settings[parameter_mc].previous_boundaries[0],
-                           function_variable_settings[parameter_mc].previous_boundaries[1]))
-            
-        #xdata= xarray.Dataset.from_dataframe(result_emcee.flatchain)
-        #ardata = arviz.InferenceData(xdata) 
-         
+        create_corner_plot(cfg,result_emcee.flatchain,function_variable_settings
+            ,[x for x in function_variable_settings if function_variable_settings[x].variable],
+            results_plot_name=f"{out_dir}{results_name}_LMFit_COV_Fits.pdf")
        
-        fig = corner.corner(result_emcee.flatchain, bins=40, ranges =ranges, labels=lab, 
-            show_titles=True,title_kwargs={"fontsize": 15},quantiles=[0.393, 0.864]
-            ,divergence =True)
-        #fig = corner.corner(result_emcee.flatchain, quantiles=[0.16, 0.5, 0.84],show_titles=True,
-        #                title_kwargs={"fontsize": 15},labels=lab)
-        fig.savefig(f"{out_dir}{results_name}_COV_Fits.pdf",dpi=300)
-        plt.close()
     print_log(f''' MCMC_RUN: We find the following parameters for this fit. \n''',cfg,case=['main'])
-    '''
-    for variable in function_variable_settings:
-        if function_variable_settings[variable].variable:
-            function_variable_settings[variable].boundaries[0] = float(result_emcee.params[variable].value-\
-                                    result_emcee.params[variable].stderr)
-            function_variable_settings[variable].boundaries[1] = float(result_emcee.params[variable].value+\
-                                    result_emcee.params[variable].stderr)
-
-            function_variable_settings[variable].value = float(result_emcee.params[variable].value)
-            print_log(f''{variable} = {result_emcee.params[variable].value} +/- {result_emcee.params[variable].stderr} within the boundary {result_emcee.params[variable].min}-{result_emcee.params[variable].max}
-'',cfg,case=['main'])
-    '''                
+         
     BIC = result_emcee.bic
 
 
@@ -940,11 +913,7 @@ minbounds = {min_bounds} prev_bound = {current_parameter.previous_boundaries}
                         (i*2.-1)*current_parameter.previous_boundaries[i] > 0.):
                         current_parameter.boundaries[i] = copy.deepcopy(current_parameter.previous_boundaries[i])
                 # We never allow the boundaries to be grow beyond the original boundaries
-                if not current_parameter.original_boundaries[i] is None:
-                    if ((-2.*i+1)*current_parameter.boundaries[i]+
-                        (i*2.-1)*current_parameter.original_boundaries[i] < 0.):
-                      current_parameter.boundaries[i] = copy.deepcopy(current_parameter.original_boundaries[i])
-
+            
 
             boundary_distance = [abs(current_parameter.value - x) for x in current_parameter.previous_boundaries]
           
@@ -961,39 +930,46 @@ minbounds = {min_bounds} prev_bound = {current_parameter.previous_boundaries}
                         current_parameter.boundaries[0] = current_parameter.value - boundary_distance[1]
                     else:
                         current_parameter.boundaries[0] = 0. 
-           
+            for i in range(2):
+                if not current_parameter.original_boundaries[i] is None:
+                    if ((-2.*i+1)*current_parameter.boundaries[i]+
+                        (i*2.-1)*current_parameter.original_boundaries[i] < 0.):
+                        parameter_message +=\
+                            f'''The boundaries for {var_name} the new boundary {current_parameter.boundaries[i]} exceeds the original boundary {current_parameter.original_boundaries[i]}.
+'''
+                        current_parameter.boundaries[i] = copy.deepcopy(current_parameter.original_boundaries[i])
+
             #If we have very small errors we should still allow for some variation            
             tolerans = np.max([1.5*current_parameter.stddev])
-          
+            parameter_message += f'''We compare the previous boundaries {np.array(current_parameter.previous_boundaries)} to {np.array(current_parameter.boundaries)} with a tolerance of {tolerans}
+'''
             if np.allclose(np.array(current_parameter.previous_boundaries),np.array(current_parameter.boundaries)
                 ,atol=tolerans):
                 parameter_message += f'''{var_name} is fitted wel in the boundaries {'-'.join([f'{x}' for x in current_parameter.boundaries])}. 
-(Old is {'-'.join([f'{x}' for x in current_parameter.previous_boundaries])})'''
+'''
 
-                current_parameter.boundaries = copy.deepcopy(
-                    current_parameter.previous_boundaries) 
-                current_parameter.fit_direction[1] = 'stable'
-               
-               
+                #current_parameter.boundaries = copy.deepcopy(
+                #    current_parameter.previous_boundaries) 
+                current_parameter.fit_direction[1] = 'stable'               
             else:
-                parameter_message += f''' The boundaries for {var_name} are deviating more than {2.*tolerans} from the previous boundaries.
+                parameter_message += f''' The boundaries for {var_name} are deviating more than {tolerans} from the previous boundaries.
 Setting {var_name} = {current_parameter.value} between {'-'.join([f'{x}' for x in current_parameter.boundaries])} (old = {'-'.join([f'{x}' for x in current_parameter.previous_boundaries])})
 '''
                 current_parameter.fit_direction[1] = 'diverging'
             
-            parameter_message += f'''We compared the array {np.array(current_parameter.previous_boundaries)} to {np.array(current_parameter.boundaries)} with a tolerance of {2.*tolerans}
-'''
+           
+            value_tolerans = 0.5*tolerans
             if np.allclose(np.array(current_parameter.previous_value)
                 ,np.array(current_parameter.value),
-                atol=0.5*tolerans):
+                atol=value_tolerans):
               
-                parameter_message += f'''for {var_name} the value does not change much.'''
+                parameter_message += f'''For {var_name} the value does not change much. \n'''
                 current_parameter.fit_direction[0] = 'stable'
             else:
              
-                parameter_message += f'''for {var_name} the value changes more than {tolerans}. '''
+                parameter_message += f'''For {var_name} the value changes more than {value_tolerans}. \n '''
                 current_parameter.fit_direction[0] = 'diverging'
-            parameter_message += f'''old = {current_parameter.previous_value} new = {current_parameter.value}.\n'''
+            parameter_message += f'''The value was {current_parameter.previous_value} and is now {current_parameter.value}.\n'''
             function_variable_settings[var_name] = copy.deepcopy(current_parameter)    
             del current_parameter
             print_log(parameter_message,cfg,case=['main'])
