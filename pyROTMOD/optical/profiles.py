@@ -537,10 +537,26 @@ NOTE: This is not the correct way to get a deprojected profile should use the me
 
 def get_integers(n):
     # This is a simple function to get the integers that make up the sersic index
-    # to limit the array sizes we round n to 5 decimals 
-    n = round(n,5)
+    # to limit the array sizes we round n to 3 decimals 
+    n = round(n,3)
     #We don't want p and q to be too big especially is p goes to the power
     solution= Fraction(n).limit_denominator(50)
+    #we can deviate up to 0.005 from the solution
+    variation = [0.001,-0.001,0.002,-0.002,0.003,-0.003,0.004,-0.004,0.005,-0.005]
+    i = 0
+    while solution.numerator > 50:
+        # This is a bit of a hack but we need to limit the size of the array
+        # to avoid memory issues
+        n += variation[i]
+        solution= Fraction(n).limit_denominator(50)
+        n -= variation[i]
+        i += 1
+        if i > len(variation)-1:
+            break
+    if solution.numerator > 50:
+        raise InputError(f'The sersic index {n} is too high to be calculated with the current method')
+    
+       
     return int(solution.numerator),int(solution.denominator)
 
    
