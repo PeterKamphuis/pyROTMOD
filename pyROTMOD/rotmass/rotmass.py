@@ -7,6 +7,7 @@ from pyROTMOD.support.errors import InputError,RunTimeError,FailedFitError
 import copy
 import pyROTMOD.rotmass.potentials as potentials
 import pyROTMOD.support.constants as cons
+from omegaconf.errors import ConfigKeyError
 from pyROTMOD.support.parameter_classes import Parameter,set_parameter_from_cfg
 from pyROTMOD.support.profile_classes import Rotation_Curve
 from pyROTMOD.support.minor_functions import get_uncounted,add_font,get_output_name
@@ -43,7 +44,7 @@ def build_curve(all_RCs, total_RC, cfg=None):
 
                 all_RCs[name].match_radii(total_RC)
                 #Here we need to set it all to the radii of the total_RC else we can not match  
-                print( all_RCs[name].include)
+             
                 if all_RCs[name].include: 
                     if cfg.fitting_general.backend.lower() == 'lmfit':
                         print(f'REPLACE: {V} with {V_replace}')
@@ -77,7 +78,7 @@ def build_curve(all_RCs, total_RC, cfg=None):
     
    
     total_sympy_curve = sqrt(total_sympy_curve)
-
+   
     #For the actual fit curve we need to replace the  V components with their actual values
     #make sure that r is always the first input on the function and we will replace the RCs
 
@@ -639,7 +640,7 @@ def rotmass_main(cfg,baryonic_RCs, total_RC,interactive = False):
             replace_parameters_with_log(cfg,all_RCs[name])
            
         replace_parameters_with_log(cfg,total_RC,no_curve=True)
-       
+     
       
             # Now we need to set the fitting parameters for the total RC
     #for names in all_RCs:
@@ -813,11 +814,18 @@ def set_fitting_parameters(cfg, baryonic_RCs,total_RC):
         
         fitting_dictionary = {} 
         all_RCs[name].check_component()
-       
-        add_fitting_dict(cfg,all_RCs[name].name,cfg.fitting_parameters[all_RCs[name].name],\
-                         component_type=all_RCs[name].component,\
-                        fitting_dictionary=fitting_dictionary)
-       
+        try:
+            add_fitting_dict(cfg,all_RCs[name].name,cfg.fitting_parameters[all_RCs[name].name],\
+                            component_type=all_RCs[name].component,\
+                            fitting_dictionary=fitting_dictionary)
+        except ConfigKeyError as e:
+            raise InputError(f'''The component {all_RCs[name].name} is missing from the fitting parameters.
+We find {','. join([x for x in cfg.fitting_parameters])} in the fitting parameters.
+Please check the input file and make sure you have set the correct parameters for this component.
+''')
+        
+
+        
         #Check whether we want to include this RC tot the total
         if not cfg.fitting_parameters[all_RCs[name].name][4]:
             all_RCs[name].include=False
@@ -907,23 +915,52 @@ def replace_parameters_with_log(cfg,RC,no_curve=False):
         var_list = [x for x in RC.fitting_variables]
     else:
         var_list = [x for x in RC.curve.free_symbols if str(x) not in ['r','V']]
-    if not 'all' in [x.lower() for x in cfg.fitting_general.log_parameters]:
+    requested_log_parameters = [x.lower() for x in cfg.fitting_general.log_parameters]    
+   
+    if not 'all' in requested_log_parameters:
         new_varlist = []
         
         for variable in var_list:
-            if str(variable).lower() in [x.lower() for x in cfg.fitting_general.log_parameters]:
+            
+            if str(variable).lower() in requested_log_parameters:
+               
                 new_varlist.append(variable)
-            elif str(variable).upper() in ['ML']:
-                for variable_fit in RC.fitting_variables:
-                    # We need to replace the parameters with their log values
-                    if variable_fit.split('_')[0].lower() in ['gamma','ml'] and\
-                        variable_fit.lower() in [x.lower() for x in 
-                        cfg.fitting_general.log_parameters]:
-                        new_varlist.append(variable)
+            elif str(variable).upper() in ['ML']: 
+                if 'stellar_ml' in requested_log_parameters and\
+                    RC.component.lower() == 'stars':
+                    new_varlist.append(variable)
+                elif 'gas_ml' in requested_log_parameters and\
+                    RC.component.lower() == 'gas':
+                    new_varlist.append(variable)
+                else:
+                    for variable_fit in RC.fitting_variables:
+                        # We need to replace the parameters with their log values
+                        if variable_fit.split('_')[0].lower() in ['gamma','ml'] and\
+                            variable_fit.lower() in requested_log_parameters:
+                            new_varlist.append(variable)
+            elif 'ml' in requested_log_parameters:
+
+                # We need to replace the parameters with their log values
+                if str(variable).split('_')[0].lower() in ['gamma','ml']:
+                    new_varlist.append(variable)
+            elif 'stellar_ml' in requested_log_parameters:
+            
+                # We need to replace the parameters with their log values
+                if str(variable).split('_')[0].lower() in ['gamma','ml'] and\
+                    'stars' in str(variable).lower():
+                    new_varlist.append(variable)
+                
+            elif 'gas_ml' in requested_log_parameters:
+                # We need to replace the parameters with their log values
+                if str(variable).split('_')[0].lower() in ['gamma','ml'] and\
+                    'gas' in str(variable).lower():
+                    new_varlist.append(variable)
+                
               
     else:
         new_varlist = var_list
-
+    # We need to replace the parameters with their log values
+    
     for variable in new_varlist:
 
 
@@ -937,7 +974,7 @@ def replace_parameters_with_log(cfg,RC,no_curve=False):
                 if var.split('_')[0].lower() in ['gamma','ml']:    
                     fit_var = var 
         new_var = f'lg{fit_var}'
-        
+      
         #First we check wether we have a log value in for the parameter
         if (new_var in cfg.fitting_parameters or f'lg{RC.name}' in cfg.fitting_parameters): 
             fitting_name = new_var if new_var in cfg.fitting_parameters else f'lg{RC.name}'
@@ -970,9 +1007,8 @@ def replace_parameters_with_log(cfg,RC,no_curve=False):
         if not no_curve:
             for attr in ['curve', 'individual_curve']:
                 setattr(RC,attr,getattr(RC,attr).subs({variable: (10**symbols(f'lg{variable}'))}))
+               
    
-
-        
        
 
 

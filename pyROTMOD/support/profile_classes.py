@@ -629,6 +629,7 @@ def set_variables_and_ranges(RC):
       sets = []    
       collected_variables = []
       req_var = list(copy.deepcopy(RC.numpy_curve['variables']))
+
       for variable in RC.numpy_curve['variables']:
             if variable == 'r':
                   collected_variables.append('r')  

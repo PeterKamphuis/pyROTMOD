@@ -124,13 +124,14 @@ def convert_dens_rc(profiles, cfg = None,output_dir='./'):
         
         if profiles[name].type in ['expdisk','edgedisk']:
 
-            print_log(f'We have detected the input to be an disk',cfg,case=['main'])
+            print_log(f'We have detected the input to be an disk. \n',cfg,case=['main'])
             if profiles[name].height_type in ['inf_thin','sech','exp']:
                 exponential_RC(profiles[name],  RCs[name],cfg=cfg)
             else:
+                print_log(f'As we do not regonzie the vertical distribution we use a random disk. \n',cfg,case=['main'])
                 random_RC(profiles[name], RCs[name],cfg=cfg) 
         elif profiles[name].type in ['random_disk','random']: 
-            print_log(f'This is a random density disk',cfg,case=['main'])
+            print_log(f'This is a random density disk. \n',cfg,case=['main'])
             random_RC(profiles[name], RCs[name],cfg=cfg) 
         elif profiles[name].type in ['sersic','devauc']:
                 #This should work fine for a devauc profile which is simply sersic with n= 4
@@ -647,6 +648,8 @@ The current units are {density_profile.values.unit}''')
 
    
     for i,r in enumerate(radii):
+        print(f"\r Calculating the rotation curve for {density_profile.name}: {i/float(len(radii))*100.:.1f} % Done.",\
+                        end =" ",flush = True) 
         #looping throught the radii
         vsquared = 0.
         r1 = set_limits(r - 3.0 * h_z1, 0, np.inf)
@@ -678,7 +681,7 @@ The current units are {density_profile.values.unit}''')
             RC.append(-np.sqrt(-vsquared))
         else:
             RC.append(np.sqrt(vsquared))
-   
+    print('\n')
     RC = np.array(RC,dtype=float)*unit.km/unit.s
     return RC
 

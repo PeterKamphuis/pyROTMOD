@@ -234,9 +234,9 @@ def add_log_parameters(cfg_new,stored):
                     if 'fitting_parameters' in conftype:    
                         if lgkey.lower() in [x.lower() for x in conftype['fitting_parameters']]:
                             cfg_log.fitting_parameters[lgkey] = conftype['fitting_parameters'][lgkey]
-                # add the non-log values
-                cfg_log.fitting_parameters[key] = cfg_new.fitting_parameters[key]
-               
+            # add the non-log values
+            cfg_log.fitting_parameters[key] = cfg_new.fitting_parameters[key]
+         
     else:
         cfg_log=cfg_new
        

@@ -64,8 +64,7 @@ def main():
         #We need to reset the configuration to include the profiles and the parameters to be fitted.
         cfg = read_fitting_config(cfg,derived_RCs)
         cfg= check_input(cfg,fitting =True)   
-
-    
+      
         if cfg.fitting_general.enable:
             if not os.path.isdir( f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/'):
                 os.mkdir( f'{cfg.output.output_dir}{cfg.fitting_general.HALO}/')
@@ -76,8 +75,10 @@ def main():
         print_log(f'KeyboardInterrupt: The program was interrupted by the user.\n',cfg,case=['main','screen'])
         pass
     except Exception as e:
-        traceback.print_exception(*sys.exc_info())
-        print_log(f'Error: {e}\n',cfg,case=['main'])
+        traceback.print_exception(type(e),e,e.__traceback__)
+        with open(f"{cfg.output.log_directory}{cfg.output.log}",'a') as log_file:
+            traceback.print_exception(type(e),e,e.__traceback__,file=log_file)
+      
         print_log(f'The program was interrupted by an error.\n',cfg,case=['main','screen'])
         pass
     
