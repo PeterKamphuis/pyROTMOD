@@ -546,7 +546,7 @@ def get_integers(n):
     i = 0
     while solution.numerator > 50:
         # This is a bit of a hack but we need to limit the size of the array
-        # to avoid memory issues
+        # to avoid time issues
         n += variation[i]
         solution= Fraction(n).limit_denominator(50)
         n -= variation[i]
