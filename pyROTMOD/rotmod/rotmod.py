@@ -128,7 +128,7 @@ def convert_dens_rc(profiles, cfg = None,output_dir='./'):
             if profiles[name].height_type in ['inf_thin','sech','exp']:
                 exponential_RC(profiles[name],  RCs[name],cfg=cfg)
             else:
-                print_log(f'As we do not regonzie the vertical distribution we use a random disk. \n',cfg,case=['main'])
+                print_log(f'As we do not recognize the vertical distribution we use a random disk. \n',cfg,case=['main'])
                 random_RC(profiles[name], RCs[name],cfg=cfg) 
         elif profiles[name].type in ['random_disk','random']: 
             print_log(f'This is a random density disk. \n',cfg,case=['main'])

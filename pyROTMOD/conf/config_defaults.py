@@ -55,6 +55,8 @@ class RCConstruction:
     gas_scaleheight: List = field(default_factory=lambda: [0., None,  'KPC', 'inf_thin']) 
     gas_truncation_radius: List = field(default_factory=lambda: [None, 0.2, 'KPC']) 
     axis_ratio: float = 1.
+    inclination: float = 0.0 #In degrees, This used to deproject random luminosity profiles 
+    #If we have a bulge profile we can set the scale radius, if not set it will be set to 0.
     exposure_time: float = 1.
     mass_to_light_ratio: float = 1.0
     keep_random_profiles: bool = False #If we have random profiles in Lsun/pc^2

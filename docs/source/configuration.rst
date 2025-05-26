@@ -205,6 +205,15 @@ RC_Construction Keywords
 
   axis ratio of the disks. Anything in galfit file supersedes this input.
 
+**inclination**:
+
+  *float, optional, default = 0.*
+
+  inclination of the disks in degrees. Anything in galfit file supersedes this input.
+  If the inclination is set to zero the code assumes that the input is in the galaxy plane and no deprojection is required to go from the surface brightness profile to the in plane density profile.  
+  This is used for deprojecting the random luminosity profiles, Case of a galfit file or when the profile can fitted with an analytical expression the analytical deprojection are used.
+
+
 **exposure_time**:
 
   *float, optional, default = 1.*
@@ -225,9 +234,8 @@ RC_Construction Keywords
 
   *bool, optional, default = False*
 
-  If we have random profiles in Lsun/pc^2 we do not fit one of the known functions to them and 
-  simply assume the profile is to be converted to ar SBR Density Profile by mutiplying this profile  
-  with the ML ratio, 
+  If we have random profiles in Lsun/pc^2 and set to true,or we cannot fit one of the known functions to the profile, 
+  we simply assume the profile is to be deprojected with a cos(i) multiplication. 
   If set to false we attempt to fit the input profile with an exponential, sersic, herquist or hernquist+exponential.
 
 **band**:

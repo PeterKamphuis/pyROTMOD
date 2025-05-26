@@ -821,7 +821,7 @@ def update_parameter_values(cfg,var_name,parameter):
    
     stats = parameter.fit_stats
     if parameter.stat_use == 'Max':
-        print_log(f'''We will use the maximum for {var_name}''',cfg,case=['main'])
+        print_log(f'''We will use the maximum for {var_name}. \n''',cfg,case=['main'])
         parameter.value = float(stats['max'])
         parameter.stddev = float(stats['max_error'])
     elif parameter.stat_use == 'Mean':

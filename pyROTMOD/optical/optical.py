@@ -12,14 +12,7 @@ from astropy import units as unit
 import warnings
 #Convert on sky profiles to in plane SBR profiles
 def convert_luminosity_profile(profile_in,cfg=None):
-    if 'random' in profile_in.type:
-        if profile_in.height_type == 'inf_thin':
-            warnings.warn(f'''The profile {profile_in.name} is a random profile. These are supposed to be in the plane 
-of  the galaxy. We cannot deproject these profiles.''',DeprojectionWarning) 
-        else:
-            raise InputError(f'''The profile {profile_in.name} is a random profile.
-We cannot deproject a random profile, if this is an in plane surface brightness profile use 'inf_thin'.
-''')                              
+                         
     transfer=Component()
     profiles_out = SBR_Profile(distance=profile_in.distance\
         ,radii=profile_in.radii,MLratio=profile_in.MLratio,
@@ -33,9 +26,12 @@ We cannot deproject a random profile, if this is an in plane surface brightness 
           
    
     profiles_out.create_profile() 
-    
+    if cfg is None:
+        inclination = 0.
+    else:
+        inclination = cfg.RC_Construction.inclination   
     if 'random' in profile_in.type:
-        profiles_out.values = profile_in.values*profile_in.MLratio  
+        profiles_out.values = profile_in.values*profile_in.MLratio*np.cos(np.radians(inclination))  
         profiles_out.radii = profile_in.radii
     if profiles_out.values.unit not in [unit.Msun/unit.kpc**2,unit.Msun/unit.pc**2] and\
         profiles_out.profile_type == 'sbr_dens:':

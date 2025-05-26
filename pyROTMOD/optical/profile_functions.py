@@ -106,7 +106,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
                 'function': (sersic if cfg.fitting_general.backend
                              == 'lmfit' else sersic_numpyro),
                 'Type':'sersic',
-                'max_red_sqr': 1000,
+                'max_red_sqr': 1000000,
                 'name':'Sersic',
                 'fail':'random_disk'},
                 'EXP+HERN':
@@ -145,7 +145,7 @@ The unit {profile_to_fit.values.unit} will not lead to the right result.
             if tmp_red_chisq > fit_function_dictionary[ev]['max_red_sqr']:
 
                 print_log(f'''The fit to {ev} has a red Chi^2 {tmp_red_chisq}.
-As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a mis fit''',\
+As this is higher than {fit_function_dictionary[ev]['max_red_sqr']} we declare a mis fit. \n''',\
                     cfg,case=['main'])
                 tmp_red_chisq = float('NaN')
 
